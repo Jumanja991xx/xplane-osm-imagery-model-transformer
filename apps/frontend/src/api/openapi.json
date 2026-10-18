@@ -1,0 +1,1592 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "xpsb",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system": {
+      "get": {
+        "summary": "System",
+        "operationId": "system_api_system_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/settings": {
+      "get": {
+        "summary": "Get Settings",
+        "operationId": "get_settings_api_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Put Settings",
+        "operationId": "put_settings_api_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Settings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/xplane/detect": {
+      "post": {
+        "summary": "Xplane Detect",
+        "operationId": "xplane_detect_api_xplane_detect_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/XPlaneCheck"
+                  },
+                  "type": "array",
+                  "title": "Response Xplane Detect Api Xplane Detect Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/xplane/check": {
+      "post": {
+        "summary": "Xplane Check",
+        "operationId": "xplane_check_api_xplane_check_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PathBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/XPlaneCheck"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/dsftool/check": {
+      "post": {
+        "summary": "Dsftool Check",
+        "operationId": "dsftool_check_api_dsftool_check_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PathBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DsfToolStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/secrets/anthropic": {
+      "put": {
+        "summary": "Set Api Key",
+        "operationId": "set_api_key_api_secrets_anthropic_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiKeyBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Api Key",
+        "operationId": "delete_api_key_api_secrets_anthropic_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs": {
+      "post": {
+        "summary": "Create Job",
+        "operationId": "create_job_api_jobs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateJob"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}": {
+      "get": {
+        "summary": "Get Job",
+        "operationId": "get_job_api_jobs__job_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/brief": {
+      "put": {
+        "summary": "Put Brief",
+        "operationId": "put_brief_api_jobs__job_id__brief_put",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Brief"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/answers": {
+      "post": {
+        "summary": "Post Answers",
+        "operationId": "post_answers_api_jobs__job_id__answers_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "title": "Answers"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/gates/{gate}/approve": {
+      "post": {
+        "summary": "Approve",
+        "operationId": "approve_api_jobs__job_id__gates__gate__approve_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "gate",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "A",
+                "B",
+                "C",
+                "D"
+              ],
+              "type": "string",
+              "title": "Gate"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Approve"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/cancel": {
+      "post": {
+        "summary": "Cancel",
+        "operationId": "cancel_api_jobs__job_id__cancel_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AiSettings": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          },
+          "model": {
+            "type": "string",
+            "enum": [
+              "claude-opus-5-5",
+              "claude-sonnet-5-5",
+              "claude-haiku-5-5"
+            ],
+            "title": "Model",
+            "default": "claude-opus-5-5"
+          },
+          "job_limit_usd": {
+            "type": "number",
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Job Limit Usd",
+            "default": 5.0
+          },
+          "monthly_limit_usd": {
+            "type": "number",
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Monthly Limit Usd",
+            "default": 20.0
+          }
+        },
+        "type": "object",
+        "title": "AiSettings"
+      },
+      "AnalysisResult": {
+        "properties": {
+          "objects": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Objects"
+          },
+          "surfaces": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Surfaces"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/Question"
+            },
+            "type": "array",
+            "title": "Questions"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes"
+          },
+          "placeholder": {
+            "type": "boolean",
+            "title": "Placeholder",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "AnalysisResult"
+      },
+      "ApiKeyBody": {
+        "properties": {
+          "api_key": {
+            "type": "string",
+            "title": "Api Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "api_key"
+        ],
+        "title": "ApiKeyBody"
+      },
+      "ApiKeyStatus": {
+        "properties": {
+          "has_api_key": {
+            "type": "boolean",
+            "title": "Has Api Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "has_api_key"
+        ],
+        "title": "ApiKeyStatus"
+      },
+      "Approval": {
+        "properties": {
+          "gate": {
+            "type": "string",
+            "enum": [
+              "A",
+              "B",
+              "C",
+              "D"
+            ],
+            "title": "Gate"
+          },
+          "hash": {
+            "type": "string",
+            "title": "Hash"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "gate",
+          "hash"
+        ],
+        "title": "Approval"
+      },
+      "Approve": {
+        "properties": {
+          "hash": {
+            "type": "string",
+            "title": "Hash"
+          }
+        },
+        "type": "object",
+        "required": [
+          "hash"
+        ],
+        "title": "Approve"
+      },
+      "Brief": {
+        "properties": {
+          "object_categories": {
+            "items": {
+              "$ref": "#/components/schemas/ObjectCategory"
+            },
+            "type": "array",
+            "title": "Object Categories"
+          },
+          "surface_types": {
+            "items": {
+              "$ref": "#/components/schemas/SurfaceType"
+            },
+            "type": "array",
+            "title": "Surface Types"
+          },
+          "surface_mode": {
+            "$ref": "#/components/schemas/SurfaceMode",
+            "default": "material"
+          },
+          "exclusions": {
+            "items": {
+              "$ref": "#/components/schemas/ExclusionType"
+            },
+            "type": "array",
+            "title": "Exclusions"
+          },
+          "use_ai": {
+            "type": "boolean",
+            "title": "Use Ai",
+            "default": true
+          },
+          "ai_model": {
+            "type": "string",
+            "enum": [
+              "claude-opus-5-5",
+              "claude-sonnet-5-5",
+              "claude-haiku-5-5"
+            ],
+            "title": "Ai Model",
+            "default": "claude-opus-5-5"
+          },
+          "ai_cost_limit_usd": {
+            "type": "number",
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Ai Cost Limit Usd",
+            "default": 5.0
+          },
+          "detail": {
+            "$ref": "#/components/schemas/DetailLevel",
+            "default": "medium"
+          },
+          "package_name": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9 _\\-]{0,59}$",
+            "title": "Package Name"
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Notes",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "package_name"
+        ],
+        "title": "Brief",
+        "description": "Step 2: what exactly should be built (answers of the clarification dialog)."
+      },
+      "BuildPlan": {
+        "properties": {
+          "package_name": {
+            "type": "string",
+            "title": "Package Name"
+          },
+          "tile": {
+            "type": "string",
+            "title": "Tile"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PlanItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "files": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Files"
+          },
+          "center": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Center"
+          },
+          "test_scenery": {
+            "type": "boolean",
+            "title": "Test Scenery",
+            "default": false
+          },
+          "cube_height_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cube Height M"
+          }
+        },
+        "type": "object",
+        "required": [
+          "package_name",
+          "tile",
+          "items",
+          "files",
+          "center"
+        ],
+        "title": "BuildPlan"
+      },
+      "BuildResult": {
+        "properties": {
+          "package_dir": {
+            "type": "string",
+            "title": "Package Dir"
+          },
+          "files": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Files"
+          },
+          "dsftool_version": {
+            "type": "string",
+            "title": "Dsftool Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "package_dir",
+          "files",
+          "dsftool_version"
+        ],
+        "title": "BuildResult"
+      },
+      "CreateJob": {
+        "properties": {
+          "aoi": {
+            "$ref": "#/components/schemas/GeoJsonPolygon"
+          }
+        },
+        "type": "object",
+        "required": [
+          "aoi"
+        ],
+        "title": "CreateJob"
+      },
+      "DetailLevel": {
+        "type": "string",
+        "enum": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "title": "DetailLevel"
+      },
+      "DsfToolStatus": {
+        "properties": {
+          "found": {
+            "type": "boolean",
+            "title": "Found"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "found"
+        ],
+        "title": "DsfToolStatus"
+      },
+      "ExclusionType": {
+        "type": "string",
+        "enum": [
+          "objects",
+          "facades",
+          "forests",
+          "polygons",
+          "roads"
+        ],
+        "title": "ExclusionType"
+      },
+      "GateItem": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "action",
+              "cost",
+              "write",
+              "warning",
+              "info"
+            ],
+            "title": "Kind"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "params": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Params"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "key"
+        ],
+        "title": "GateItem"
+      },
+      "GeoJsonPolygon": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "pattern": "^Polygon$",
+            "title": "Type"
+          },
+          "coordinates": {
+            "items": {
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Coordinates"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "coordinates"
+        ],
+        "title": "GeoJsonPolygon"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "Health": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "version"
+        ],
+        "title": "Health"
+      },
+      "InstallResult": {
+        "properties": {
+          "target_dir": {
+            "type": "string",
+            "title": "Target Dir"
+          },
+          "backup_dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backup Dir"
+          }
+        },
+        "type": "object",
+        "required": [
+          "target_dir"
+        ],
+        "title": "InstallResult"
+      },
+      "JobError": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "key"
+        ],
+        "title": "JobError"
+      },
+      "JobState": {
+        "type": "string",
+        "enum": [
+          "draft",
+          "clarified",
+          "analyzing",
+          "analyzed",
+          "planned",
+          "building",
+          "built",
+          "installing",
+          "installed",
+          "failed",
+          "cancelled"
+        ],
+        "title": "JobState"
+      },
+      "JobView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "state": {
+            "$ref": "#/components/schemas/JobState",
+            "default": "draft"
+          },
+          "aoi": {
+            "$ref": "#/components/schemas/GeoJsonPolygon"
+          },
+          "aoi_area_km2": {
+            "type": "number",
+            "title": "Aoi Area Km2"
+          },
+          "aoi_center": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Aoi Center"
+          },
+          "brief": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Brief"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "analysis": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalysisResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "answers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Answers"
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BuildPlan"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "build": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BuildResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "install": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InstallResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "approvals": {
+            "items": {
+              "$ref": "#/components/schemas/Approval"
+            },
+            "type": "array",
+            "title": "Approvals"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pending_gate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PendingGate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "aoi",
+          "aoi_area_km2",
+          "aoi_center"
+        ],
+        "title": "JobView",
+        "description": "What the API returns: the job plus the approval currently waiting for the user."
+      },
+      "ObjectCategory": {
+        "type": "string",
+        "enum": [
+          "buildings",
+          "grandstands",
+          "scaffolding",
+          "canopies",
+          "barriers",
+          "masts"
+        ],
+        "title": "ObjectCategory"
+      },
+      "PathBody": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "title": "PathBody"
+      },
+      "PendingGate": {
+        "properties": {
+          "gate": {
+            "type": "string",
+            "enum": [
+              "A",
+              "B",
+              "C",
+              "D"
+            ],
+            "title": "Gate"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GateItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "blocked": {
+            "type": "boolean",
+            "title": "Blocked",
+            "default": false
+          },
+          "hash": {
+            "type": "string",
+            "title": "Hash"
+          }
+        },
+        "type": "object",
+        "required": [
+          "gate",
+          "items",
+          "hash"
+        ],
+        "title": "PendingGate"
+      },
+      "PlanItem": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "label_key": {
+            "type": "string",
+            "title": "Label Key"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "params": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Params"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "label_key",
+          "count"
+        ],
+        "title": "PlanItem"
+      },
+      "Question": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "text_key": {
+            "type": "string",
+            "title": "Text Key"
+          },
+          "params": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Params"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/QuestionOption"
+            },
+            "type": "array",
+            "title": "Options"
+          },
+          "suggested": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "text_key",
+          "options"
+        ],
+        "title": "Question",
+        "description": "A question the analysis could not answer with confidence."
+      },
+      "QuestionOption": {
+        "properties": {
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "label_key": {
+            "type": "string",
+            "title": "Label Key"
+          },
+          "params": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Params"
+          }
+        },
+        "type": "object",
+        "required": [
+          "value",
+          "label_key"
+        ],
+        "title": "QuestionOption"
+      },
+      "Settings": {
+        "properties": {
+          "language": {
+            "type": "string",
+            "enum": [
+              "de",
+              "en"
+            ],
+            "title": "Language",
+            "default": "de"
+          },
+          "xplane_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xplane Path"
+          },
+          "dsftool_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dsftool Path"
+          },
+          "ai": {
+            "$ref": "#/components/schemas/AiSettings"
+          },
+          "update_check": {
+            "type": "boolean",
+            "title": "Update Check",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "Settings"
+      },
+      "SurfaceMode": {
+        "type": "string",
+        "enum": [
+          "material",
+          "imagery"
+        ],
+        "title": "SurfaceMode"
+      },
+      "SurfaceType": {
+        "type": "string",
+        "enum": [
+          "grass",
+          "asphalt",
+          "concrete",
+          "gravel",
+          "tartan",
+          "markings"
+        ],
+        "title": "SurfaceType"
+      },
+      "SystemStatus": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "platform": {
+            "type": "string",
+            "title": "Platform"
+          },
+          "data_dir": {
+            "type": "string",
+            "title": "Data Dir"
+          },
+          "dsftool": {
+            "$ref": "#/components/schemas/DsfToolStatus"
+          },
+          "xplane": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/XPlaneCheck"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "keyring_available": {
+            "type": "boolean",
+            "title": "Keyring Available"
+          },
+          "has_api_key": {
+            "type": "boolean",
+            "title": "Has Api Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "platform",
+          "data_dir",
+          "dsftool",
+          "xplane",
+          "keyring_available",
+          "has_api_key"
+        ],
+        "title": "SystemStatus"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "XPlaneCheck": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "valid": {
+            "type": "boolean",
+            "title": "Valid"
+          },
+          "problems": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Problems",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "valid"
+        ],
+        "title": "XPlaneCheck"
+      }
+    }
+  }
+}

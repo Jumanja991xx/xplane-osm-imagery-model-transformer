@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+@theme {
+  --color-accent-50: #eff8ff;
+  --color-accent-100: #dbeefe;
+  --color-accent-500: #2b8ad8;
+  --color-accent-600: #1f73bd;
+  --color-accent-700: #1b5d98;
+  --font-sans: "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  @apply bg-zinc-100 text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100;
+  font-family: var(--font-sans);
+}
+
+.maplibregl-map {
+  font-family: var(--font-sans);
+}

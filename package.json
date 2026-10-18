@@ -1,0 +1,14 @@
+{
+  "name": "xplane-ai-scenery-builder",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.28.0",
+  "scripts": {
+    "dev:backend": "cd backend && uv run xpsb-backend --port 8765 --token dev --dev-cors --data-dir ../.dev-data",
+    "dev:frontend": "pnpm --filter frontend dev",
+    "gen:api": "cd backend && uv run python scripts/dump_openapi.py ../apps/frontend/src/api/openapi.json && cd .. && pnpm --filter frontend gen:api",
+    "typecheck": "pnpm --filter frontend typecheck",
+    "build:frontend": "pnpm --filter frontend build",
+    "tauri": "pnpm --filter desktop tauri"
+  }
+}

@@ -9,6 +9,8 @@ import sys
 import urllib.request
 
 import pytest
+from conftest import HOCKENHEIM_AOI
+from websockets.sync.client import connect
 
 
 def test_ready_line_token_and_stdin_watchdog(tmp_path):
@@ -48,6 +50,20 @@ def test_ready_line_token_and_stdin_watchdog(tmp_path):
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
             assert json.loads(resp.read())["status"] == "ok"
+
+        # The real server (not the test client) must speak WebSocket.
+        create = urllib.request.Request(
+            f"http://127.0.0.1:{ready['port']}/api/jobs",
+            data=json.dumps({"aoi": HOCKENHEIM_AOI}).encode(),
+            headers={"Authorization": "Bearer sidecar-token", "Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(create, timeout=10) as resp:
+            job_id = json.loads(resp.read())["id"]
+        url = f"ws://127.0.0.1:{ready['port']}/ws/jobs/{job_id}?token=sidecar-token"
+        with connect(url, open_timeout=10) as ws:
+            first = json.loads(ws.recv(timeout=10))
+        assert first["type"] == "state" and first["state"] == "draft"
 
         proc.stdin.close()  # the desktop app went away
         assert proc.wait(timeout=15) is not None

@@ -236,15 +236,29 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
             return
         await ws.accept()
         queue = event_log.subscribe()
-        try:
+
+        async def pump() -> None:
             for event in event_log.events:
                 await ws.send_text(event.model_dump_json())
             while True:
                 event = await queue.get()
                 await ws.send_text(event.model_dump_json())
+
+        async def watch_disconnect() -> None:
+            # Without reading, a closed client is only noticed on the next send,
+            # which may never come – and then the server could not shut down.
+            while True:
+                await ws.receive_text()
+
+        tasks = {asyncio.create_task(pump()), asyncio.create_task(watch_disconnect())}
+        try:
+            await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         except WebSocketDisconnect:
             pass
         finally:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
             event_log.unsubscribe(queue)
 
     return app

@@ -24,16 +24,23 @@ class SecretStore(Protocol):
 
 
 class KeyringSecretStore:
-    def available(self) -> bool:
-        try:
-            import keyring
-            from keyring.backends import fail
+    def __init__(self) -> None:
+        self._available: bool | None = None
 
-            return not isinstance(keyring.get_keyring(), fail.Keyring)
-        except Exception:  # noqa: BLE001 - any backend problem means "unavailable"
-            return False
+    def available(self) -> bool:
+        if self._available is None:
+            try:
+                import keyring
+                from keyring.backends import fail
+
+                self._available = not isinstance(keyring.get_keyring(), fail.Keyring)
+            except Exception:  # noqa: BLE001 - any backend problem means "unavailable"
+                self._available = False
+        return self._available
 
     def get(self, account: str) -> str | None:
+        if not self.available():
+            return None
         import keyring
 
         try:

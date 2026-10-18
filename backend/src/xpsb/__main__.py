@@ -107,7 +107,13 @@ def main(argv: list[str] | None = None) -> None:
     sock.listen(128)  # accept-queue is live before we announce readiness
     port = sock.getsockname()[1]
 
-    config = uvicorn.Config(app, log_level=args.log_level, access_log=False, log_config=None)
+    config = uvicorn.Config(
+        app,
+        log_level=args.log_level,
+        access_log=False,
+        log_config=None,
+        timeout_graceful_shutdown=3,  # never hang on open connections when the app quits
+    )
     server = uvicorn.Server(config)
     if args.watch_stdin:
         _watch_stdin(server)
