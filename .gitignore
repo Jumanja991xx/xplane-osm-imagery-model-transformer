@@ -1,0 +1,36 @@
+# Node / Frontend
+node_modules/
+dist/
+*.tsbuildinfo
+.vite/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+backend/build/
+backend/dist/
+*.egg-info/
+
+# Rust / Tauri
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/
+apps/desktop/src-tauri/resources/backend/
+apps/desktop/src-tauri/resources/bin/
+
+# Native tools (built from source in CI, never committed)
+tools/dsftool/build/
+tools/dsftool/xptools-src/
+tools/bin/
+
+# Local dev data (caches, jobs, logs)
+.dev-data/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
