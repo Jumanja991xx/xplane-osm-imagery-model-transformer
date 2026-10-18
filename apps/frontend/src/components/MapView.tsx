@@ -19,8 +19,22 @@ import {
 import { TerraDrawMapLibreGLAdapter } from "terra-draw-maplibre-gl-adapter";
 import { useApp } from "../store";
 
-// Free vector basemap without API key (OpenFreeMap, data © OpenStreetMap contributors).
-const BASEMAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
+// OpenStreetMap standard map in the German style (openstreetmap.de): shows more
+// detail (buildings, tracks, names) than vector styles at the zoom levels we use.
+const BASEMAP_STYLE: StyleSpecification = {
+  version: 8,
+  sources: {
+    osm: {
+      type: "raster",
+      tiles: ["https://tile.openstreetmap.de/{z}/{x}/{y}.png"],
+      tileSize: 256,
+      maxzoom: 19,
+      attribution:
+        '© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>-Mitwirkende',
+    },
+  },
+  layers: [{ id: "osm", type: "raster", source: "osm" }],
+};
 
 // Used when the basemap cannot be loaded (offline, blocked): drawing still works.
 const BLANK_STYLE: StyleSpecification = {
