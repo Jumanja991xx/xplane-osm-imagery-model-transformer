@@ -193,6 +193,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/jobs/{job_id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Item */
+        post: operations["add_item_api_jobs__job_id__items_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/items/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Item */
+        delete: operations["delete_item_api_jobs__job_id__items__item_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Item */
+        patch: operations["update_item_api_jobs__job_id__items__item_id__patch"];
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/imagery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Job Imagery */
+        get: operations["job_imagery_api_jobs__job_id__imagery_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs/{job_id}/gates/{gate}/approve": {
         parameters: {
             query?: never;
@@ -231,6 +283,44 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AiAssessment */
+        AiAssessment: {
+            /** Model */
+            model: string;
+            /** Summary */
+            summary: string;
+            /** Confidence */
+            confidence: number;
+        };
+        /** AiRunInfo */
+        AiRunInfo: {
+            /** Model */
+            model: string;
+            /** Models Used */
+            models_used?: string[];
+            /**
+             * Cost Usd
+             * @default 0
+             */
+            cost_usd: number;
+            /**
+             * Analyzed
+             * @default 0
+             */
+            analyzed: number;
+            /**
+             * Skipped
+             * @default 0
+             */
+            skipped: number;
+            /**
+             * Limit Reached
+             * @default false
+             */
+            limit_reached: boolean;
+            /** Error Key */
+            error_key?: string | null;
+        };
         /** AiSettings */
         AiSettings: {
             /**
@@ -257,23 +347,19 @@ export interface components {
         };
         /** AnalysisResult */
         AnalysisResult: {
-            /** Objects */
-            objects?: {
-                [key: string]: unknown;
-            }[];
-            /** Surfaces */
-            surfaces?: {
-                [key: string]: unknown;
-            }[];
+            /** Items */
+            items?: components["schemas"]["SceneItem"][];
             /** Questions */
             questions?: components["schemas"]["Question"][];
             /** Notes */
-            notes?: string[];
+            notes?: components["schemas"]["Note"][];
+            imagery?: components["schemas"]["ImageryInfo"] | null;
+            ai?: components["schemas"]["AiRunInfo"] | null;
             /**
-             * Placeholder
-             * @default false
+             * Next User Id
+             * @default 1
              */
-            placeholder: boolean;
+            next_user_id: number;
         };
         /** ApiKeyBody */
         ApiKeyBody: {
@@ -434,12 +520,120 @@ export interface components {
             /** Version */
             version: string;
         };
+        /**
+         * ImageryInfo
+         * @description Stored next to the image; also what the UI and the gates show.
+         */
+        ImageryInfo: {
+            /** Source Id */
+            source_id: string;
+            /** Source Name */
+            source_name: string;
+            /** Layer */
+            layer: string;
+            /** Attribution */
+            attribution: string;
+            /** License */
+            license: string;
+            /** West */
+            west: number;
+            /** South */
+            south: number;
+            /** East */
+            east: number;
+            /** North */
+            north: number;
+            /** Width Px */
+            width_px: number;
+            /** Height Px */
+            height_px: number;
+            /** Gsd M */
+            gsd_m: number;
+            /**
+             * File
+             * @default aoi.jpg
+             */
+            file: string;
+        };
+        /** ImagerySettings */
+        ImagerySettings: {
+            /**
+             * Source
+             * @default auto
+             * @enum {string}
+             */
+            source: "auto" | "bayern_dop40" | "nrw_dop" | "custom" | "none";
+            /**
+             * Custom Url
+             * @default
+             */
+            custom_url: string;
+            /**
+             * Custom Layer
+             * @default
+             */
+            custom_layer: string;
+            /**
+             * Custom Attribution
+             * @default
+             */
+            custom_attribution: string;
+            /**
+             * Custom Rights Confirmed
+             * @default false
+             */
+            custom_rights_confirmed: boolean;
+        };
         /** InstallResult */
         InstallResult: {
             /** Target Dir */
             target_dir: string;
             /** Backup Dir */
             backup_dir?: string | null;
+        };
+        /**
+         * ItemAttrs
+         * @description Parameters for the generators (M3). All optional: unknown stays unknown.
+         */
+        ItemAttrs: {
+            /** Height M */
+            height_m?: number | null;
+            /** Levels */
+            levels?: number | null;
+            /** Roof Shape */
+            roof_shape?: string | null;
+            /** Roof Color */
+            roof_color?: string | null;
+            /** Wall Color */
+            wall_color?: string | null;
+            /** Seat Color */
+            seat_color?: string | null;
+            /** Material */
+            material?: string | null;
+            /** Covered */
+            covered?: boolean | null;
+            /** Width M */
+            width_m?: number | null;
+        };
+        /**
+         * ItemPatch
+         * @description Editor changes; only the fields sent are applied.
+         */
+        ItemPatch: {
+            /** Category */
+            category?: components["schemas"]["ObjectCategory"] | components["schemas"]["SurfaceType"] | null;
+            /** Geometry */
+            geometry?: {
+                [key: string]: unknown;
+            } | null;
+            /** Name */
+            name?: string | null;
+            /** Attrs */
+            attrs?: {
+                [key: string]: unknown;
+            } | null;
+            /** Included */
+            included?: boolean | null;
         };
         /** JobError */
         JobError: {
@@ -497,6 +691,32 @@ export interface components {
             error?: components["schemas"]["JobError"] | null;
             pending_gate?: components["schemas"]["PendingGate"] | null;
         };
+        /** NewItem */
+        NewItem: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "object" | "surface";
+            /** Category */
+            category: components["schemas"]["ObjectCategory"] | components["schemas"]["SurfaceType"];
+            /** Geometry */
+            geometry: {
+                [key: string]: unknown;
+            };
+            /** Name */
+            name?: string | null;
+            attrs?: components["schemas"]["ItemAttrs"];
+        };
+        /** Note */
+        Note: {
+            /** Key */
+            key: string;
+            /** Params */
+            params?: {
+                [key: string]: string | number | null;
+            };
+        };
         /**
          * ObjectCategory
          * @enum {string}
@@ -534,7 +754,7 @@ export interface components {
             count: number;
             /** Params */
             params?: {
-                [key: string]: string | number;
+                [key: string]: string | number | null;
             };
         };
         /**
@@ -545,26 +765,75 @@ export interface components {
             /** Id */
             id: string;
             /** Text Key */
-            text_key: string;
+            text_key?: string | null;
+            /** Text */
+            text?: string | null;
             /** Params */
             params?: {
-                [key: string]: string | number;
+                [key: string]: string | number | null;
             };
             /** Options */
             options: components["schemas"]["QuestionOption"][];
             /** Suggested */
             suggested?: string | null;
+            /** Item Id */
+            item_id?: string | null;
+            /** Field */
+            field?: string | null;
         };
         /** QuestionOption */
         QuestionOption: {
             /** Value */
             value: string;
             /** Label Key */
-            label_key: string;
+            label_key?: string | null;
+            /** Label */
+            label?: string | null;
             /** Params */
             params?: {
-                [key: string]: string | number;
+                [key: string]: string | number | null;
             };
+        };
+        /** SceneItem */
+        SceneItem: {
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "object" | "surface";
+            /** Category */
+            category: components["schemas"]["ObjectCategory"] | components["schemas"]["SurfaceType"];
+            /** Geometry */
+            geometry: {
+                [key: string]: unknown;
+            };
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "osm" | "user";
+            /** Name */
+            name?: string | null;
+            /** Osm Ref */
+            osm_ref?: string | null;
+            /** Tags */
+            tags?: {
+                [key: string]: string;
+            };
+            attrs?: components["schemas"]["ItemAttrs"];
+            ai?: components["schemas"]["AiAssessment"] | null;
+            /**
+             * Included
+             * @default true
+             */
+            included: boolean;
+            /**
+             * Edited
+             * @default false
+             */
+            edited: boolean;
         };
         /** Settings */
         Settings: {
@@ -579,6 +848,7 @@ export interface components {
             /** Dsftool Path */
             dsftool_path?: string | null;
             ai?: components["schemas"]["AiSettings"];
+            imagery?: components["schemas"]["ImagerySettings"];
             /**
              * Update Check
              * @default false
@@ -594,7 +864,7 @@ export interface components {
          * SurfaceType
          * @enum {string}
          */
-        SurfaceType: "grass" | "asphalt" | "concrete" | "gravel" | "tartan" | "markings";
+        SurfaceType: "grass" | "asphalt" | "concrete" | "gravel" | "dirt" | "tartan" | "markings";
         /** SystemStatus */
         SystemStatus: {
             /** Version */
@@ -999,6 +1269,140 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_item_api_jobs__job_id__items_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewItem"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_item_api_jobs__job_id__items__item_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_item_api_jobs__job_id__items__item_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ItemPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    job_imagery_api_jobs__job_id__imagery_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
                 };
             };
             /** @description Validation Error */

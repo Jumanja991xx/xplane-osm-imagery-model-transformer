@@ -13,6 +13,8 @@ hiddenimports = (
     collect_submodules("uvicorn")
     + collect_submodules("websockets")
     + collect_submodules("keyring.backends")
+    # Imported lazily (only when the user runs an AI analysis).
+    + collect_submodules("anthropic")
 )
 
 a = Analysis(

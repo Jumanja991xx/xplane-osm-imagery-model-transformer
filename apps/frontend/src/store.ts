@@ -1,7 +1,22 @@
 import { create } from "zustand";
-import type { GeoJsonPolygon, JobEvent, JobView, Settings, SystemStatus } from "./api/client";
+import type {
+  GeoJsonPolygon,
+  JobEvent,
+  JobView,
+  ObjectCategory,
+  Settings,
+  SurfaceType,
+  SystemStatus,
+} from "./api/client";
 
-export type DrawMode = "none" | "polygon" | "rectangle";
+export type DrawMode = "none" | "polygon" | "rectangle" | "linestring" | "point";
+
+/** A new object/surface the user is drawing in the editor. */
+export interface ItemDraft {
+  kind: "object" | "surface";
+  category: ObjectCategory | SurfaceType;
+  mode: "polygon" | "linestring" | "point";
+}
 
 interface AppState {
   aoi: GeoJsonPolygon | null;
@@ -13,6 +28,9 @@ interface AppState {
   settings: Settings | null;
   system: SystemStatus | null;
   settingsOpen: boolean;
+  selectedItem: string | null;
+  imageryVisible: boolean;
+  itemDraft: ItemDraft | null;
 
   setAoi: (aoi: GeoJsonPolygon | null) => void;
   setDrawMode: (mode: DrawMode) => void;
@@ -23,6 +41,9 @@ interface AppState {
   setSettings: (settings: Settings) => void;
   setSystem: (system: SystemStatus) => void;
   setSettingsOpen: (open: boolean) => void;
+  selectItem: (id: string | null) => void;
+  setImageryVisible: (visible: boolean) => void;
+  startItemDraft: (draft: ItemDraft | null) => void;
   reset: () => void;
 }
 
@@ -36,6 +57,9 @@ export const useApp = create<AppState>((set) => ({
   settings: null,
   system: null,
   settingsOpen: false,
+  selectedItem: null,
+  imageryVisible: true,
+  itemDraft: null,
 
   setAoi: (aoi) => set({ aoi }),
   setDrawMode: (drawMode) => set({ drawMode }),
@@ -48,9 +72,14 @@ export const useApp = create<AppState>((set) => ({
   setSettings: (settings) => set({ settings }),
   setSystem: (system) => set({ system }),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
+  selectItem: (selectedItem) => set({ selectedItem }),
+  setImageryVisible: (imageryVisible) => set({ imageryVisible }),
+  startItemDraft: (itemDraft) => set({ itemDraft, drawMode: itemDraft ? itemDraft.mode : "none" }),
   reset: () =>
     set((s) => ({
       job: null,
+      selectedItem: null,
+      itemDraft: null,
       events: [],
       editingBrief: false,
       aoi: null,

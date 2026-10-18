@@ -281,9 +281,9 @@ def test_analysis_with_ai_questions_and_editor(client, fake_ai, app_ctx):
     confirmed = {
         i["label_key"]: i["count"] for i in job["plan"]["items"] if i["kind"] == "confirmed"
     }
-    assert confirmed["object.grandstands"] == 2
-    assert confirmed["object.scaffolding"] == 1
-    assert "object.barriers" not in confirmed and "object.masts" not in confirmed
+    assert confirmed["category.grandstands"] == 2
+    assert confirmed["category.scaffolding"] == 1
+    assert "category.barriers" not in confirmed and "category.masts" not in confirmed
     # No more edits once planned.
     r = client.patch(f"/api/jobs/{jid}/items/way/103", json={"included": False}, headers=AUTH)
     assert r.status_code == 409

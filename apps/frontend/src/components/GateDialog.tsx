@@ -17,6 +17,7 @@ const KIND_ICON: Record<GateItem["kind"], string> = {
 export function gateItemText(t: Translate, item: GateItem): string {
   const params: Record<string, unknown> = { ...item.params };
   if (typeof params.model === "string") params.model = t(`model.${params.model}`);
+  if (typeof params.label === "string") params.label = t(params.label);
   return t(item.key, params);
 }
 

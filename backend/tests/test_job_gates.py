@@ -89,7 +89,7 @@ def test_gate_b_shows_counts_and_plan_lists_confirmed_items(client, app_ctx):
     confirmed = {
         i["label_key"]: i["count"] for i in job["plan"]["items"] if i["kind"] == "confirmed"
     }
-    assert confirmed == {"object.buildings": 3, "object.grandstands": 1, "surface.grass": 1}
+    assert confirmed == {"category.buildings": 3, "category.grandstands": 1, "surface.grass": 1}
     scene = app_ctx.jobs.job_dir(job["id"]) / "scene.geojson"
     assert len(__import__("json").loads(scene.read_text())["features"]) == 5
 

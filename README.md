@@ -8,10 +8,11 @@ Tribünen, Gebäude, Gerüste, Rasen, Asphalt usw. Kostenlos für die Community.
 Dateien schreiben, X-Plane-Ordner ändern) und zeigt dabei, *was passiert, was es kostet
 und wohin geschrieben wird*.
 
-> **Status: Meilenstein 1 (Vorschau).** Der komplette Ablauf mit allen Freigaben
-> funktioniert. Die Analyse ist noch ein Platzhalter; gebaut wird eine **Testszenerie**
-> (Würfel + zwei Testflächen), mit der wir die Technik in X-Plane prüfen.
-> Echte Objekterkennung (OSM, Satellitenbild, KI) folgt in Meilenstein 2.
+> **Status: Meilenstein 2 (Vorschau).** Die Analyse ist echt: Objekte und Flächen aus
+> OpenStreetMap, offenes Luftbild (Bayern, NRW oder eigene WMS-Quelle) und – wenn du
+> zustimmst – eine Einschätzung jedes Objekts durch Claude (Höhe, Dach, Farben, Rückfragen).
+> Die Liste lässt sich bearbeiten. Gebaut wird noch die **Testszenerie**; die 3D-Objekte
+> aus der Liste folgen in Meilenstein 3.
 
 Architektur und Roadmap: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) ·
 geprüfte X-Plane-Formatdetails: [`docs/xplane-format-notes.md`](docs/xplane-format-notes.md)
@@ -56,6 +57,20 @@ Die CI (`.github/workflows/ci.yml`) baut bei jedem Push automatisch eine
 `Setup.exe` (Artefakt *XPSB-Setup-windows-x64*): DSFTool.exe aus Quellcode,
 Backend mit PyInstaller, Smoke-Test des fertigen Pakets, Tauri-NSIS-Installer
 (Installation pro Benutzer, ohne Administratorrechte).
+
+## Analyse und Editor testen (Meilenstein 2)
+
+1. *Einstellungen*: Luftbildquelle „Automatisch“ lassen (Bayern/NRW) oder eine eigene
+   WMS-Quelle eintragen und die Nutzungsrechte bestätigen. API-Key und Monatslimit prüfen.
+2. Ein Gebiet in Bayern oder NRW zeichnen (z. B. ein Stadion), Kategorien wählen, bei
+   *KI-Analyse* ein günstiges Modell und eine niedrige Kostengrenze (z. B. 1 USD) wählen.
+3. Freigabe A lesen: Welche Daten werden geladen, was geht an die KI, Kostengrenze.
+4. Ergebnis prüfen: Liste ↔ Karte (anklicken), Luftbild ein/aus, KI-Einschätzungen,
+   Rückfragen beantworten, Einträge ändern, ausschließen, löschen oder neu einzeichnen.
+5. Freigabe B → Bauplan zeigt die bestätigte Liste (gespeichert als `scene.geojson`).
+
+Offline-Entwicklung ohne Internet: `XPSB_FIXTURES_DIR=backend/tests/fixtures/speedway`
+liefert OSM-Daten und Luftbild aus Testdateien (siehe `tests/e2e/README.md`).
 
 ## Testszenerie in X-Plane 12 prüfen (Meilenstein 1)
 

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { SURFACE_TYPES } from "../../scene";
 import {
   api,
   ApiError,
@@ -19,7 +20,7 @@ const CATEGORIES: ObjectCategory[] = [
   "barriers",
   "masts",
 ];
-const SURFACES: SurfaceType[] = ["grass", "asphalt", "concrete", "gravel", "tartan", "markings"];
+const SURFACES: SurfaceType[] = SURFACE_TYPES;
 const EXCLUSIONS: ExclusionType[] = ["objects", "facades", "forests", "polygons", "roads"];
 const MODELS = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"] as const;
 

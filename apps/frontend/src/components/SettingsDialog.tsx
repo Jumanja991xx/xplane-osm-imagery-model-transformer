@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { api, ApiError, type Settings, type XPlaneCheck } from "../api/client";
+import { api, ApiError, type ImagerySettings, type Settings, type XPlaneCheck } from "../api/client";
 import { useT } from "../i18n";
 import { useApp } from "../store";
 import { Alert, Button, inputClass, Section, Spinner } from "./ui";
 
 const MODELS = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"] as const;
+const IMAGERY_CHOICES: ImagerySettings["source"][] = ["auto", "bayern_dop40", "nrw_dop", "custom", "none"];
 
 function CheckBadge({ check }: { check: XPlaneCheck }) {
   const { t } = useT();
@@ -24,6 +25,16 @@ export function SettingsDialog() {
   const [candidates, setCandidates] = useState<XPlaneCheck[] | null>(null);
   const [xplaneCheck, setXplaneCheck] = useState<XPlaneCheck | null>(system?.xplane ?? null);
   const [apiKey, setApiKey] = useState("");
+  const imagery: ImagerySettings = {
+    source: "auto",
+    custom_url: "",
+    custom_layer: "",
+    custom_attribution: "",
+    custom_rights_confirmed: false,
+    ...draft.imagery,
+  };
+  const setImagery = (change: Partial<ImagerySettings>) =>
+    setDraft({ ...draft, imagery: { ...imagery, ...change } });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
 
@@ -210,6 +221,72 @@ export function SettingsDialog() {
                 onChange={(e) => setDraft({ ...draft, ai: { ...draft.ai!, job_limit_usd: Number(e.target.value) } })}
               />
             </div>
+            <label className="block text-sm">
+              <span className="mb-1 block text-zinc-600 dark:text-zinc-300">{t("settings.monthly_limit")}</span>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                className={inputClass}
+                value={draft.ai?.monthly_limit_usd}
+                onChange={(e) =>
+                  setDraft({ ...draft, ai: { ...draft.ai!, monthly_limit_usd: Number(e.target.value) } })
+                }
+                data-testid="monthly-limit"
+              />
+            </label>
+          </Section>
+
+          <Section title={t("settings.imagery")}>
+            <select
+              className={inputClass}
+              value={imagery.source}
+              onChange={(e) => setImagery({ source: e.target.value as ImagerySettings["source"] })}
+              data-testid="imagery-source"
+            >
+              {IMAGERY_CHOICES.map((c) => (
+                <option key={c} value={c}>
+                  {t(`imagery.choice.${c}`)}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-zinc-500">{t(`imagery.hint.${imagery.source}`)}</p>
+            {imagery.source === "custom" && (
+              <div className="space-y-2">
+                <input
+                  className={inputClass}
+                  placeholder="https://…/wms"
+                  value={imagery.custom_url}
+                  onChange={(e) => setImagery({ custom_url: e.target.value })}
+                  data-testid="imagery-url"
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    className={inputClass}
+                    placeholder={t("settings.imagery_layer")}
+                    value={imagery.custom_layer}
+                    onChange={(e) => setImagery({ custom_layer: e.target.value })}
+                  />
+                  <input
+                    className={inputClass}
+                    placeholder={t("settings.imagery_attribution")}
+                    value={imagery.custom_attribution}
+                    onChange={(e) => setImagery({ custom_attribution: e.target.value })}
+                    data-testid="imagery-attribution"
+                  />
+                </div>
+                <label className="flex items-start gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={imagery.custom_rights_confirmed}
+                    onChange={(e) => setImagery({ custom_rights_confirmed: e.target.checked })}
+                    data-testid="imagery-rights"
+                  />
+                  {t("settings.imagery_rights")}
+                </label>
+              </div>
+            )}
           </Section>
 
           <Section title={t("app.language")}>

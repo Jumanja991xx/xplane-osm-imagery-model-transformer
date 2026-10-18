@@ -16,6 +16,14 @@ export type GateId = PendingGate["gate"];
 export type ObjectCategory = S["ObjectCategory"];
 export type SurfaceType = S["SurfaceType"];
 export type ExclusionType = S["ExclusionType"];
+export type SceneItem = S["SceneItem"];
+export type ItemAttrs = S["ItemAttrs"];
+export type ItemPatch = S["ItemPatch"];
+export type NewItem = S["NewItem"];
+export type Question = S["Question"];
+export type Note = S["Note"];
+export type ImageryInfo = S["ImageryInfo"];
+export type ImagerySettings = S["ImagerySettings"];
 
 export interface JobEvent {
   seq: number;
@@ -110,6 +118,11 @@ export const api = {
   putBrief: (id: string, brief: Brief) => request<JobView>("PUT", `/api/jobs/${id}/brief`, brief),
   postAnswers: (id: string, answers: Record<string, string>) =>
     request<JobView>("POST", `/api/jobs/${id}/answers`, answers),
+  addItem: (id: string, item: NewItem) => request<JobView>("POST", `/api/jobs/${id}/items`, item),
+  updateItem: (id: string, itemId: string, patch: ItemPatch) =>
+    request<JobView>("PATCH", `/api/jobs/${id}/items/${itemId}`, patch),
+  deleteItem: (id: string, itemId: string) =>
+    request<JobView>("DELETE", `/api/jobs/${id}/items/${itemId}`),
   approve: (id: string, gate: GateId, hash: string) =>
     request<JobView>("POST", `/api/jobs/${id}/gates/${gate}/approve`, { hash }),
   cancel: (id: string) => request<JobView>("POST", `/api/jobs/${id}/cancel`),
@@ -118,4 +131,14 @@ export const api = {
 export async function jobEventsUrl(jobId: string): Promise<string> {
   const { baseUrl, token } = await backend();
   return `${baseUrl.replace(/^http/, "ws")}/ws/jobs/${jobId}?token=${encodeURIComponent(token)}`;
+}
+
+/** The job's aerial image as a blob URL (the endpoint needs the auth header). */
+export async function imageryObjectUrl(jobId: string): Promise<string> {
+  const { baseUrl, token } = await backend();
+  const res = await fetch(`${baseUrl}/api/jobs/${jobId}/imagery`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new ApiError(res.status, "error.no_imagery");
+  return URL.createObjectURL(await res.blob());
 }

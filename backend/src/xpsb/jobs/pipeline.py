@@ -183,6 +183,11 @@ def included_counts(job: Job) -> dict[str, int]:
     return counts
 
 
+def _label_key(count_key: str) -> str:
+    kind, category = count_key.split(":")
+    return f"category.{category}" if kind == "object" else f"surface.{category}"
+
+
 def make_plan(job: Job, job_dir: Path) -> BuildPlan:
     """Plan from the confirmed list. Also stores that list for the 3D build (M3)."""
     assert job.brief is not None and job.analysis is not None
@@ -212,9 +217,7 @@ def make_plan(job: Job, job_dir: Path) -> BuildPlan:
         json.dumps(scene, ensure_ascii=False, indent=1), encoding="utf-8"
     )
     items = [
-        PlanItem(
-            kind="confirmed", label_key=f"{key.split(':')[0]}.{key.split(':')[1]}", count=count
-        )
+        PlanItem(kind="confirmed", label_key=_label_key(key), count=count)
         for key, count in sorted(included_counts(job).items())
     ]
     items += [

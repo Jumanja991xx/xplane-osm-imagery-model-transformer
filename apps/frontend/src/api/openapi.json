@@ -426,6 +426,194 @@
         }
       }
     },
+    "/api/jobs/{job_id}/items": {
+      "post": {
+        "summary": "Add Item",
+        "operationId": "add_item_api_jobs__job_id__items_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewItem"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/items/{item_id}": {
+      "patch": {
+        "summary": "Update Item",
+        "operationId": "update_item_api_jobs__job_id__items__item_id__patch",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Item",
+        "operationId": "delete_item_api_jobs__job_id__items__item_id__delete",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/imagery": {
+      "get": {
+        "summary": "Job Imagery",
+        "operationId": "job_imagery_api_jobs__job_id__imagery_get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/jpeg": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobs/{job_id}/gates/{gate}/approve": {
       "post": {
         "summary": "Approve",
@@ -532,6 +720,82 @@
   },
   "components": {
     "schemas": {
+      "AiAssessment": {
+        "properties": {
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model",
+          "summary",
+          "confidence"
+        ],
+        "title": "AiAssessment"
+      },
+      "AiRunInfo": {
+        "properties": {
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "models_used": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Models Used"
+          },
+          "cost_usd": {
+            "type": "number",
+            "title": "Cost Usd",
+            "default": 0.0
+          },
+          "analyzed": {
+            "type": "integer",
+            "title": "Analyzed",
+            "default": 0
+          },
+          "skipped": {
+            "type": "integer",
+            "title": "Skipped",
+            "default": 0
+          },
+          "limit_reached": {
+            "type": "boolean",
+            "title": "Limit Reached",
+            "default": false
+          },
+          "error_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model"
+        ],
+        "title": "AiRunInfo"
+      },
       "AiSettings": {
         "properties": {
           "enabled": {
@@ -569,21 +833,12 @@
       },
       "AnalysisResult": {
         "properties": {
-          "objects": {
+          "items": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/SceneItem"
             },
             "type": "array",
-            "title": "Objects"
-          },
-          "surfaces": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "type": "array",
-            "title": "Surfaces"
+            "title": "Items"
           },
           "questions": {
             "items": {
@@ -594,15 +849,35 @@
           },
           "notes": {
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/Note"
             },
             "type": "array",
             "title": "Notes"
           },
-          "placeholder": {
-            "type": "boolean",
-            "title": "Placeholder",
-            "default": false
+          "imagery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageryInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ai": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AiRunInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "next_user_id": {
+            "type": "integer",
+            "title": "Next User Id",
+            "default": 1
           }
         },
         "type": "object",
@@ -1021,6 +1296,121 @@
         ],
         "title": "Health"
       },
+      "ImageryInfo": {
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "title": "Source Id"
+          },
+          "source_name": {
+            "type": "string",
+            "title": "Source Name"
+          },
+          "layer": {
+            "type": "string",
+            "title": "Layer"
+          },
+          "attribution": {
+            "type": "string",
+            "title": "Attribution"
+          },
+          "license": {
+            "type": "string",
+            "title": "License"
+          },
+          "west": {
+            "type": "number",
+            "title": "West"
+          },
+          "south": {
+            "type": "number",
+            "title": "South"
+          },
+          "east": {
+            "type": "number",
+            "title": "East"
+          },
+          "north": {
+            "type": "number",
+            "title": "North"
+          },
+          "width_px": {
+            "type": "integer",
+            "title": "Width Px"
+          },
+          "height_px": {
+            "type": "integer",
+            "title": "Height Px"
+          },
+          "gsd_m": {
+            "type": "number",
+            "title": "Gsd M"
+          },
+          "file": {
+            "type": "string",
+            "title": "File",
+            "default": "aoi.jpg"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_id",
+          "source_name",
+          "layer",
+          "attribution",
+          "license",
+          "west",
+          "south",
+          "east",
+          "north",
+          "width_px",
+          "height_px",
+          "gsd_m"
+        ],
+        "title": "ImageryInfo",
+        "description": "Stored next to the image; also what the UI and the gates show."
+      },
+      "ImagerySettings": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "bayern_dop40",
+              "nrw_dop",
+              "custom",
+              "none"
+            ],
+            "title": "Source",
+            "default": "auto"
+          },
+          "custom_url": {
+            "type": "string",
+            "maxLength": 1000,
+            "title": "Custom Url",
+            "default": ""
+          },
+          "custom_layer": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Custom Layer",
+            "default": ""
+          },
+          "custom_attribution": {
+            "type": "string",
+            "maxLength": 300,
+            "title": "Custom Attribution",
+            "default": ""
+          },
+          "custom_rights_confirmed": {
+            "type": "boolean",
+            "title": "Custom Rights Confirmed",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "ImagerySettings"
+      },
       "InstallResult": {
         "properties": {
           "target_dir": {
@@ -1044,6 +1434,186 @@
           "target_dir"
         ],
         "title": "InstallResult"
+      },
+      "ItemAttrs": {
+        "properties": {
+          "height_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 300.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height M"
+          },
+          "levels": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Levels"
+          },
+          "roof_shape": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roof Shape"
+          },
+          "roof_color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roof Color"
+          },
+          "wall_color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wall Color"
+          },
+          "seat_color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seat Color"
+          },
+          "material": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material"
+          },
+          "covered": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Covered"
+          },
+          "width_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 200.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width M"
+          }
+        },
+        "type": "object",
+        "title": "ItemAttrs",
+        "description": "Parameters for the generators (M3). All optional: unknown stays unknown."
+      },
+      "ItemPatch": {
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ObjectCategory"
+              },
+              {
+                "$ref": "#/components/schemas/SurfaceType"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "geometry": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Geometry"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "attrs": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attrs"
+          },
+          "included": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Included"
+          }
+        },
+        "type": "object",
+        "title": "ItemPatch",
+        "description": "Editor changes; only the fields sent are applied."
       },
       "JobError": {
         "properties": {
@@ -1216,6 +1786,89 @@
         "title": "JobView",
         "description": "What the API returns: the job plus the approval currently waiting for the user."
       },
+      "NewItem": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "object",
+              "surface"
+            ],
+            "title": "Kind"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ObjectCategory"
+              },
+              {
+                "$ref": "#/components/schemas/SurfaceType"
+              }
+            ],
+            "title": "Category"
+          },
+          "geometry": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Geometry"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "attrs": {
+            "$ref": "#/components/schemas/ItemAttrs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "category",
+          "geometry"
+        ],
+        "title": "NewItem"
+      },
+      "Note": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "params": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Params"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key"
+        ],
+        "title": "Note"
+      },
       "ObjectCategory": {
         "type": "string",
         "enum": [
@@ -1303,6 +1956,9 @@
                 },
                 {
                   "type": "number"
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
@@ -1325,8 +1981,26 @@
             "title": "Id"
           },
           "text_key": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Text Key"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
           },
           "params": {
             "additionalProperties": {
@@ -1339,6 +2013,9 @@
                 },
                 {
                   "type": "number"
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
@@ -1362,12 +2039,33 @@
               }
             ],
             "title": "Suggested"
+          },
+          "item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Id"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
           }
         },
         "type": "object",
         "required": [
           "id",
-          "text_key",
           "options"
         ],
         "title": "Question",
@@ -1380,8 +2078,26 @@
             "title": "Value"
           },
           "label_key": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Label Key"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
           },
           "params": {
             "additionalProperties": {
@@ -1394,6 +2110,9 @@
                 },
                 {
                   "type": "number"
+                },
+                {
+                  "type": "null"
                 }
               ]
             },
@@ -1403,10 +2122,110 @@
         },
         "type": "object",
         "required": [
-          "value",
-          "label_key"
+          "value"
         ],
         "title": "QuestionOption"
+      },
+      "SceneItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "object",
+              "surface"
+            ],
+            "title": "Kind"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ObjectCategory"
+              },
+              {
+                "$ref": "#/components/schemas/SurfaceType"
+              }
+            ],
+            "title": "Category"
+          },
+          "geometry": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Geometry"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "osm",
+              "user"
+            ],
+            "title": "Source"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "osm_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Osm Ref"
+          },
+          "tags": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Tags"
+          },
+          "attrs": {
+            "$ref": "#/components/schemas/ItemAttrs"
+          },
+          "ai": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AiAssessment"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "included": {
+            "type": "boolean",
+            "title": "Included",
+            "default": true
+          },
+          "edited": {
+            "type": "boolean",
+            "title": "Edited",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "category",
+          "geometry",
+          "source"
+        ],
+        "title": "SceneItem"
       },
       "Settings": {
         "properties": {
@@ -1444,6 +2263,9 @@
           "ai": {
             "$ref": "#/components/schemas/AiSettings"
           },
+          "imagery": {
+            "$ref": "#/components/schemas/ImagerySettings"
+          },
           "update_check": {
             "type": "boolean",
             "title": "Update Check",
@@ -1468,6 +2290,7 @@
           "asphalt",
           "concrete",
           "gravel",
+          "dirt",
           "tartan",
           "markings"
         ],
