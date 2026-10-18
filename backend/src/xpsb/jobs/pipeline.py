@@ -22,6 +22,7 @@ from shapely.geometry import Polygon
 
 from xpsb import APP_NAME, __version__
 from xpsb.ai import analyze as ai
+from xpsb.ai import detect
 from xpsb.ai.usage import UsageLedger
 from xpsb.imagery import wms
 from xpsb.imagery.sources import resolve_source
@@ -124,9 +125,8 @@ def analyze_sync(job: Job, deps: AnalysisDeps, log: EventLog) -> AnalysisResult:
         notes.append(Note(key="analysis.ai_needs_imagery"))
     elif not deps.api_key:
         notes.append(Note(key="analysis.ai_no_key"))
-    elif items:
+    elif items or job.brief.ai_detect:
         budget = ai_budget(job, deps.settings, deps.ledger)
-        _progress(log, "ai", 0.0, "stage.ai", count=len(items), model=job.brief.ai_model)
         with Image.open(deps.job_dir / "imagery" / info.file) as img:
             image = img.convert("RGB")
         questions: list = []
@@ -137,13 +137,36 @@ def analyze_sync(job: Job, deps: AnalysisDeps, log: EventLog) -> AnalysisResult:
             budget_usd=budget,
             transport=deps.transport_factory(deps.api_key),
             on_cost=deps.ledger.add,
-            progress=lambda p: _progress(
-                log, "ai", p, "stage.ai", count=len(items), model=job.brief.ai_model
-            ),
             should_stop=lambda: job.state is JobState.CANCELLED,
             questions=questions,
         )
-        result.ai = ai.run(items, image, info, run)
+        proposals: list = []
+        run_info = None
+        if job.brief.ai_detect:
+            tiles = len(detect.plan_tiles(info))
+            run.progress = lambda p: _progress(log, "detect", p, "stage.detect", tiles=tiles)
+            run.progress(0.0)
+            proposals, run_info = detect.search(
+                items,
+                Polygon(job.aoi.ring),
+                image,
+                info,
+                run,
+                [c.value for c in job.brief.object_categories],
+                [s.value for s in job.brief.surface_types],
+            )
+            for n, item in enumerate(proposals, start=1):
+                item.id = f"ai/{n}"
+            _progress(log, "detect", 1.0, "stage.detect_done", count=len(proposals))
+        if items:
+            run.progress = lambda p: _progress(
+                log, "ai", p, "stage.ai", count=len(items), model=job.brief.ai_model
+            )
+            run.progress(0.0)
+            result.ai = ai.run(items, image, info, run, result=run_info)
+        else:
+            result.ai = run_info
+        result.items = items + proposals
         result.questions = questions
         if result.ai.limit_reached:
             notes.append(

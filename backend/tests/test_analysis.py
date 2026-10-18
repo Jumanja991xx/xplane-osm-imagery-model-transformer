@@ -18,6 +18,7 @@ ALL = {
     "use_ai": True,
     "ai_model": "claude-sonnet-5-5",
     "ai_cost_limit_usd": 5.0,
+    "ai_detect": False,  # object search has its own tests
     "package_name": "XPSB Speedway",
 }
 CUSTOM_IMAGERY = {

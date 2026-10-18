@@ -16,7 +16,7 @@ import logging
 import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 
 from PIL import Image, ImageDraw
 from pydantic import BaseModel
@@ -90,7 +90,7 @@ class AiBatchResult(BaseModel):
 
 @dataclass
 class AiResponse:
-    parsed: AiBatchResult | None
+    parsed: Any  # instance of the requested output_format, or None
     model: str  # the model that actually answered
     input_tokens: int
     output_tokens: int
@@ -98,7 +98,9 @@ class AiResponse:
 
 
 class AiTransport(Protocol):
-    def __call__(self, *, model: str, system: str, content: list[dict]) -> AiResponse: ...
+    def __call__(
+        self, *, model: str, system: str, content: list[dict], output_format: type[BaseModel]
+    ) -> AiResponse: ...
 
 
 class AiAuthError(RuntimeError):
@@ -118,7 +120,9 @@ class AnthropicTransport:
         self._anthropic = anthropic
         self._client = anthropic.Anthropic(api_key=api_key, max_retries=3, timeout=180)
 
-    def __call__(self, *, model: str, system: str, content: list[dict]) -> AiResponse:
+    def __call__(
+        self, *, model: str, system: str, content: list[dict], output_format: type[BaseModel]
+    ) -> AiResponse:
         a = self._anthropic
         try:
             response = self._client.beta.messages.parse(
@@ -126,7 +130,7 @@ class AnthropicTransport:
                 max_tokens=16000,
                 system=system,
                 messages=[{"role": "user", "content": content}],
-                output_format=AiBatchResult,
+                output_format=output_format,
                 # Low effort keeps thinking (and cost) small; Haiku runs without it.
                 **({} if "haiku" in model else {"output_config": {"effort": "low"}}),
                 # If the model declines, the server retries on its default fallback
@@ -380,9 +384,29 @@ def estimate_cost(model: str, crops_tokens: list[int]) -> float:
     return cost_usd(model, input_est, output_est)
 
 
-def run(items: list[SceneItem], image: Image.Image, info: ImageryInfo, cfg: AiRun) -> AiRunInfo:
-    """Analyses items in place. Runs in a worker thread."""
-    result = AiRunInfo(model=cfg.model)
+def png_block(png: bytes) -> dict:
+    return {
+        "type": "image",
+        "source": {
+            "type": "base64",
+            "media_type": "image/png",
+            "data": base64.b64encode(png).decode("ascii"),
+        },
+    }
+
+
+def run(
+    items: list[SceneItem],
+    image: Image.Image,
+    info: ImageryInfo,
+    cfg: AiRun,
+    result: AiRunInfo | None = None,
+) -> AiRunInfo:
+    """Analyses items in place. Runs in a worker thread. Continues `result` (and its
+    spending) if the object search ran before."""
+    result = result or AiRunInfo(model=cfg.model)
+    if result.error_key:
+        return result
     todo = items[:MAX_ITEMS]
     result.skipped = len(items) - len(todo)
     system = system_prompt(cfg.language, cfg.notes)
@@ -409,19 +433,12 @@ def run(items: list[SceneItem], image: Image.Image, info: ImageryInfo, cfg: AiRu
         content: list[dict] = []
         for item, png, gsd in batch:
             content.append({"type": "text", "text": item_text(item, gsd)})
-            content.append(
-                {
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": "image/png",
-                        "data": base64.b64encode(png).decode("ascii"),
-                    },
-                }
-            )
+            content.append(png_block(png))
 
         try:
-            response = cfg.transport(model=cfg.model, system=system, content=content)
+            response = cfg.transport(
+                model=cfg.model, system=system, content=content, output_format=AiBatchResult
+            )
         except AiAuthError:
             result.error_key = "analysis.ai_auth_failed"
             result.skipped += sum(len(b) for b in batches[index:])

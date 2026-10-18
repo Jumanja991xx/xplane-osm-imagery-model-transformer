@@ -41,6 +41,10 @@ with sync_playwright() as p:
     page.get_by_test_id("imagery-attribution").fill("Fixture-Luftbild")
     page.get_by_test_id("settings-save").click()
     page.wait_for_timeout(300)
+    # Simulated Claude (XPSB_FAKE_AI): the key only lives in memory.
+    page.get_by_test_id("api-key").fill("sk-ant-e2e-dummy")
+    page.get_by_test_id("api-key-save").click()
+    page.wait_for_timeout(300)
     page.get_by_role("button", name="Schließen", exact=True).click()
     page.wait_for_function("window.__xpsbMap && window.__xpsbMap.loaded()", timeout=20000)
     page.evaluate("window.__xpsbMap.jumpTo({center: [8.5658, 49.3278], zoom: 16})")
@@ -92,6 +96,9 @@ with sync_playwright() as p:
     page.wait_for_timeout(1500)  # imagery + fitBounds
     page.screenshot(path=OUT / "05-analysis.png")
     assert page.locator("[data-testid^='item-']").count() == 10
+    # The AI object search found the grandstand that OSM does not know.
+    expect(page.get_by_test_id("proposal-ai/1")).to_be_visible()
+    expect(page.get_by_test_id("ai-summary")).to_contain_text("Vorschläge")
 
     # List -> map: select the grandstand, change its height.
     page.get_by_test_id("item-way/103").get_by_role("button").first.click()
@@ -121,13 +128,21 @@ with sync_playwright() as p:
         page.mouse.click(x0 + dx, y0 + dy)
         page.wait_for_timeout(150)
     expect(page.get_by_test_id("item-user/1")).to_be_visible(timeout=5000)
+    page.get_by_test_id("proposal-ai/1").get_by_role("button").first.click()
+    page.wait_for_timeout(600)
+    page.screenshot(path=OUT / "07a-proposal.png")
+    page.get_by_test_id("accept-ai/1").click()
+    expect(page.get_by_test_id("item-ai/1")).to_be_visible(timeout=5000)
+    # Open AI questions: take the suggestions.
+    page.get_by_test_id("accept-suggestions").click()
+    page.wait_for_timeout(500)
     page.screenshot(path=OUT / "07-edited.png")
 
     page.get_by_test_id("analysis-confirm").click()
     expect(page.get_by_role("dialog")).to_be_visible()
     page.screenshot(path=OUT / "08-gate-b.png")
     expect(page.get_by_role("dialog")).to_contain_text(
-        "6 Objekte und 3 Flächen werden übernommen (1 ausgeschlossen)"
+        "7 Objekte und 3 Flächen werden übernommen (1 ausgeschlossen)"
     )
     page.get_by_test_id("gate-approve").click()
 

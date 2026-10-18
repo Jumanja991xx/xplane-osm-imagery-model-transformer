@@ -67,6 +67,8 @@ Backend mit PyInstaller, Smoke-Test des fertigen Pakets, Tauri-NSIS-Installer
 3. Freigabe A lesen: Welche Daten werden geladen, was geht an die KI, Kostengrenze.
 4. Ergebnis prüfen: Liste ↔ Karte (anklicken), Luftbild ein/aus, KI-Einschätzungen,
    Rückfragen beantworten, Einträge ändern, ausschließen, löschen oder neu einzeichnen.
+   Die **KI-Objektsuche** findet im Luftbild, was in OSM fehlt (z. B. Tribünen) – die Funde
+   erscheinen gestrichelt als Vorschläge und kommen erst nach deinem ✓ in den Bauplan.
 5. Freigabe B → Bauplan zeigt die bestätigte Liste (gespeichert als `scene.geojson`).
 
 Offline-Entwicklung ohne Internet: `XPSB_FIXTURES_DIR=backend/tests/fixtures/speedway`

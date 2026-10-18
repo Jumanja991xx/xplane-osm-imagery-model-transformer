@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from xpsb.catalog import ObjectCategory, SurfaceType
 
 ItemKind = Literal["object", "surface"]
-ItemSource = Literal["osm", "user"]
+ItemSource = Literal["osm", "user", "ai"]
 
 
 class AiAssessment(BaseModel):
@@ -49,6 +49,8 @@ class SceneItem(BaseModel):
     ai: AiAssessment | None = None
     included: bool = True
     edited: bool = False  # changed by the user after analysis
+    # Found by the AI object search; stays out of the plan until the user accepts it.
+    proposal: bool = False
 
 
 class ItemPatch(BaseModel):
@@ -59,6 +61,7 @@ class ItemPatch(BaseModel):
     name: str | None = Field(default=None, max_length=120)
     attrs: dict[str, Any] | None = None
     included: bool | None = None
+    proposal: bool | None = None  # False = accepted
 
 
 class NewItem(BaseModel):

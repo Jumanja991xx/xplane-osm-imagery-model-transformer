@@ -38,9 +38,15 @@ def oval(rx, ry, n=48):
     return pts + [pts[0]]
 
 
+# South grandstand that exists in the image but not in the OSM data (x0, y0, x1, y1 in m).
+UNMAPPED_GRANDSTAND_M = (-60, -110, 60, -92)
+
+
 def way(i, geometry, **tags):
     return {"type": "way", "id": i, "geometry": geometry, "tags": tags}
 
+
+UNMAPPED_GRANDSTAND = rect(*UNMAPPED_GRANDSTAND_M)
 
 elements = [
     way(101, oval(70, 40), leisure="track", sport="speedway", name="Speedwaybahn"),
@@ -112,6 +118,8 @@ def draw_image(path: Path, px_per_m: float = 2.5) -> None:
         (rect(80, -70, 130, -45), (120, 125, 135)),
         (rect(-30, -75, 30, -60), (190, 190, 195)),
         (rect(110, 40, 160, 80), (160, 80, 60)),
+        # Not in OSM: only the AI object search can find it.
+        (UNMAPPED_GRANDSTAND, (60, 90, 170)),
     )
     for g, c in roofs:
         d.polygon([xy(p) for p in g], fill=c)

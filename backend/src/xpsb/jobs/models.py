@@ -65,6 +65,8 @@ class Brief(BaseModel):
     use_ai: bool = True
     ai_model: AiModel = "claude-opus-5-5"
     ai_cost_limit_usd: float = Field(default=5.0, ge=0, le=1000)
+    # Search the aerial image for objects OSM does not know (proposals for the user).
+    ai_detect: bool = True
     detail: DetailLevel = DetailLevel.MEDIUM
     package_name: str = Field(pattern=PACKAGE_NAME_PATTERN)
     notes: str = Field(default="", max_length=2000)
@@ -128,6 +130,8 @@ class AiRunInfo(BaseModel):
     cost_usd: float = 0.0
     analyzed: int = 0
     skipped: int = 0
+    tiles_searched: int = 0
+    proposals: int = 0
     limit_reached: bool = False
     error_key: str | None = None
     error_detail: str | None = None

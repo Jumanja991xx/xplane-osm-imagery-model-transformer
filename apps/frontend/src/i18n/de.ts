@@ -262,6 +262,19 @@ export const de = {
   "error.item_not_found": "Eintrag nicht gefunden.",
   "error.invalid_item": "Ungültige Änderung: {detail}",
   "error.no_imagery": "Kein Luftbild vorhanden.",
+  "brief.ai_detect": "KI-Objektsuche im Luftbild (findet, was in OSM fehlt)",
+  "brief.ai_detect_hint": "Funde erscheinen als Vorschläge – du entscheidest, was übernommen wird.",
+  "gate.a.ai_detect": "KI-Objektsuche: {tiles} Luftbild-Ausschnitte werden an die KI gesendet (geschätzt höchstens {estimate_usd} USD).",
+  "gate.b.open_proposals": "{count} KI-Vorschläge wurden nicht übernommen und kommen nicht in den Bauplan.",
+  "stage.detect": "KI-Objektsuche ({tiles} Ausschnitte)",
+  "stage.detect_done": "KI-Objektsuche fertig: {count} Vorschläge",
+  "analysis.proposals": "KI-Vorschläge",
+  "analysis.proposals_hint": "Im Luftbild gefunden, nicht in OSM. Gestrichelt auf der Karte. Prüfen, dann übernehmen (✓) oder verwerfen (✗).",
+  "analysis.accept": "Übernehmen",
+  "analysis.reject": "Verwerfen",
+  "analysis.accept_all": "Alle {count} übernehmen",
+  "analysis.badge_found": "KI-Fund",
+  "analysis.ai_detect_summary": "Objektsuche: {tiles} Ausschnitte durchsucht, {proposals} Vorschläge",
 } as const;
 
 export type MessageKey = keyof typeof de;

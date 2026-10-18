@@ -226,6 +226,10 @@ class JobManager:
         item = self._item(job, item_id)
         updated = item.model_copy(deep=True)
         changes = patch.model_dump(exclude_unset=True)
+        # A proposal can only be accepted (rejecting it = deleting it).
+        if changes.pop("proposal", None) is False and item.proposal:
+            updated.proposal = False
+            changes.setdefault("included", True)
         if "attrs" in changes:
             updated.attrs = updated.attrs.model_copy(update=changes.pop("attrs"))
         for key, value in changes.items():

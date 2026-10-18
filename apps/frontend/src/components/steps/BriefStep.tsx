@@ -47,6 +47,7 @@ export function BriefStep({ onSubmitted }: { onSubmitted: () => void }) {
         use_ai: Boolean(system?.has_api_key && settings?.ai?.enabled),
         ai_model: settings?.ai?.model ?? "claude-opus-5-5",
         ai_cost_limit_usd: settings?.ai?.job_limit_usd ?? 5,
+        ai_detect: true,
         detail: "medium",
         package_name: defaultPackageName(),
         notes: "",
@@ -156,6 +157,14 @@ export function BriefStep({ onSubmitted }: { onSubmitted: () => void }) {
                 onChange={(e) => update({ ai_cost_limit_usd: Number(e.target.value) })}
               />
             </label>
+            <div className="col-span-2 space-y-0.5">
+              <Checkbox
+                label={t("brief.ai_detect")}
+                checked={brief.ai_detect ?? true}
+                onChange={(on) => update({ ai_detect: on })}
+              />
+              <p className="pl-6 text-xs text-zinc-500">{t("brief.ai_detect_hint")}</p>
+            </div>
           </div>
         )}
       </Section>

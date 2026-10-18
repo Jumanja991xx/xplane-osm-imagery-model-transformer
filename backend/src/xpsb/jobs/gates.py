@@ -12,7 +12,10 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from xpsb.ai import detect
+from xpsb.geo import METERS_PER_DEG_LAT, meters_per_deg_lon
 from xpsb.imagery.sources import resolve_source
+from xpsb.imagery.wms import MARGIN_M
 from xpsb.jobs.models import GateId, GateItem, Job, JobState, PendingGate
 from xpsb.settings import Settings
 from xpsb.xplane_detect import check_xplane_path
@@ -115,6 +118,18 @@ def _gate_a(job: Job, ctx: GateContext):
             items.append(
                 GateItem(kind="action", key="gate.a.ai_upload", params={"model": b.ai_model})
             )
+            if b.ai_detect:
+                tiles = _tile_count(job)
+                items.append(
+                    GateItem(
+                        kind="action",
+                        key="gate.a.ai_detect",
+                        params={
+                            "tiles": tiles,
+                            "estimate_usd": round(tiles * detect.estimate_tile_cost(b.ai_model), 3),
+                        },
+                    )
+                )
         else:
             items.append(GateItem(kind="warning", key="gate.a.ai_needs_imagery"))
         if not ctx.has_api_key:
@@ -133,6 +148,14 @@ def _gate_a(job: Job, ctx: GateContext):
     return items, blocked, payload
 
 
+def _tile_count(job: Job) -> int:
+    ring = job.aoi.ring
+    lat = job.aoi_center[1]
+    width = (max(p[0] for p in ring) - min(p[0] for p in ring)) * meters_per_deg_lon(lat)
+    height = (max(p[1] for p in ring) - min(p[1] for p in ring)) * METERS_PER_DEG_LAT
+    return detect.count_tiles(width + 2 * MARGIN_M, height + 2 * MARGIN_M)
+
+
 def _gate_b(job: Job, ctx: GateContext):
     assert job.analysis is not None
     a = job.analysis
@@ -144,16 +167,21 @@ def _gate_b(job: Job, ctx: GateContext):
             params={
                 "objects": sum(1 for it in included if it.kind == "object"),
                 "surfaces": sum(1 for it in included if it.kind == "surface"),
-                "excluded": len(a.items) - len(included),
+                "excluded": sum(1 for it in a.items if not it.included and not it.proposal),
             },
         )
     ]
+    open_proposals = sum(1 for it in a.items if it.proposal)
+    if open_proposals:
+        items.append(
+            GateItem(kind="info", key="gate.b.open_proposals", params={"count": open_proposals})
+        )
     if a.ai is not None:
         items.append(
             GateItem(
                 kind="cost",
                 key="gate.b.ai_spent",
-                params={"cost_usd": round(a.ai.cost_usd, 2), "analyzed": a.ai.analyzed},
+                params={"cost_usd": round(a.ai.cost_usd, 4), "analyzed": a.ai.analyzed},
             )
         )
     open_questions = [q.id for q in a.questions if q.id not in job.answers]

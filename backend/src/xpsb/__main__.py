@@ -28,7 +28,7 @@ from xpsb import __version__
 from xpsb.api.app import AppContext, create_app
 from xpsb.jobs.manager import JobManager
 from xpsb.paths import AppPaths, resolve_paths
-from xpsb.secrets import KeyringSecretStore
+from xpsb.secrets import KeyringSecretStore, MemorySecretStore
 from xpsb.settings import SettingsStore
 
 LOOPBACK = {"127.0.0.1", "::1", "localhost"}
@@ -89,7 +89,20 @@ def main(argv: list[str] | None = None) -> None:
     _setup_logging(paths, args.log_level)
     settings = SettingsStore(paths.settings_file)
     secret_store = KeyringSecretStore()
-    jobs = JobManager(paths, settings, secret_store, args.resources_dir)
+    extra = {}
+    if os.environ.get("XPSB_FAKE_AI"):
+        # Development/browser tests only: a simulated Claude from a test file, so the
+        # UI can be exercised without an API key or costs.
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("fake_ai", os.environ["XPSB_FAKE_AI"])
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        extra["ai_transport_factory"] = module.FakeAi().factory
+        # A test key must never end up in (or overwrite) the real credential store.
+        secret_store = MemorySecretStore()
+        logging.getLogger("xpsb").warning("simulated AI active (XPSB_FAKE_AI)")
+    jobs = JobManager(paths, settings, secret_store, args.resources_dir, **extra)
     ctx = AppContext(
         token=token,
         paths=paths,

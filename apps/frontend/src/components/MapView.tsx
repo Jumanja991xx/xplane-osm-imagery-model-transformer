@@ -166,7 +166,7 @@ export function MapView() {
 
 // ---- analysed objects and surfaces ------------------------------------------------
 
-const SCENE_LAYERS = ["scene-fill", "scene-line", "scene-point"];
+const SCENE_LAYERS = ["scene-fill", "scene-line", "scene-proposal", "scene-point"];
 const EMPTY = { type: "FeatureCollection", features: [] } as GeoJSON.FeatureCollection;
 
 const colorExpr = [
@@ -207,7 +207,14 @@ function setupSceneLayers(map: MapLibreMap) {
       filter: ["==", ["geometry-type"], "Polygon"],
       paint: {
         "fill-color": colorExpr,
-        "fill-opacity": ["case", ["get", "included"], ["case", ["==", ["get", "kind"], "surface"], 0.35, 0.45], 0.06],
+        "fill-opacity": [
+          "case",
+          ["get", "proposal"],
+          0.2,
+          ["get", "included"],
+          ["case", ["==", ["get", "kind"], "surface"], 0.35, 0.45],
+          0.06,
+        ],
       },
     },
     before,
@@ -217,12 +224,23 @@ function setupSceneLayers(map: MapLibreMap) {
       id: "scene-line",
       type: "line",
       source: "scene",
-      filter: ["!=", ["geometry-type"], "Point"],
+      filter: ["all", ["!=", ["geometry-type"], "Point"], ["!", ["get", "proposal"]]],
       paint: {
         "line-color": colorExpr,
         "line-width": ["case", ["==", ["get", "kind"], "object"], 2, 1.5],
         "line-opacity": ["case", ["get", "included"], 1, 0.35],
       },
+    },
+    before,
+  );
+  // AI proposals: dashed until the user accepts them.
+  map.addLayer(
+    {
+      id: "scene-proposal",
+      type: "line",
+      source: "scene",
+      filter: ["all", ["!=", ["geometry-type"], "Point"], ["get", "proposal"]],
+      paint: { "line-color": colorExpr, "line-width": 2.5, "line-dasharray": [2, 1.5] },
     },
     before,
   );
@@ -294,7 +312,13 @@ function sceneData(job: JobView | null): GeoJSON.FeatureCollection {
     features: items.map((it) => ({
       type: "Feature",
       geometry: it.geometry as unknown as GeoJSON.Geometry,
-      properties: { itemId: it.id, kind: it.kind, category: it.category, included: it.included ?? true },
+      properties: {
+        itemId: it.id,
+        kind: it.kind,
+        category: it.category,
+        included: it.included ?? true,
+        proposal: it.proposal ?? false,
+      },
     })),
   };
 }

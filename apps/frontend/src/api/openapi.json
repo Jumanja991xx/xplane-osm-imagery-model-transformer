@@ -773,6 +773,16 @@
             "title": "Skipped",
             "default": 0
           },
+          "tiles_searched": {
+            "type": "integer",
+            "title": "Tiles Searched",
+            "default": 0
+          },
+          "proposals": {
+            "type": "integer",
+            "title": "Proposals",
+            "default": 0
+          },
           "limit_reached": {
             "type": "boolean",
             "title": "Limit Reached",
@@ -1010,6 +1020,11 @@
             "minimum": 0.0,
             "title": "Ai Cost Limit Usd",
             "default": 5.0
+          },
+          "ai_detect": {
+            "type": "boolean",
+            "title": "Ai Detect",
+            "default": true
           },
           "detail": {
             "$ref": "#/components/schemas/DetailLevel",
@@ -1620,6 +1635,17 @@
               }
             ],
             "title": "Included"
+          },
+          "proposal": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposal"
           }
         },
         "type": "object",
@@ -2171,7 +2197,8 @@
             "type": "string",
             "enum": [
               "osm",
-              "user"
+              "user",
+              "ai"
             ],
             "title": "Source"
           },
@@ -2225,6 +2252,11 @@
           "edited": {
             "type": "boolean",
             "title": "Edited",
+            "default": false
+          },
+          "proposal": {
+            "type": "boolean",
+            "title": "Proposal",
             "default": false
           }
         },

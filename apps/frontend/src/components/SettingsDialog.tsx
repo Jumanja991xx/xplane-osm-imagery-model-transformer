@@ -181,8 +181,9 @@ export function SettingsDialog() {
                     placeholder={t("settings.api_key_placeholder")}
                     value={apiKey}
                     onChange={(e) => setApiKey(e.target.value)}
+                    data-testid="api-key"
                   />
-                  <Button onClick={saveKey} disabled={busy || !apiKey.trim()}>
+                  <Button onClick={saveKey} disabled={busy || !apiKey.trim()} data-testid="api-key-save">
                     {t("common.save")}
                   </Button>
                   {system.has_api_key && (

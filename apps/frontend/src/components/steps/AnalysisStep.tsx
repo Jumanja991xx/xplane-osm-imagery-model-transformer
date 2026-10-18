@@ -17,6 +17,12 @@ const WARNING_NOTES = new Set([
   "analysis.nothing_found",
 ]);
 
+/** Small amounts matter here (Haiku: fractions of a cent), so never show "0.00". */
+export function formatUsd(usd: number): string {
+  if (usd === 0) return "0";
+  return usd < 0.01 ? usd.toFixed(4) : usd.toFixed(2);
+}
+
 function itemTitle(t: Translate, item: SceneItem): string {
   return item.name || t(categoryLabelKey(item));
 }
@@ -155,8 +161,11 @@ function SourcesSummary({ job }: { job: JobView }) {
           {t("analysis.ai_summary", {
             model: t(`model.${ai.model}`),
             analyzed: ai.analyzed ?? 0,
-            cost: (ai.cost_usd ?? 0).toFixed(2),
+            cost: formatUsd(ai.cost_usd ?? 0),
           })}
+          {(ai.tiles_searched ?? 0) > 0 && (
+            <div>{t("analysis.ai_detect_summary", { tiles: ai.tiles_searched, proposals: ai.proposals ?? 0 })}</div>
+          )}
         </div>
       )}
     </div>
@@ -194,10 +203,83 @@ function ItemList({
     { kind: "surface", title: t("analysis.surfaces") },
   ];
 
+  const proposals = items.filter((i) => i.proposal);
+  const accept = (ids: string[]) =>
+    run(async () => {
+      let job: JobView | null = null;
+      for (const id of ids) job = await api.updateItem(jobId, id, { proposal: false });
+      return job!;
+    });
+  const jobId = job.id;
+
   return (
     <>
+      {proposals.length > 0 && (
+        <Section title={`${t("analysis.proposals")} (${proposals.length})`}>
+          <p className="text-xs text-zinc-500">{t("analysis.proposals_hint")}</p>
+          {editable && proposals.length > 1 && (
+            <Button onClick={() => accept(proposals.map((p) => p.id))} data-testid="accept-all-proposals">
+              ✓ {t("analysis.accept_all", { count: proposals.length })}
+            </Button>
+          )}
+          <ul className="divide-y divide-zinc-200 rounded-md bg-white ring-1 ring-amber-300 dark:divide-zinc-700 dark:bg-zinc-800 dark:ring-amber-500/50">
+            {proposals.map((item) => (
+              <li
+                key={item.id}
+                className={item.id === selectedItem ? "bg-accent-50 dark:bg-accent-700/20" : ""}
+                data-testid={`proposal-${item.id}`}
+              >
+                <div className="flex items-center gap-2 px-2 py-1.5">
+                  <button
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left text-sm"
+                    onClick={() => selectItem(item.id === selectedItem ? null : item.id)}
+                  >
+                    <span
+                      className="h-3 w-3 shrink-0 rounded-sm border-2 border-dashed"
+                      style={{ borderColor: CATEGORY_COLORS[item.category] }}
+                    />
+                    <span className="truncate">{itemTitle(t, item)}</span>
+                    {item.attrs?.height_m != null && (
+                      <span className="shrink-0 text-xs text-zinc-500">{item.attrs.height_m} m</span>
+                    )}
+                    {item.ai && (
+                      <span className="shrink-0 text-xs text-zinc-400">{Math.round(item.ai.confidence * 100)} %</span>
+                    )}
+                  </button>
+                  {editable && (
+                    <>
+                      <Button
+                        variant="ghost"
+                        title={t("analysis.accept")}
+                        onClick={() => accept([item.id])}
+                        data-testid={`accept-${item.id}`}
+                      >
+                        ✓
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        title={t("analysis.reject")}
+                        onClick={() => run(() => api.deleteItem(jobId, item.id))}
+                        data-testid={`reject-${item.id}`}
+                      >
+                        ✗
+                      </Button>
+                    </>
+                  )}
+                </div>
+                {item.id === selectedItem && item.ai && (
+                  <p className="border-t border-zinc-200 px-3 py-2 text-xs text-zinc-600 dark:border-zinc-700 dark:text-zinc-300">
+                    🤖 {item.ai.summary}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
       {groups.map(({ kind, title }) => {
-        const list = items.filter((i) => i.kind === kind);
+        const list = items.filter((i) => i.kind === kind && !i.proposal);
         return (
           <Section key={kind} title={`${title} (${list.length})`}>
             {!list.length && <p className="text-sm">{t("analysis.none")}</p>}
@@ -326,7 +408,13 @@ function ItemRow({
             <span className="shrink-0 text-xs text-zinc-500">{height} m</span>
           )}
           <span className="ml-auto shrink-0 text-[10px] uppercase text-zinc-400">
-            {item.edited ? t("analysis.badge_edited") : item.ai ? t("analysis.badge_ai") : t(`analysis.badge_${item.source}`)}
+            {item.edited
+              ? t("analysis.badge_edited")
+              : item.source === "ai"
+                ? t("analysis.badge_found")
+                : item.ai
+                  ? t("analysis.badge_ai")
+                  : t(`analysis.badge_${item.source}`)}
           </span>
         </button>
       </div>

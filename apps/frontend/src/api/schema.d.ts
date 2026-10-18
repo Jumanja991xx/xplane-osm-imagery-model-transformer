@@ -314,6 +314,16 @@ export interface components {
              */
             skipped: number;
             /**
+             * Tiles Searched
+             * @default 0
+             */
+            tiles_searched: number;
+            /**
+             * Proposals
+             * @default 0
+             */
+            proposals: number;
+            /**
              * Limit Reached
              * @default false
              */
@@ -422,6 +432,11 @@ export interface components {
              * @default 5
              */
             ai_cost_limit_usd: number;
+            /**
+             * Ai Detect
+             * @default true
+             */
+            ai_detect: boolean;
             /** @default medium */
             detail: components["schemas"]["DetailLevel"];
             /** Package Name */
@@ -636,6 +651,8 @@ export interface components {
             } | null;
             /** Included */
             included?: boolean | null;
+            /** Proposal */
+            proposal?: boolean | null;
         };
         /** JobError */
         JobError: {
@@ -815,7 +832,7 @@ export interface components {
              * Source
              * @enum {string}
              */
-            source: "osm" | "user";
+            source: "osm" | "user" | "ai";
             /** Name */
             name?: string | null;
             /** Osm Ref */
@@ -836,6 +853,11 @@ export interface components {
              * @default false
              */
             edited: boolean;
+            /**
+             * Proposal
+             * @default false
+             */
+            proposal: boolean;
         };
         /** Settings */
         Settings: {
