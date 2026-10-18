@@ -256,6 +256,18 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
             raise HTTPException(404, detail={"key": "error.no_imagery"})
         return FileResponse(path, media_type="image/jpeg")
 
+    @app.get("/api/jobs/{job_id}/preview", dependencies=auth)
+    async def job_preview(job_id: str) -> dict:
+        return ctx.jobs.preview(job_id)
+
+    @app.get("/api/jobs/{job_id}/preview/{name}", dependencies=auth, response_class=FileResponse)
+    async def job_preview_file(job_id: str, name: str):
+        path = ctx.jobs.preview_file(job_id, name)
+        if path is None:
+            raise HTTPException(404, detail={"key": "error.no_preview"})
+        media = "image/png" if path.suffix == ".png" else "application/json"
+        return FileResponse(path, media_type=media)
+
     @app.post("/api/jobs/{job_id}/gates/{gate}/approve", dependencies=auth)
     async def approve(job_id: str, gate: GateId, body: Approve) -> JobView:
         return ctx.jobs.approve(job_id, gate, body.hash)

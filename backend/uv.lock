@@ -1016,6 +1016,31 @@ wheels = [
 ]
 
 [[package]]
+name = "starlark-pyo3"
+version = "2026.1.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ad/7c/9cf8235a91ca5c7560db0683056c0dfc90752888ebc363bd78f0d31bb424/starlark_pyo3-2026.1.2.tar.gz", hash = "sha256:f83eeec891051fd955414f757b5b748030bdcb792607942679e986580fcfbde2", size = 49083, upload-time = "2026-09-08T00:43:38.405Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a1/94/f71c1e9dda18a72b537eaede84b0c6f2b174aff2fc5dd09ec58a3577d955/starlark_pyo3-2026.1.2-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:b43ec6a53ec10d215dfa21bff3361399c84314f919ae63ae3d0fe36b80ce5b7b", size = 2951622, upload-time = "2026-09-08T00:43:13.925Z" },
+    { url = "https://files.pythonhosted.org/packages/b9/39/416c13ac4b005f026e152d1eeaa55fda04a76b262d49b4bee2fa9ac99614/starlark_pyo3-2026.1.2-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:f221cce90a830f81be122702258eecfaa395f53eae947632e33080419c028a21", size = 3678693, upload-time = "2026-09-08T00:43:15.205Z" },
+    { url = "https://files.pythonhosted.org/packages/4d/68/0f588f3d6633aa9e705e58df5ec86f15fce68cf19efb2b94fad931317a17/starlark_pyo3-2026.1.2-cp312-cp312-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:84a5eb87a66976f7acc702c6084fcc4dfe62580c4ec8393ea55b245f3caa07fe", size = 3467182, upload-time = "2026-09-08T00:43:16.414Z" },
+    { url = "https://files.pythonhosted.org/packages/8d/8e/7b0e51898ccfc4501bba40478ecffe11944c6bde03aeeee0f8f21d7ff5ff/starlark_pyo3-2026.1.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:00520fb2803624cf0a54ed49a2da184a10485dda00ce15e5dba38d56330f6700", size = 3443816, upload-time = "2026-09-08T00:43:17.783Z" },
+    { url = "https://files.pythonhosted.org/packages/d0/cf/348a93c4e21f9cb77ebcd2a6024ff5786d30e6765f1c629dd98227e4a2c7/starlark_pyo3-2026.1.2-cp312-cp312-win_amd64.whl", hash = "sha256:d6849dd1b72ae8c457e9d3bc455d15d30c1ec15f5f7fc02a939f5b9bb3ce5b9f", size = 2678856, upload-time = "2026-09-08T00:43:19.395Z" },
+    { url = "https://files.pythonhosted.org/packages/48/92/188faa7ae08e03c81fd15cc455686f37569d9f65579fcde03c442f215e8b/starlark_pyo3-2026.1.2-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:55c8e2489bddeeb2c626f9d1157cd67caa392d35e6837b930e887865e3f42f8f", size = 2951800, upload-time = "2026-09-08T00:43:20.658Z" },
+    { url = "https://files.pythonhosted.org/packages/2e/81/cd50cadab38007be914e0e597dd312ec08927519f20f0914faf18fb9f3bb/starlark_pyo3-2026.1.2-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:d7df87c16f0e2b33d0fe78a64b9e53a4cc488fdcb32b0b70227be2a1583648b8", size = 3679189, upload-time = "2026-09-08T00:43:22.077Z" },
+    { url = "https://files.pythonhosted.org/packages/0e/60/4a947e46518df3187d73771b26e3e5b9dc5c45b3edc531eb3125123b1004/starlark_pyo3-2026.1.2-cp313-cp313-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:e1511260484cab4b3953585ede77eb99fc7979f9e5b9a3fbd4360a2e62363492", size = 3466757, upload-time = "2026-09-08T00:43:23.463Z" },
+    { url = "https://files.pythonhosted.org/packages/22/32/f89aa4a8f07934008cadb583fc4107cd93153fd74195cda3e82782ad2dda/starlark_pyo3-2026.1.2-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c62c7d447b3a31931ec48f6307939ce278c65193a0700721c8473f7f27e1969c", size = 3443306, upload-time = "2026-09-08T00:43:24.751Z" },
+    { url = "https://files.pythonhosted.org/packages/d8/5a/88b960194540a9eeaf91440df60b039d878434ef8764901f06b5c9d7ab7c/starlark_pyo3-2026.1.2-cp313-cp313-win_amd64.whl", hash = "sha256:a2dcaefb3dde7cad7b67b23d2f3df71eb5072b3fbab05b7b687e05ec616f363b", size = 2678917, upload-time = "2026-09-08T00:43:26.048Z" },
+    { url = "https://files.pythonhosted.org/packages/db/1d/e700760470a5946f14f5d04a83c67de91d629ba49cfff65c547f16baced2/starlark_pyo3-2026.1.2-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:2573fa2b865635a164519657318bdaf98f1361003f2e0d34ebfd27acc34b8f80", size = 2951822, upload-time = "2026-09-08T00:43:27.159Z" },
+    { url = "https://files.pythonhosted.org/packages/fe/ed/55bc09cd950370bc8391894015198cc101b1a7943096db17e893665fa63f/starlark_pyo3-2026.1.2-cp314-cp314-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:6dcd475895195d7e828bd7645e56bb451d0bb3a14ccec46a6c4c7de73acca2c6", size = 3444047, upload-time = "2026-09-08T00:43:28.49Z" },
+    { url = "https://files.pythonhosted.org/packages/3c/4e/7179a860d1b31bc7ab94b11c3e1fd854e9032d7cd16aa7eb67f2eed468b8/starlark_pyo3-2026.1.2-cp314-cp314-win_amd64.whl", hash = "sha256:080f0b91f2479c40953c792212841e29ab9a7034dfb6ea4e52b330eacf05bc8e", size = 2678243, upload-time = "2026-09-08T00:43:29.842Z" },
+    { url = "https://files.pythonhosted.org/packages/b6/dc/26ee231a8a830c3475954ca7fbec335ce346d8be8527bb5dce9e8b65103a/starlark_pyo3-2026.1.2-cp314-cp314t-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:24d08cfa74bc3b9b5024ddab492012213c1479be82cbd333808c90f00c8ec61b", size = 3441292, upload-time = "2026-09-08T00:43:31.152Z" },
+]
+
+[[package]]
 name = "starlette"
 version = "1.8.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1213,6 +1238,7 @@ dependencies = [
     { name = "platformdirs" },
     { name = "pydantic" },
     { name = "shapely" },
+    { name = "starlark-pyo3" },
     { name = "uvicorn" },
     { name = "websockets" },
 ]
@@ -1237,6 +1263,7 @@ requires-dist = [
     { name = "platformdirs", specifier = ">=4.3" },
     { name = "pydantic", specifier = ">=2.9" },
     { name = "shapely", specifier = ">=2.0" },
+    { name = "starlark-pyo3", specifier = ">=2026.1.2" },
     { name = "uvicorn", specifier = ">=0.32" },
     { name = "websockets", specifier = ">=13.0" },
 ]

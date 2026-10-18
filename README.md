@@ -8,11 +8,11 @@ Tribünen, Gebäude, Gerüste, Rasen, Asphalt usw. Kostenlos für die Community.
 Dateien schreiben, X-Plane-Ordner ändern) und zeigt dabei, *was passiert, was es kostet
 und wohin geschrieben wird*.
 
-> **Status: Meilenstein 2 (Vorschau).** Die Analyse ist echt: Objekte und Flächen aus
-> OpenStreetMap, offenes Luftbild (Bayern, NRW oder eigene WMS-Quelle) und – wenn du
-> zustimmst – eine Einschätzung jedes Objekts durch Claude (Höhe, Dach, Farben, Rückfragen).
-> Die Liste lässt sich bearbeiten. Gebaut wird noch die **Testszenerie**; die 3D-Objekte
-> aus der Liste folgen in Meilenstein 3.
+> **Status: Meilenstein 3, Schritt 1 (Vorschau).** Aus der bestätigten Liste werden echte
+> 3D-Objekte gebaut: Tribünen (auch überdacht/Solardach), Gebäude, Überdachungen, Masten und
+> Gerüste – über Bauskripte in einer abgeschotteten Skriptsprache (Starlark), mit Texturen in
+> echtem Maßstab, dazu Bodenflächen. Vor dem Bauen zeigt die App alles in einer 3D-Vorschau.
+> Als Nächstes schreibt die KI eigene Bauskripte pro Bauwerk (aus Luftbild, Fotos, Wissen).
 
 Architektur und Roadmap: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) ·
 geprüfte X-Plane-Formatdetails: [`docs/xplane-format-notes.md`](docs/xplane-format-notes.md)

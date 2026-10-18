@@ -391,6 +391,53 @@ class JobManager:
             )
         return job
 
+    # ---- 3D preview ------------------------------------------------------------
+
+    def preview(self, job_id: str) -> dict:
+        """Object placements and surfaces in metres around the area centre."""
+        from shapely.geometry import shape
+
+        from xpsb.geo import METERS_PER_DEG_LAT, meters_per_deg_lon
+
+        job = self.get(job_id)
+        if job.plan is None or job.analysis is None:
+            raise JobConflict("error.wrong_state", state=job.state.value)
+        lon0, lat0 = job.plan.center
+        mx = meters_per_deg_lon(lat0)
+
+        def local(lon: float, lat: float) -> list[float]:
+            return [round((lon - lon0) * mx, 2), round((lat - lat0) * METERS_PER_DEG_LAT, 2)]
+
+        surfaces = []
+        for it in job.analysis.items:
+            if it.kind != "surface" or not it.included or it.proposal:
+                continue
+            geom = shape(it.geometry)
+            for poly in getattr(geom, "geoms", [geom]):
+                surfaces.append(
+                    {
+                        "category": it.category,
+                        "rings": [[local(x, y) for x, y in poly.exterior.coords]]
+                        + [[local(x, y) for x, y in r.coords] for r in poly.interiors],
+                    }
+                )
+        imagery = None
+        info = job.analysis.imagery
+        if info is not None:
+            imagery = {"sw": local(info.west, info.south), "ne": local(info.east, info.north)}
+        return {
+            "objects": [{**o.model_dump(), "offset": local(*o.anchor)} for o in job.plan.objects],
+            "surfaces": surfaces,
+            "imagery": imagery,
+        }
+
+    def preview_file(self, job_id: str, name: str) -> Path | None:
+        job = self.get(job_id)
+        if job.plan is None or not all(c.isalnum() or c in "_." for c in name):
+            return None
+        path = self.job_dir(job_id) / "preview" / name
+        return path if path.is_file() and path.suffix in (".json", ".png") else None
+
     def cancel(self, job_id: str) -> Job:
         job = self.get(job_id)
         task = self._tasks.pop(job_id, None)

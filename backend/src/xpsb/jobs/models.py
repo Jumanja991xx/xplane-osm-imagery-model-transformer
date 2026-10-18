@@ -153,12 +153,28 @@ class PlanItem(BaseModel):
     params: Params = Field(default_factory=dict)
 
 
+class PlanObject(BaseModel):
+    """One 3D object of the plan, as generated for the preview."""
+
+    item_id: str
+    stem: str
+    category: str
+    name: str | None = None
+    anchor: tuple[float, float]  # lon, lat
+    status: Literal["ok", "error", "skipped"]
+    message: str = ""
+    triangles: int = 0
+
+
 class BuildPlan(BaseModel):
     package_name: str
     tile: str
     items: list[PlanItem]
     files: list[str]
     center: tuple[float, float]  # lon, lat
+    detail: str = "medium"
+    objects: list[PlanObject] = Field(default_factory=list)
+    surfaces: int = 0
     test_scenery: bool = False
     cube_height_m: float | None = None
 

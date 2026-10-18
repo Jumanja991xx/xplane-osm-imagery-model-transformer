@@ -24,6 +24,7 @@ from xpsb import APP_NAME, __version__
 from xpsb.ai import analyze as ai
 from xpsb.ai import detect
 from xpsb.ai.usage import UsageLedger
+from xpsb.build import assemble
 from xpsb.imagery import wms
 from xpsb.imagery.sources import resolve_source
 from xpsb.jobs.events import EventLog
@@ -36,14 +37,13 @@ from xpsb.jobs.models import (
     JobState,
     Note,
     PlanItem,
+    PlanObject,
 )
 from xpsb.osm import classify, overpass
 from xpsb.settings import Settings
 from xpsb.xplane import dsftool
 from xpsb.xplane.dsf_text import Tile
-from xpsb.xplane.testscene import build_test_scenery, files_for
-
-TEST_CUBE_HEIGHT_M = 20.0
+from xpsb.xplane.testscene import files_for
 
 
 @dataclass
@@ -212,8 +212,21 @@ def _label_key(count_key: str) -> str:
     return f"category.{category}" if kind == "object" else f"surface.{category}"
 
 
+def _exclusions(job: Job) -> list[tuple[str, tuple[float, float, float, float]]]:
+    assert job.brief is not None
+    ring = job.aoi.ring
+    bounds = (
+        min(p[0] for p in ring),
+        min(p[1] for p in ring),
+        max(p[0] for p in ring),
+        max(p[1] for p in ring),
+    )
+    return [(kind.value, bounds) for kind in job.brief.exclusions]
+
+
 def make_plan(job: Job, job_dir: Path) -> BuildPlan:
-    """Plan from the confirmed list. Also stores that list for the 3D build (M3)."""
+    """Plan from the confirmed list: generates every object once for the 3D preview
+    (job folder only) so the user sees what will be built before approving it."""
     assert job.brief is not None and job.analysis is not None
     lon, lat = job.aoi_center
     tile = Tile.containing(lon, lat)
@@ -234,44 +247,45 @@ def make_plan(job: Job, job_dir: Path) -> BuildPlan:
                 },
             }
             for it in job.analysis.items
-            if it.included
+            if it.included and not it.proposal
         ],
     }
     (job_dir / "scene.geojson").write_text(
         json.dumps(scene, ensure_ascii=False, indent=1), encoding="utf-8"
     )
+    detail = job.brief.detail.value
+    preview_dir = job_dir / "preview"
+    if preview_dir.exists():
+        shutil.rmtree(preview_dir)
+    results = assemble.generate_all(job.analysis.items, detail, preview_dir, preview=True)
+    objects = [PlanObject(**r.__dict__) for r in results]
+    surfaces = [
+        it for it in job.analysis.items if it.kind == "surface" and it.included and not it.proposal
+    ]
+
     items = [
         PlanItem(kind="confirmed", label_key=_label_key(key), count=count)
         for key, count in sorted(included_counts(job).items())
     ]
-    items += [
-        PlanItem(
-            kind="test_object",
-            label_key="plan.test_object",
-            count=1,
-            params={"height_m": TEST_CUBE_HEIGHT_M},
-        ),
-        PlanItem(kind="test_surface", label_key="plan.test_surface", count=2),
+    ok = [o for o in objects if o.status == "ok"]
+    items.append(PlanItem(kind="objects", label_key="plan.objects", count=len(ok)))
+    items.append(PlanItem(kind="surfaces", label_key="plan.surfaces", count=len(surfaces)))
+    files = [tile.dsf_relative_path, "README.txt"]
+    files += [f"objects/{o.stem}.{ext}" for o in ok for ext in ("obj", "png")]
+    files += [
+        f"polygons/xpsb_{k}.{ext}"
+        for k in sorted({str(s.category) for s in surfaces})
+        for ext in ("pol", "png")
     ]
     return BuildPlan(
         package_name=job.brief.package_name,
         tile=tile.dsf_relative_path,
         center=(lon, lat),
-        test_scenery=True,
-        cube_height_m=TEST_CUBE_HEIGHT_M,
+        detail=detail,
+        objects=objects,
+        surfaces=len(surfaces),
         items=items,
-        files=sorted(
-            [
-                tile.dsf_relative_path,
-                "objects/xpsb_test_cube.obj",
-                "objects/xpsb_test_cube.png",
-                "polygons/xpsb_test_orientation.pol",
-                "polygons/xpsb_test_orientation.png",
-                "polygons/xpsb_test_checker.pol",
-                "polygons/xpsb_test_checker.png",
-                "README.txt",
-            ]
-        ),
+        files=sorted(files),
     )
 
 
@@ -299,8 +313,19 @@ def build_package(job: Job, job_dir: Path, exe: Path, log: EventLog) -> BuildRes
     package.mkdir(parents=True)
 
     log.publish_threadsafe(type="progress", stage="write", progress=0.0, key="stage.write")
-    lon, lat = plan.center
-    text_file = build_test_scenery(package, lon, lat, plan.cube_height_m or TEST_CUBE_HEIGHT_M)
+    assert job.analysis is not None
+    tile = Tile.containing(*plan.center)
+    result = assemble.write_package(
+        job.analysis.items,
+        package,
+        tile,
+        plan.detail,
+        _exclusions(job),
+        progress=lambda p: log.publish_threadsafe(
+            type="progress", stage="write", progress=p, key="stage.write"
+        ),
+    )
+    text_file = result.dsf_text
     (package / "README.txt").write_text(_readme(plan, job), encoding="utf-8")
 
     log.publish_threadsafe(type="progress", stage="compile", progress=0.0, key="stage.compile")

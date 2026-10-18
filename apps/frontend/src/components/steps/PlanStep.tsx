@@ -1,11 +1,14 @@
+import { useState } from "react";
 import { useT } from "../../i18n";
 import { useApp } from "../../store";
+import { PreviewDialog } from "../PreviewDialog";
 import { ProgressList } from "../ProgressList";
 import { Alert, Button, Section } from "../ui";
 
 export function PlanStep({ onBuild }: { onBuild: () => void }) {
   const { t } = useT();
   const job = useApp((s) => s.job);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const plan = job?.plan;
   if (!job || !plan) return null;
   const confirmed = plan.items.filter((i) => i.kind === "confirmed");
@@ -22,6 +25,7 @@ export function PlanStep({ onBuild }: { onBuild: () => void }) {
 
   return (
     <div className="space-y-4">
+      {previewOpen && <PreviewDialog jobId={job.id} onClose={() => setPreviewOpen(false)} />}
       <Section title={t("plan.confirmed")}>
         <ul className="list-disc space-y-1 pl-5 text-sm" data-testid="plan-confirmed">
           {confirmed.map((item) => (
@@ -30,7 +34,17 @@ export function PlanStep({ onBuild }: { onBuild: () => void }) {
             </li>
           ))}
         </ul>
-        <Alert>{t("plan.m3_notice")}</Alert>
+      </Section>
+      <Section title={t("preview.title")}>
+        <p className="text-sm text-zinc-600 dark:text-zinc-300">{t("plan.preview_hint")}</p>
+        {(plan.objects ?? []).some((o) => o.status === "error") && (
+          <Alert kind="warning">
+            {t("gate.c.objects_failed", { count: (plan.objects ?? []).filter((o) => o.status === "error").length })}
+          </Alert>
+        )}
+        <Button onClick={() => setPreviewOpen(true)} data-testid="open-preview">
+          🧊 {t("plan.open_preview")}
+        </Button>
       </Section>
       <Section title={t("plan.intro")}>
         <ul className="list-disc space-y-1 pl-5 text-sm">

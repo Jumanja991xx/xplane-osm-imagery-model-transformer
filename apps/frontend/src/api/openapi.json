@@ -718,6 +718,88 @@
         }
       }
     },
+    "/api/jobs/{job_id}/preview": {
+      "get": {
+        "summary": "Job Preview",
+        "operationId": "job_preview_api_jobs__job_id__preview_get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Job Preview Api Jobs  Job Id  Preview Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/preview/{name}": {
+      "get": {
+        "summary": "Job Preview File",
+        "operationId": "job_preview_file_api_jobs__job_id__preview__name__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobs/{job_id}/gates/{gate}/approve": {
       "post": {
         "summary": "Approve",
@@ -1190,6 +1272,23 @@
             "maxItems": 2,
             "minItems": 2,
             "title": "Center"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "default": "medium"
+          },
+          "objects": {
+            "items": {
+              "$ref": "#/components/schemas/PlanObject"
+            },
+            "type": "array",
+            "title": "Objects"
+          },
+          "surfaces": {
+            "type": "integer",
+            "title": "Surfaces",
+            "default": 0
           },
           "test_scenery": {
             "type": "boolean",
@@ -2130,6 +2229,76 @@
           "count"
         ],
         "title": "PlanItem"
+      },
+      "PlanObject": {
+        "properties": {
+          "item_id": {
+            "type": "string",
+            "title": "Item Id"
+          },
+          "stem": {
+            "type": "string",
+            "title": "Stem"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "anchor": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Anchor"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "error",
+              "skipped"
+            ],
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "default": ""
+          },
+          "triangles": {
+            "type": "integer",
+            "title": "Triangles",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "item_id",
+          "stem",
+          "category",
+          "anchor",
+          "status"
+        ],
+        "title": "PlanObject",
+        "description": "One 3D object of the plan, as generated for the preview."
       },
       "Question": {
         "properties": {

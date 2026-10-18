@@ -263,6 +263,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/jobs/{job_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Job Preview */
+        get: operations["job_preview_api_jobs__job_id__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/preview/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Job Preview File */
+        get: operations["job_preview_file_api_jobs__job_id__preview__name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs/{job_id}/gates/{gate}/approve": {
         parameters: {
             query?: never;
@@ -480,6 +514,18 @@ export interface components {
                 number,
                 number
             ];
+            /**
+             * Detail
+             * @default medium
+             */
+            detail: string;
+            /** Objects */
+            objects?: components["schemas"]["PlanObject"][];
+            /**
+             * Surfaces
+             * @default 0
+             */
+            surfaces: number;
             /**
              * Test Scenery
              * @default false
@@ -804,6 +850,40 @@ export interface components {
             params?: {
                 [key: string]: string | number | null;
             };
+        };
+        /**
+         * PlanObject
+         * @description One 3D object of the plan, as generated for the preview.
+         */
+        PlanObject: {
+            /** Item Id */
+            item_id: string;
+            /** Stem */
+            stem: string;
+            /** Category */
+            category: string;
+            /** Name */
+            name?: string | null;
+            /** Anchor */
+            anchor: [
+                number,
+                number
+            ];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "error" | "skipped";
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+            /**
+             * Triangles
+             * @default 0
+             */
+            triangles: number;
         };
         /**
          * Question
@@ -1544,6 +1624,69 @@ export interface operations {
                 content: {
                     "image/jpeg": unknown;
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    job_preview_api_jobs__job_id__preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    job_preview_file_api_jobs__job_id__preview__name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

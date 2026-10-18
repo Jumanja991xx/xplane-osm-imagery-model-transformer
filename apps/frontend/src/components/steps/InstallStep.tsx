@@ -35,7 +35,7 @@ export function InstallStep({ onInstall }: { onInstall: () => void }) {
             {t("install.backup", { path: job.install.backup_dir })}
           </p>
         )}
-        {job.plan?.test_scenery && <Alert>{t("install.test_hint")}</Alert>}
+        {job.plan && <Alert>{t(job.plan.test_scenery ? "install.test_hint" : "install.scene_hint")}</Alert>}
         <Button onClick={reset}>{t("common.new_job")}</Button>
       </div>
     );

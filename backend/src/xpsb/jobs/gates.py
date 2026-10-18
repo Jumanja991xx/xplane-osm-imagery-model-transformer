@@ -223,7 +223,16 @@ def _gate_c(job: Job, ctx: GateContext):
         for i in p.items
         if i.kind != "confirmed"
     ]
-    items.append(GateItem(kind="info", key="gate.c.m2_test_build"))
+    failed = [o for o in p.objects if o.status == "error"]
+    skipped = [o for o in p.objects if o.status == "skipped"]
+    if failed:
+        items.append(
+            GateItem(kind="warning", key="gate.c.objects_failed", params={"count": len(failed)})
+        )
+    if skipped:
+        items.append(
+            GateItem(kind="info", key="gate.c.objects_skipped", params={"count": len(skipped)})
+        )
     items.append(
         GateItem(
             kind="write",

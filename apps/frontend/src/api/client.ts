@@ -147,3 +147,42 @@ export async function imageryObjectUrl(jobId: string): Promise<string> {
   if (!res.ok) throw new ApiError(res.status, "error.no_imagery");
   return URL.createObjectURL(await res.blob());
 }
+
+export interface PreviewObject {
+  item_id: string;
+  stem: string;
+  category: string;
+  name?: string | null;
+  status: "ok" | "error" | "skipped";
+  message: string;
+  triangles: number;
+  offset: [number, number];
+}
+
+export interface PreviewData {
+  objects: PreviewObject[];
+  surfaces: { category: string; rings: [number, number][][] }[];
+  imagery: { sw: [number, number]; ne: [number, number] } | null;
+}
+
+export interface PreviewMesh {
+  positions: number[];
+  normals: number[];
+  uvs: number[];
+  index: number[];
+}
+
+async function authedFetch(path: string): Promise<Response> {
+  const { baseUrl, token } = await backend();
+  const res = await fetch(baseUrl + path, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new ApiError(res.status, "error.no_preview");
+  return res;
+}
+
+export const preview = {
+  scene: (jobId: string) => authedFetch(`/api/jobs/${jobId}/preview`).then((r) => r.json() as Promise<PreviewData>),
+  mesh: (jobId: string, stem: string) =>
+    authedFetch(`/api/jobs/${jobId}/preview/${stem}.json`).then((r) => r.json() as Promise<PreviewMesh>),
+  textureUrl: async (jobId: string, stem: string) =>
+    URL.createObjectURL(await (await authedFetch(`/api/jobs/${jobId}/preview/${stem}.png`)).blob()),
+};

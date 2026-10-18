@@ -181,3 +181,27 @@ def test_build_failure_rolls_back_to_planned(client, monkeypatch, tmp_path):
     assert job["state"] == "planned"
     assert job["error"]["key"] == "error.building_failed"
     assert job["pending_gate"]["gate"] == "C"  # user can fix the cause and approve again
+
+
+def test_plan_generates_3d_preview_of_every_object(client, app_ctx):
+    job = to_analyzed(client)
+    job = approve(client, job, "B").json()
+    plan = job["plan"]
+    assert plan["test_scenery"] is False and plan["surfaces"] == 1
+    objects = {o["item_id"]: o for o in plan["objects"]}
+    assert objects["way/103"]["status"] == "ok" and objects["way/103"]["triangles"] > 50
+    assert all(o["status"] == "ok" for o in objects.values()), objects
+    assert any(f.startswith("objects/xpsb_obj_") and f.endswith(".obj") for f in plan["files"])
+
+    preview = client.get(f"/api/jobs/{job['id']}/preview", headers=AUTH).json()
+    assert len(preview["objects"]) == len(objects) and len(preview["surfaces"]) == 1
+    stem = preview["objects"][0]["stem"]
+    mesh = client.get(f"/api/jobs/{job['id']}/preview/{stem}.json", headers=AUTH).json()
+    assert len(mesh["positions"]) == len(mesh["normals"]) and mesh["index"]
+    png = client.get(f"/api/jobs/{job['id']}/preview/{stem}.png", headers=AUTH)
+    assert png.headers["content-type"] == "image/png"
+    assert (
+        client.get(f"/api/jobs/{job['id']}/preview/..%2Fjob.json", headers=AUTH).status_code == 404
+    )
+    gate = {i["key"] for i in job["pending_gate"]["items"]}
+    assert {"plan.objects", "plan.surfaces"} <= gate

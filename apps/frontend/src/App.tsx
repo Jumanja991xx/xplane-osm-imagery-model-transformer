@@ -68,6 +68,13 @@ export default function App() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    // Development/browser tests: open an existing job without clicking through the wizard.
+    (window as unknown as { __xpsbOpenJob?: (id: string) => Promise<void> }).__xpsbOpenJob = async (id) =>
+      useApp.getState().setJob(await api.getJob(id));
+  }, []);
+
   const lang: Language = settings?.language ?? (navigator.language.startsWith("de") ? "de" : "en");
 
   return (
