@@ -17,8 +17,9 @@ backend/dist/
 # Rust / Tauri
 apps/desktop/src-tauri/target/
 apps/desktop/src-tauri/gen/
-apps/desktop/src-tauri/resources/backend/
-apps/desktop/src-tauri/resources/bin/
+apps/desktop/src-tauri/resources/backend/*
+apps/desktop/src-tauri/resources/bin/*
+!apps/desktop/src-tauri/resources/*/.gitkeep
 
 # Native tools (built from source in CI, never committed)
 tools/dsftool/build/

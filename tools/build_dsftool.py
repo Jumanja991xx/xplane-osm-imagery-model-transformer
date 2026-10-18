@@ -50,15 +50,20 @@ def checkout() -> None:
     run(["git", "init", "-q"], cwd=SRC_DIR)
     run(["git", "remote", "add", "origin", XPTOOLS_REPO], cwd=SRC_DIR)
     run(["git", "sparse-checkout", "set", *SPARSE_DIRS], cwd=SRC_DIR)
-    run(["git", "fetch", "--depth", "1", "--filter=blob:none", "origin", XPTOOLS_COMMIT], cwd=SRC_DIR)
+    run(
+        ["git", "fetch", "--depth", "1", "--filter=blob:none", "origin", XPTOOLS_COMMIT],
+        cwd=SRC_DIR,
+    )
     run(["git", "checkout", "-q", "FETCH_HEAD"], cwd=SRC_DIR)
 
 
 def build(fetch_zlib: bool) -> Path:
     configure = [
         "cmake",
-        "-S", str(HERE / "dsftool"),
-        "-B", str(BUILD_DIR),
+        "-S",
+        str(HERE / "dsftool"),
+        "-B",
+        str(BUILD_DIR),
         f"-DXPTOOLS_DIR={SRC_DIR.as_posix()}",
         "-DCMAKE_BUILD_TYPE=Release",
     ]

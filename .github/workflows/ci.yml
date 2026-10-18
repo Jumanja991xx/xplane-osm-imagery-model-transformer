@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Build DSFTool from Laminar's sources
+        run: python3 tools/build_dsftool.py --fetch-zlib
+      - name: Lint
+        working-directory: backend
+        run: |
+          uv sync
+          uv run ruff check . ../tools
+          uv run ruff format --check . ../tools
+      - name: Tests
+        working-directory: backend
+        run: uv run pytest -q
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm build:frontend
+
+  windows:
+    name: Windows installer
+    runs-on: windows-latest
+    needs: [backend, frontend]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      - name: Build DSFTool.exe (MSVC, static CRT)
+        run: python tools/build_dsftool.py --fetch-zlib
+
+      - name: Backend tests on Windows (paths, CREATE_NO_WINDOW, DSFTool.exe)
+        working-directory: backend
+        run: |
+          uv sync
+          uv run pytest -q
+
+      - name: Package backend (PyInstaller, one folder)
+        working-directory: backend
+        run: uv run --group build pyinstaller packaging/xpsb-backend.spec --noconfirm --distpath build/dist --workpath build/work
+
+      - name: Assemble app resources
+        run: python tools/prepare_desktop_resources.py
+
+      - name: Smoke test packaged backend (real build with DSFTool.exe)
+        run: python tools/smoke_backend.py backend/build/dist/xpsb-backend/xpsb-backend.exe --resources-dir apps/desktop/src-tauri/resources
+
+      - name: Desktop shell test (starts and stops the backend)
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build installer
+        run: pnpm tauri build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: XPSB-Setup-windows-x64
+          path: apps/desktop/src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
