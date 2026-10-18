@@ -1,0 +1,4 @@
+LZMA SDK 19 (C sources in xptools/src/lzma19, compiled into DSFTool)
+https://www.7-zip.org/sdk.html
+
+The LZMA SDK is placed in the public domain by its author, Igor Pavlov.

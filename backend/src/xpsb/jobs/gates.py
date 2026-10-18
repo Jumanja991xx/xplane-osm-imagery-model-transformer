@@ -1,0 +1,153 @@
+"""Approval gates A–D.
+
+A gate summarises *what will happen, what it costs and where it writes*. The UI
+shows exactly these items and sends back the hash; the backend recomputes the
+gate and only proceeds if nothing changed in between.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from dataclasses import dataclass
+from pathlib import Path
+
+from xpsb.jobs.models import GateId, GateItem, Job, JobState, PendingGate
+from xpsb.settings import Settings
+from xpsb.xplane_detect import check_xplane_path
+
+GATE_FOR_STATE: dict[JobState, GateId] = {
+    JobState.CLARIFIED: "A",
+    JobState.ANALYZED: "B",
+    JobState.PLANNED: "C",
+    JobState.BUILT: "D",
+}
+
+
+@dataclass(frozen=True)
+class GateContext:
+    settings: Settings
+    has_api_key: bool
+    dsftool: Path | None
+    xplane_running: bool | None
+    job_dir: Path
+
+
+def content_hash(payload: dict) -> str:
+    raw = json.dumps(payload, sort_keys=True, default=str, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def install_target(settings: Settings, package_name: str) -> Path | None:
+    if not settings.xplane_path:
+        return None
+    return Path(settings.xplane_path) / "Custom Scenery" / package_name
+
+
+def compute_gate(job: Job, ctx: GateContext) -> PendingGate | None:
+    gate = GATE_FOR_STATE.get(job.state)
+    if gate is None:
+        return None
+    items, blocked, payload = {"A": _gate_a, "B": _gate_b, "C": _gate_c, "D": _gate_d}[gate](
+        job, ctx
+    )
+    payload |= {
+        "gate": gate,
+        "job": job.id,
+        "items": [i.model_dump() for i in items],
+        "blocked": blocked,
+    }
+    return PendingGate(gate=gate, items=items, blocked=blocked, hash=content_hash(payload))
+
+
+def _gate_a(job: Job, ctx: GateContext):
+    assert job.brief is not None
+    b = job.brief
+    items = [
+        GateItem(kind="action", key="gate.a.osm", params={"area_km2": round(job.aoi_area_km2, 3)}),
+        GateItem(kind="action", key="gate.a.imagery"),
+    ]
+    blocked = False
+    if b.use_ai:
+        items.append(
+            GateItem(
+                kind="cost",
+                key="gate.a.ai_cost",
+                params={"model": b.ai_model, "limit_usd": b.ai_cost_limit_usd},
+            )
+        )
+        if not ctx.has_api_key:
+            items.append(GateItem(kind="warning", key="gate.a.ai_no_key"))
+            blocked = True
+    else:
+        items.append(GateItem(kind="cost", key="gate.a.no_ai"))
+    items += [
+        GateItem(kind="write", key="gate.a.workdir", params={"path": str(ctx.job_dir)}),
+        GateItem(kind="info", key="gate.m1_analysis_placeholder"),
+    ]
+    payload = {"aoi": job.aoi.model_dump(), "brief": b.model_dump(mode="json")}
+    return items, blocked, payload
+
+
+def _gate_b(job: Job, ctx: GateContext):
+    assert job.analysis is not None
+    a = job.analysis
+    items = [
+        GateItem(
+            kind="info",
+            key="gate.b.counts",
+            params={"objects": len(a.objects), "surfaces": len(a.surfaces)},
+        )
+    ]
+    open_questions = [q.id for q in a.questions if q.id not in job.answers]
+    if open_questions:
+        items.append(
+            GateItem(
+                kind="warning", key="gate.b.open_questions", params={"count": len(open_questions)}
+            )
+        )
+    items.append(GateItem(kind="action", key="gate.b.make_plan"))
+    payload = {"analysis": a.model_dump(mode="json"), "answers": job.answers}
+    return items, bool(open_questions), payload
+
+
+def _gate_c(job: Job, ctx: GateContext):
+    assert job.plan is not None
+    p = job.plan
+    items = [
+        GateItem(kind="action", key=f"plan.{i.kind}", params={"count": i.count, **i.params})
+        for i in p.items
+    ]
+    items.append(
+        GateItem(
+            kind="write",
+            key="gate.c.write_package",
+            params={"path": str(ctx.job_dir / "build" / p.package_name)},
+        )
+    )
+    blocked = ctx.dsftool is None
+    if blocked:
+        items.append(GateItem(kind="warning", key="gate.c.no_dsftool"))
+    payload = {"plan": p.model_dump(mode="json"), "dsftool": str(ctx.dsftool)}
+    return items, blocked, payload
+
+
+def _gate_d(job: Job, ctx: GateContext):
+    assert job.plan is not None
+    items: list[GateItem] = []
+    target = install_target(ctx.settings, job.plan.package_name)
+    blocked = False
+    exists = False
+    if target is None or not check_xplane_path(ctx.settings.xplane_path or "").valid:
+        items.append(GateItem(kind="warning", key="gate.d.no_xplane"))
+        blocked = True
+    else:
+        exists = target.exists()
+        items.append(GateItem(kind="write", key="gate.d.target", params={"path": str(target)}))
+        if exists:
+            items.append(GateItem(kind="action", key="gate.d.backup", params={"path": str(target)}))
+        if ctx.xplane_running:
+            items.append(GateItem(kind="warning", key="gate.d.xplane_running"))
+        items.append(GateItem(kind="info", key="gate.d.restart_hint"))
+    payload = {"target": str(target), "exists": exists, "running": ctx.xplane_running}
+    return items, blocked, payload

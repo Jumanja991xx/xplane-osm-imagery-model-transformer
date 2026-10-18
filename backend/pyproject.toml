@@ -1,0 +1,46 @@
+[project]
+name = "xpsb"
+version = "0.1.0"
+description = "Backend of the X-Plane AI-Scenery Builder"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.32",
+    "websockets>=13.0",
+    "pydantic>=2.9",
+    "platformdirs>=4.3",
+    "keyring>=25.5",
+    "pillow>=11.0",
+]
+
+[project.scripts]
+xpsb-backend = "xpsb.__main__:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "httpx>=0.28",
+    "ruff>=0.8",
+]
+build = [
+    "pyinstaller>=6.11",
+]
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/xpsb"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
