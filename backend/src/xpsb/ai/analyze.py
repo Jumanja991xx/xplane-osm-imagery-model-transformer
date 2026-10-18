@@ -35,7 +35,7 @@ BATCH_SIZE = 6
 MAX_ITEMS = 300
 CROP_MAX_PX = 768
 CROP_MIN_PX = 256
-MIN_MARGIN_M = 15.0
+MIN_MARGIN_M = 25.0  # enough surroundings to see e.g. the track in front of a stand
 CATEGORY_CHANGE_CONFIDENCE = 0.75
 QUESTION_CONFIDENCE = 0.6
 OUTLINE = (255, 0, 255)
@@ -175,7 +175,7 @@ class AnthropicTransport:
 LANG_NAMES = {"de": "German", "en": "English"}
 
 
-def system_prompt(language: str, notes: str) -> str:
+def system_prompt(language: str, notes: str, context: str = "") -> str:
     objects = ", ".join(c.value for c in ObjectCategory)
     surfaces = ", ".join(c.value for c in SurfaceType)
     user_notes = notes.strip() or "(none)"
@@ -191,6 +191,12 @@ Object categories: {objects}.
 Surface types: {surfaces}.
 - dirt: speedway cinder, sand, compacted earth; tartan: athletics track; markings: painted lines.
 Only use categories of the same kind as the feature (object stays object, surface stays surface).
+
+What OpenStreetMap says about this area: {context or "(nothing special)"}.
+- Context matters: OSM often tags roofed spectator stands only as "roof". Structures along
+  the edge of a race track, sports pitch or arena that face it are almost always grandstands,
+  also when the roof is covered with solar panels. Use category grandstands for them
+  (set covered=true) - not canopies or buildings.
 
 How to answer:
 - Fill in what you can see or estimate well: height in metres (use shadows, storeys,
@@ -215,7 +221,7 @@ def _bounds_with_margin(geom, lat: float) -> tuple[float, float, float, float]:
     w, s, e, n = geom.bounds
     mx = meters_per_deg_lon(lat)
     size_m = max((e - w) * mx, (n - s) * METERS_PER_DEG_LAT)
-    margin = max(MIN_MARGIN_M, size_m * 0.25)
+    margin = max(MIN_MARGIN_M, size_m * 0.5)
     return (
         w - margin / mx,
         s - margin / METERS_PER_DEG_LAT,
@@ -387,6 +393,7 @@ class AiRun:
     progress: Callable[[float], None] = lambda p: None
     should_stop: Callable[[], bool] = lambda: False
     questions: list[Question] = field(default_factory=list)
+    context: str = ""  # what OSM says the area is (track, pitch, ...)
 
 
 def estimate_cost(model: str, crops_tokens: list[int]) -> float:
@@ -421,7 +428,7 @@ def run(
         return result
     todo = items[:MAX_ITEMS]
     result.skipped = len(items) - len(todo)
-    system = system_prompt(cfg.language, cfg.notes)
+    system = system_prompt(cfg.language, cfg.notes, cfg.context)
 
     prepared: list[tuple[SceneItem, bytes, float]] = []
     for item in todo:

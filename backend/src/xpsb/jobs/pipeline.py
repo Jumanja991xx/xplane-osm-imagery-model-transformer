@@ -139,6 +139,7 @@ def analyze_sync(job: Job, deps: AnalysisDeps, log: EventLog) -> AnalysisResult:
             on_cost=deps.ledger.add,
             should_stop=lambda: job.state is JobState.CANCELLED,
             questions=questions,
+            context=detect.area_context(items),
         )
         proposals: list = []
         run_info = None

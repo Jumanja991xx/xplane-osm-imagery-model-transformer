@@ -293,6 +293,16 @@ export const de = {
   "error.ai_budget_exhausted": "Das Kostenlimit ist ausgeschöpft.",
   "error.ai_auth_failed": "Der API-Key wurde abgelehnt.",
   "error.ai_call_failed": "Die KI-Anfrage ist fehlgeschlagen ({detail}).",
+  "brief.detail_hint": "Wirkt ab Meilenstein 3 (Detail der 3D-Modelle). Ändert nichts an Analyse und Kosten.",
+  "map.view_3d": "3D-Ansicht",
+  "map.view_2d": "2D-Ansicht",
+  "analysis.multi_edit": "Mehrere bearbeiten",
+  "analysis.multi_done": "Fertig",
+  "analysis.mark_all": "Alle in dieser Liste markieren",
+  "analysis.choose_category": "Kategorie wählen …",
+  "analysis.change": "Ändern",
+  "analysis.exclude": "Ausschließen",
+  "analysis.include_short": "Aufnehmen",
 } as const;
 
 export type MessageKey = keyof typeof de;

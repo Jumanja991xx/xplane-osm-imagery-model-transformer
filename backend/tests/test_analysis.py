@@ -338,3 +338,10 @@ def test_api_error_detail_reaches_the_user(client, fake_ai):
     note = next(n for n in job["analysis"]["notes"] if n["key"] == "analysis.ai_call_failed")
     assert note["params"]["detail"] == "HTTP 529 Overloaded"
     assert len(job["analysis"]["items"]) == 10
+
+
+def test_rating_knows_the_area(client, fake_ai):
+    analyze(client, setup(client))
+    ratings = [c for c in fake_ai.calls if c["format"] == "AiBatchResult"]
+    assert "race/running track (sport: speedway)" in ratings[0]["system"]
+    assert "grandstands" in ratings[0]["system"] and "solar panels" in ratings[0]["system"]

@@ -147,6 +147,18 @@ with sync_playwright() as p:
     page.get_by_test_id("accept-suggestions").click()
     page.wait_for_timeout(500)
     page.screenshot(path=OUT / "07-edited.png")
+    # Several at once: the pit roof becomes a grandstand.
+    page.get_by_test_id("multi-edit").click()
+    page.get_by_test_id("mark-way/106").check()
+    page.get_by_test_id("multi-category").select_option("grandstands")
+    page.get_by_test_id("multi-apply").click()
+    page.wait_for_timeout(500)
+    page.get_by_test_id("multi-edit").click()
+    # Selecting items far down the list must not scroll the app frame away.
+    page.get_by_test_id("item-way/107").get_by_role("button").first.click()
+    page.wait_for_timeout(600)
+    expect(page.get_by_role("heading", name="X-Plane AI-Scenery Builder")).to_be_in_viewport()
+    expect(page.get_by_test_id("toggle-3d")).to_be_in_viewport()
     page.get_by_test_id("toggle-3d").click()
     page.wait_for_timeout(1200)
     page.screenshot(path=OUT / "07c-3d.png")
@@ -162,6 +174,7 @@ with sync_playwright() as p:
 
     expect(page.get_by_test_id("plan-build")).to_be_visible(timeout=10000)
     expect(page.get_by_test_id("plan-confirmed")).to_contain_text("Gerüste")
+    expect(page.get_by_test_id("plan-confirmed")).to_contain_text("3 × Tribünen")
     page.screenshot(path=OUT / "09-plan.png")
     page.get_by_test_id("plan-build").click()
     page.screenshot(path=OUT / "10-gate-c.png")

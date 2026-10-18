@@ -181,6 +181,7 @@ export function BriefStep({ onSubmitted }: { onSubmitted: () => void }) {
             </option>
           ))}
         </select>
+        <p className="text-xs text-zinc-500">{t("brief.detail_hint")}</p>
       </Section>
 
       <Section title={t("brief.package_name")}>

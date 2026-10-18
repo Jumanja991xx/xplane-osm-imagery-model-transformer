@@ -25,6 +25,17 @@ const WARNING_NOTES = new Set([
   "analysis.nothing_found",
 ]);
 
+/** Scrolls only the sidebar list, never the whole window (unlike scrollIntoView). */
+function scrollIntoList(el: HTMLElement) {
+  let box = el.parentElement;
+  while (box && getComputedStyle(box).overflowY !== "auto") box = box.parentElement;
+  if (!box) return;
+  const r = el.getBoundingClientRect();
+  const b = box.getBoundingClientRect();
+  if (r.top < b.top) box.scrollBy({ top: r.top - b.top - 8, behavior: "smooth" });
+  else if (r.bottom > b.bottom) box.scrollBy({ top: r.bottom - b.bottom + 8, behavior: "smooth" });
+}
+
 /** Small amounts matter here (Haiku: fractions of a cent), so never show "0.00". */
 export function formatUsd(usd: number): string {
   if (usd === 0) return "0";
@@ -231,6 +242,20 @@ function ItemList({
       setMarked(new Set());
       return updated!;
     });
+  const [multiEdit, setMultiEdit] = useState(false);
+  const fitsKind = (item: SceneItem, category: string) =>
+    (item.kind === "object" ? OBJECT_CATEGORIES : SURFACE_TYPES).includes(category as never);
+  const bulkPatch = (make: (item: SceneItem) => ItemPatch | null) =>
+    run(async () => {
+      let updated: JobView = job;
+      for (const id of marked) {
+        const item = items.find((i) => i.id === id);
+        const p = item && make(item);
+        if (p) updated = await api.updateItem(jobId, id, p);
+      }
+      setMarked(new Set());
+      return updated;
+    });
   const toggleMarked = (id: string) =>
     setMarked((m) => {
       const next = new Set(m);
@@ -351,11 +376,83 @@ function ItemList({
         </Section>
       )}
 
+      {editable && (
+        <div className="flex justify-end">
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setMultiEdit(!multiEdit);
+              setMarked(new Set());
+            }}
+            data-testid="multi-edit"
+          >
+            {multiEdit ? t("analysis.multi_done") : `☑ ${t("analysis.multi_edit")}`}
+          </Button>
+        </div>
+      )}
+      {multiEdit && marked.size > 0 && (
+        <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 rounded-md bg-amber-50 p-2 text-sm shadow dark:bg-amber-900/60">
+          <span>{t("analysis.marked", { count: marked.size })}</span>
+          <select
+            className={`${inputClass} w-auto`}
+            value={bulkCategory}
+            onChange={(e) => setBulkCategory(e.target.value)}
+            data-testid="multi-category"
+          >
+            <option value="">{t("analysis.choose_category")}</option>
+            <optgroup label={t("analysis.objects")}>
+              {OBJECT_CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {t(`category.${c}`)}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label={t("analysis.surfaces")}>
+              {SURFACE_TYPES.map((c) => (
+                <option key={c} value={c}>
+                  {t(`surface.${c}`)}
+                </option>
+              ))}
+            </optgroup>
+          </select>
+          <Button
+            disabled={!bulkCategory}
+            onClick={() => bulkPatch((item) => (fitsKind(item, bulkCategory) ? { category: bulkCategory as SceneItem["category"] } : null))}
+            data-testid="multi-apply"
+          >
+            {t("analysis.change")}
+          </Button>
+          <Button variant="ghost" onClick={() => bulkPatch(() => ({ included: false }))}>
+            {t("analysis.exclude")}
+          </Button>
+          <Button variant="ghost" onClick={() => bulkPatch(() => ({ included: true }))}>
+            {t("analysis.include_short")}
+          </Button>
+        </div>
+      )}
+
       {groups.map(({ kind, title }) => {
         const list = items.filter((i) => i.kind === kind && !i.proposal);
+        const allMarked = list.length > 0 && list.every((i) => marked.has(i.id));
         return (
           <Section key={kind} title={`${title} (${list.length})`}>
             {!list.length && <p className="text-sm">{t("analysis.none")}</p>}
+            {multiEdit && list.length > 0 && (
+              <Checkbox
+                label={t("analysis.mark_all")}
+                checked={allMarked}
+                onChange={(on) =>
+                  setMarked((m) => {
+                    const next = new Set(m);
+                    for (const i of list) {
+                      if (on) next.add(i.id);
+                      else next.delete(i.id);
+                    }
+                    return next;
+                  })
+                }
+              />
+            )}
             <ul className="divide-y divide-zinc-200 rounded-md bg-white ring-1 ring-zinc-200 dark:divide-zinc-700 dark:bg-zinc-800 dark:ring-zinc-700">
               {list.map((item) => (
                 <ItemRow
@@ -366,6 +463,8 @@ function ItemList({
                   onSelect={() => selectItem(item.id === selectedItem ? null : item.id)}
                   run={run}
                   jobId={job.id}
+                  marked={multiEdit ? marked.has(item.id) : null}
+                  onMark={() => toggleMarked(item.id)}
                 />
               ))}
             </ul>
@@ -436,6 +535,8 @@ function ItemRow({
   onSelect,
   run,
   jobId,
+  marked,
+  onMark,
 }: {
   item: SceneItem;
   selected: boolean;
@@ -443,11 +544,13 @@ function ItemRow({
   onSelect: () => void;
   run: (fn: () => Promise<JobView>) => Promise<void>;
   jobId: string;
+  marked: boolean | null; // null: not in multi-edit mode
+  onMark: () => void;
 }) {
   const { t } = useT();
   const ref = useRef<HTMLLIElement>(null);
   useEffect(() => {
-    if (selected) ref.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    if (selected && ref.current) scrollIntoList(ref.current);
   }, [selected]);
 
   const patch = (p: ItemPatch) => run(() => api.updateItem(jobId, item.id, p));
@@ -460,6 +563,16 @@ function ItemRow({
   return (
     <li ref={ref} className={selected ? "bg-accent-50 dark:bg-accent-700/20" : ""} data-testid={`item-${item.id}`}>
       <div className="flex items-center gap-2 px-2 py-1.5">
+        {marked !== null && (
+          <input
+            type="checkbox"
+            className="accent-amber-500"
+            title={t("analysis.mark")}
+            checked={marked}
+            onChange={onMark}
+            data-testid={`mark-${item.id}`}
+          />
+        )}
         <input
           type="checkbox"
           title={t("analysis.include")}

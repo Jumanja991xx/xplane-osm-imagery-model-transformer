@@ -25,6 +25,7 @@ import {
 import { TerraDrawMapLibreGLAdapter } from "terra-draw-maplibre-gl-adapter";
 import { api, ApiError, imageryObjectUrl, type JobView } from "../api/client";
 import { bbox, CATEGORY_COLORS, DEFAULT_HEIGHTS } from "../scene";
+import { useT } from "../i18n";
 import { useApp } from "../store";
 
 // OpenStreetMap standard map in the German style (openstreetmap.de): shows more
@@ -161,6 +162,7 @@ export function MapView() {
     drawRef.current?.clear();
   }, [clearRequest]);
 
+  const { t } = useT();
   const hasScene = useApp((s) => Boolean(s.job?.analysis?.items?.length));
   const view3d = useApp((s) => s.view3d);
   const setView3d = useApp((s) => s.setView3d);
@@ -176,7 +178,7 @@ export function MapView() {
           }`}
           data-testid="toggle-3d"
         >
-          {view3d ? "2D" : "3D"}
+          {view3d ? t("map.view_2d") : `🧊 ${t("map.view_3d")}`}
         </button>
       )}
     </div>
