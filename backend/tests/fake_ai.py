@@ -7,6 +7,7 @@ import re
 from xpsb.ai.analyze import (
     AiAuthError,
     AiBatchResult,
+    AiCallError,
     AiItemResult,
     AiOption,
     AiQuestion,
@@ -19,6 +20,7 @@ class FakeAi:
         self.calls: list[dict] = []
         self.keys: list[str] = []
         self.fail_auth = False
+        self.fail_call: str | None = None
         self.served_model: str | None = None  # simulate a server-side fallback
         self.tokens = (3000, 1500)
 
@@ -30,6 +32,8 @@ class FakeAi:
         self.calls.append({"model": model, "system": system, "content": content})
         if self.fail_auth:
             raise AiAuthError("AuthenticationError")
+        if self.fail_call:
+            raise AiCallError(self.fail_call)
         results = []
         for block in content:
             if block["type"] != "text":

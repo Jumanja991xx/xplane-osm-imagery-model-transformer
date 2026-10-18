@@ -210,7 +210,7 @@ export const de = {
   "analysis.ai_no_key": "KI-Analyse übersprungen: kein API-Key hinterlegt.",
   "analysis.ai_limit_reached": "Kostenlimit ({limit_usd} USD) erreicht – restliche Einträge ohne KI-Bewertung.",
   "analysis.ai_auth_failed": "Der API-Key wurde abgelehnt. Bitte in den Einstellungen prüfen. OSM-Ergebnis bleibt erhalten.",
-  "analysis.ai_call_failed": "Die KI-Anfrage ist fehlgeschlagen (Netz/Server). OSM-Ergebnis bleibt erhalten.",
+  "analysis.ai_call_failed": "Die KI-Anfrage ist fehlgeschlagen ({detail}). OSM-Ergebnis bleibt erhalten.",
   "analysis.ai_fallback_model": "Hinweis: Ein Teil der Antworten kam vom Ersatzmodell {model} (automatischer Server-Fallback).",
   "analysis.accept_suggestions": "Alle {count} Vorschläge übernehmen",
   "analysis.source_osm": "Daten: © OpenStreetMap-Mitwirkende (ODbL)",

@@ -127,7 +127,8 @@ class AnthropicTransport:
                 system=system,
                 messages=[{"role": "user", "content": content}],
                 output_format=AiBatchResult,
-                output_config={"effort": "low"},
+                # Low effort keeps thinking (and cost) small; Haiku runs without it.
+                **({} if "haiku" in model else {"output_config": {"effort": "low"}}),
                 # If the model declines, the server retries on its default fallback
                 # model; the answer says which model replied and we tell the user.
                 fallbacks="default",
@@ -136,7 +137,8 @@ class AnthropicTransport:
         except (a.AuthenticationError, a.PermissionDeniedError) as exc:
             raise AiAuthError(type(exc).__name__) from None
         except a.APIStatusError as exc:
-            raise AiCallError(f"HTTP {exc.status_code}") from None
+            message = getattr(exc, "message", "") or ""
+            raise AiCallError(f"HTTP {exc.status_code} {message}"[:300]) from None
         except a.APIConnectionError as exc:
             raise AiCallError(type(exc).__name__) from None
         usage = response.usage
@@ -427,6 +429,7 @@ def run(items: list[SceneItem], image: Image.Image, info: ImageryInfo, cfg: AiRu
         except AiCallError as exc:
             log.warning("AI call failed: %s", exc)
             result.error_key = "analysis.ai_call_failed"
+            result.error_detail = str(exc)
             result.skipped += sum(len(b) for b in batches[index:])
             break
 

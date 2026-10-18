@@ -212,7 +212,7 @@ export const en: Record<MessageKey, string> = {
   "analysis.ai_no_key": "AI analysis skipped: no API key stored.",
   "analysis.ai_limit_reached": "Cost limit ({limit_usd} USD) reached – remaining items without AI assessment.",
   "analysis.ai_auth_failed": "The API key was rejected. Please check it in the settings. The OSM result is kept.",
-  "analysis.ai_call_failed": "The AI request failed (network/server). The OSM result is kept.",
+  "analysis.ai_call_failed": "The AI request failed ({detail}). The OSM result is kept.",
   "analysis.ai_fallback_model": "Note: some answers came from the fallback model {model} (automatic server-side fallback).",
   "analysis.accept_suggestions": "Accept all {count} suggestions",
   "analysis.source_osm": "Data: © OpenStreetMap contributors (ODbL)",

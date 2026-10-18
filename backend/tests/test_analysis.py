@@ -329,3 +329,11 @@ def test_without_ai_nothing_is_sent(client, fake_ai):
     job = analyze(client, setup(client, key=False, brief={**ALL, "use_ai": False}))
     assert fake_ai.calls == [] and job["analysis"]["ai"] is None
     assert "analysis.ai_off" in keys(job["analysis"]["notes"])
+
+
+def test_api_error_detail_reaches_the_user(client, fake_ai):
+    fake_ai.fail_call = "HTTP 529 Overloaded"
+    job = analyze(client, setup(client))
+    note = next(n for n in job["analysis"]["notes"] if n["key"] == "analysis.ai_call_failed")
+    assert note["params"]["detail"] == "HTTP 529 Overloaded"
+    assert len(job["analysis"]["items"]) == 10

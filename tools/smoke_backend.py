@@ -17,9 +17,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-FIXTURES = (
-    Path(__file__).resolve().parents[1] / "backend" / "tests" / "fixtures" / "speedway"
-)
+FIXTURES = Path(__file__).resolve().parents[1] / "backend" / "tests" / "fixtures" / "speedway"
 
 AOI = {
     "type": "Polygon",
@@ -159,9 +157,7 @@ def main() -> None:
             with urllib.request.urlopen(req, timeout=30) as resp:
                 system = json.loads(resp.read())
             print("system:", json.dumps(system, indent=1))
-            assert system["dsftool"]["found"], (
-                "DSFTool not found by the packaged backend"
-            )
+            assert system["dsftool"]["found"], "DSFTool not found by the packaged backend"
             build_test_scenery(base)
 
             proc.stdin.close()

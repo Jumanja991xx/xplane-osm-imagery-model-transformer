@@ -150,7 +150,7 @@ def analyze_sync(job: Job, deps: AnalysisDeps, log: EventLog) -> AnalysisResult:
                 Note(key="analysis.ai_limit_reached", params={"limit_usd": round(budget, 2)})
             )
         if result.ai.error_key:
-            notes.append(Note(key=result.ai.error_key))
+            notes.append(Note(key=result.ai.error_key, params={"detail": result.ai.error_detail}))
         fallback = [m for m in result.ai.models_used if m != job.brief.ai_model]
         if fallback:
             notes.append(

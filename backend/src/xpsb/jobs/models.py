@@ -130,6 +130,7 @@ class AiRunInfo(BaseModel):
     skipped: int = 0
     limit_reached: bool = False
     error_key: str | None = None
+    error_detail: str | None = None
 
 
 class AnalysisResult(BaseModel):

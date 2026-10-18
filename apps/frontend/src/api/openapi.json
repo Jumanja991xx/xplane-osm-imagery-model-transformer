@@ -788,6 +788,17 @@
               }
             ],
             "title": "Error Key"
+          },
+          "error_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Detail"
           }
         },
         "type": "object",

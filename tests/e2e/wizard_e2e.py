@@ -28,9 +28,7 @@ with sync_playwright() as p:
     page = browser.new_page(viewport={"width": 1400, "height": 900}, locale="de-DE")
     page.on(
         "console",
-        lambda m: (
-            errors.append(f"console.{m.type}: {m.text}") if m.type == "error" else None
-        ),
+        lambda m: errors.append(f"console.{m.type}: {m.text}") if m.type == "error" else None,
     )
     page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
     page.goto("http://localhost:1420/")
@@ -44,9 +42,7 @@ with sync_playwright() as p:
     page.get_by_test_id("settings-save").click()
     page.wait_for_timeout(300)
     page.get_by_role("button", name="Schließen", exact=True).click()
-    page.wait_for_function(
-        "window.__xpsbMap && window.__xpsbMap.loaded()", timeout=20000
-    )
+    page.wait_for_function("window.__xpsbMap && window.__xpsbMap.loaded()", timeout=20000)
     page.evaluate("window.__xpsbMap.jumpTo({center: [8.5658, 49.3278], zoom: 16})")
     page.wait_for_timeout(500)
     page.screenshot(path=OUT / "01-start.png")
@@ -111,9 +107,7 @@ with sync_playwright() as p:
     }""")
     mb = page.get_by_test_id("map").bounding_box()
     page.mouse.click(mb["x"] + mast[0], mb["y"] + mast[1])
-    expect(
-        page.get_by_test_id("item-node/201").get_by_test_id("delete-item")
-    ).to_be_visible()
+    expect(page.get_by_test_id("item-node/201").get_by_test_id("delete-item")).to_be_visible()
     page.screenshot(path=OUT / "06-selected-mast.png")
     page.get_by_test_id("delete-item").click()
     expect(page.get_by_test_id("item-node/201")).to_have_count(0)

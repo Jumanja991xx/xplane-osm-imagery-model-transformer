@@ -320,6 +320,8 @@ export interface components {
             limit_reached: boolean;
             /** Error Key */
             error_key?: string | null;
+            /** Error Detail */
+            error_detail?: string | null;
         };
         /** AiSettings */
         AiSettings: {
