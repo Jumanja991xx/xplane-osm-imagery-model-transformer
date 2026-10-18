@@ -94,6 +94,10 @@ export function MapView() {
         map.setStyle(BLANK_STYLE);
       }
     });
+    // The window can change size without a window resize event reaching MapLibre
+    // (maximising the desktop app, the sidebar): follow the container itself.
+    const resizeObserver = new ResizeObserver(() => map.resize());
+    resizeObserver.observe(container.current);
     map.addControl(new NavigationControl({ visualizePitch: false }), "top-right");
     map.addControl(new ScaleControl({ unit: "metric" }), "bottom-left");
 
@@ -138,6 +142,7 @@ export function MapView() {
     });
 
     return () => {
+      resizeObserver.disconnect();
       drawRef.current?.stop();
       drawRef.current = null;
       setMap(null);
