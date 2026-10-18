@@ -54,3 +54,13 @@ export function bbox(geometry: SceneItem["geometry"]): [number, number, number, 
   visit((geometry as { coordinates: unknown }).coordinates);
   return [w, s, e, n];
 }
+
+/** Block heights for the 3D preview when neither OSM nor the AI knows one. */
+export const DEFAULT_HEIGHTS: Record<ObjectCategory, number> = {
+  buildings: 8,
+  grandstands: 10,
+  scaffolding: 6,
+  canopies: 5,
+  barriers: 2,
+  masts: 20,
+};

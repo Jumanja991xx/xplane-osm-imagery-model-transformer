@@ -131,12 +131,26 @@ with sync_playwright() as p:
     page.get_by_test_id("proposal-ai/1").get_by_role("button").first.click()
     page.wait_for_timeout(600)
     page.screenshot(path=OUT / "07a-proposal.png")
-    page.get_by_test_id("accept-ai/1").click()
+    # Bulk change: mark, choose a category, accept.
+    page.get_by_test_id("mark-ai/1").check()
+    page.get_by_test_id("bulk-category").select_option("grandstands")
+    page.get_by_test_id("bulk-accept").click()
     expect(page.get_by_test_id("item-ai/1")).to_be_visible(timeout=5000)
+    # "Find similar" asks with the cost first, then searches.
+    page.get_by_test_id("item-way/103").get_by_role("button").first.click()
+    page.get_by_test_id("find-similar").click()
+    expect(page.get_by_test_id("similar-confirm")).to_contain_text("USD")
+    page.screenshot(path=OUT / "07b-similar-confirm.png")
+    page.get_by_test_id("similar-go").click()
+    expect(page.get_by_text("0 neue Vorschläge.")).to_be_visible(timeout=20000)
     # Open AI questions: take the suggestions.
     page.get_by_test_id("accept-suggestions").click()
     page.wait_for_timeout(500)
     page.screenshot(path=OUT / "07-edited.png")
+    page.get_by_test_id("toggle-3d").click()
+    page.wait_for_timeout(1200)
+    page.screenshot(path=OUT / "07c-3d.png")
+    page.get_by_test_id("toggle-3d").click()
 
     page.get_by_test_id("analysis-confirm").click()
     expect(page.get_by_role("dialog")).to_be_visible()

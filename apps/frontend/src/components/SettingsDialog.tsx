@@ -27,6 +27,8 @@ export function SettingsDialog() {
   const [apiKey, setApiKey] = useState("");
   const imagery: ImagerySettings = {
     source: "auto",
+    custom_type: "wms",
+    custom_max_zoom: 19,
     custom_url: "",
     custom_layer: "",
     custom_attribution: "",
@@ -254,16 +256,44 @@ export function SettingsDialog() {
             <p className="text-xs text-zinc-500">{t(`imagery.hint.${imagery.source}`)}</p>
             {imagery.source === "custom" && (
               <div className="space-y-2">
+                <div className="flex gap-2">
+                  <select
+                    className={`${inputClass} w-auto`}
+                    value={imagery.custom_type}
+                    onChange={(e) => setImagery({ custom_type: e.target.value as ImagerySettings["custom_type"] })}
+                    data-testid="imagery-type"
+                  >
+                    <option value="wms">WMS</option>
+                    <option value="xyz">{t("settings.imagery_xyz")}</option>
+                  </select>
+                  {imagery.custom_type === "xyz" && (
+                    <label className="flex items-center gap-1 text-xs text-zinc-500">
+                      {t("settings.imagery_max_zoom")}
+                      <input
+                        type="number"
+                        min={10}
+                        max={23}
+                        className={`${inputClass} w-16`}
+                        value={imagery.custom_max_zoom}
+                        onChange={(e) => setImagery({ custom_max_zoom: Number(e.target.value) })}
+                      />
+                    </label>
+                  )}
+                </div>
                 <input
                   className={inputClass}
-                  placeholder="https://…/wms"
+                  placeholder={imagery.custom_type === "xyz" ? "https://…/{z}/{x}/{y}.jpg" : "https://…/wms"}
                   value={imagery.custom_url}
                   onChange={(e) => setImagery({ custom_url: e.target.value })}
                   data-testid="imagery-url"
                 />
+                {imagery.custom_type === "xyz" && (
+                  <p className="text-xs text-zinc-500">{t("settings.imagery_xyz_hint")}</p>
+                )}
                 <div className="grid grid-cols-2 gap-2">
                   <input
                     className={inputClass}
+                    disabled={imagery.custom_type === "xyz"}
                     placeholder={t("settings.imagery_layer")}
                     value={imagery.custom_layer}
                     onChange={(e) => setImagery({ custom_layer: e.target.value })}

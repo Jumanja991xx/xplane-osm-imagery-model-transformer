@@ -24,6 +24,7 @@ export type Question = S["Question"];
 export type Note = S["Note"];
 export type ImageryInfo = S["ImageryInfo"];
 export type ImagerySettings = S["ImagerySettings"];
+export type SimilarEstimate = S["SimilarEstimate"];
 
 export interface JobEvent {
   seq: number;
@@ -123,6 +124,10 @@ export const api = {
     request<JobView>("PATCH", `/api/jobs/${id}/items/${itemId}`, patch),
   deleteItem: (id: string, itemId: string) =>
     request<JobView>("DELETE", `/api/jobs/${id}/items/${itemId}`),
+  similarEstimate: (id: string, itemId: string) =>
+    request<SimilarEstimate>("GET", `/api/jobs/${id}/similar/${itemId}`),
+  findSimilar: (id: string, itemId: string, maxUsd: number) =>
+    request<JobView>("POST", `/api/jobs/${id}/similar/${itemId}`, { max_usd: maxUsd }),
   approve: (id: string, gate: GateId, hash: string) =>
     request<JobView>("POST", `/api/jobs/${id}/gates/${gate}/approve`, { hash }),
   cancel: (id: string) => request<JobView>("POST", `/api/jobs/${id}/cancel`),

@@ -1,10 +1,18 @@
 import { useEffect, useRef, useState } from "react";
-import { api, ApiError, type ItemPatch, type JobView, type Question, type SceneItem } from "../../api/client";
+import {
+  api,
+  ApiError,
+  type ItemPatch,
+  type JobView,
+  type Question,
+  type SceneItem,
+  type SimilarEstimate,
+} from "../../api/client";
 import { useT, type Translate } from "../../i18n";
 import { CATEGORY_COLORS, categoryLabelKey, draftFor, OBJECT_CATEGORIES, SURFACE_TYPES } from "../../scene";
 import { useApp } from "../../store";
 import { ProgressList } from "../ProgressList";
-import { Alert, Button, Checkbox, inputClass, Section } from "../ui";
+import { Alert, Button, Checkbox, inputClass, Section, Spinner } from "../ui";
 
 const WARNING_NOTES = new Set([
   "imagery.failed",
@@ -204,13 +212,32 @@ function ItemList({
   ];
 
   const proposals = items.filter((i) => i.proposal);
-  const accept = (ids: string[]) =>
-    run(async () => {
-      let job: JobView | null = null;
-      for (const id of ids) job = await api.updateItem(jobId, id, { proposal: false });
-      return job!;
-    });
   const jobId = job.id;
+  const [marked, setMarked] = useState<Set<string>>(new Set());
+  const [bulkCategory, setBulkCategory] = useState<string>("");
+  const accept = (ids: string[], category?: string) =>
+    run(async () => {
+      let updated: JobView | null = null;
+      for (const id of ids) {
+        const item = items.find((i) => i.id === id);
+        const fits = category && item && (item.kind === "object" ? OBJECT_CATEGORIES : SURFACE_TYPES).includes(
+          category as never,
+        );
+        updated = await api.updateItem(jobId, id, {
+          proposal: false,
+          ...(fits ? { category: category as SceneItem["category"] } : {}),
+        });
+      }
+      setMarked(new Set());
+      return updated!;
+    });
+  const toggleMarked = (id: string) =>
+    setMarked((m) => {
+      const next = new Set(m);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   return (
     <>
@@ -222,6 +249,40 @@ function ItemList({
               ✓ {t("analysis.accept_all", { count: proposals.length })}
             </Button>
           )}
+          {editable && marked.size > 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-md bg-amber-50 p-2 text-sm dark:bg-amber-500/10">
+              <span>{t("analysis.marked", { count: marked.size })}</span>
+              <select
+                className={`${inputClass} w-auto`}
+                value={bulkCategory}
+                onChange={(e) => setBulkCategory(e.target.value)}
+                data-testid="bulk-category"
+              >
+                <option value="">{t("analysis.keep_category")}</option>
+                {OBJECT_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {t(`category.${c}`)}
+                  </option>
+                ))}
+              </select>
+              <Button onClick={() => accept([...marked], bulkCategory || undefined)} data-testid="bulk-accept">
+                ✓ {t("analysis.accept")}
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() =>
+                  run(async () => {
+                    let updated: JobView | null = null;
+                    for (const id of marked) updated = await api.deleteItem(jobId, id);
+                    setMarked(new Set());
+                    return updated!;
+                  })
+                }
+              >
+                ✗ {t("analysis.reject")}
+              </Button>
+            </div>
+          )}
           <ul className="divide-y divide-zinc-200 rounded-md bg-white ring-1 ring-amber-300 dark:divide-zinc-700 dark:bg-zinc-800 dark:ring-amber-500/50">
             {proposals.map((item) => (
               <li
@@ -230,6 +291,15 @@ function ItemList({
                 data-testid={`proposal-${item.id}`}
               >
                 <div className="flex items-center gap-2 px-2 py-1.5">
+                  {editable && (
+                    <input
+                      type="checkbox"
+                      title={t("analysis.mark")}
+                      checked={marked.has(item.id)}
+                      onChange={() => toggleMarked(item.id)}
+                      data-testid={`mark-${item.id}`}
+                    />
+                  )}
                   <button
                     className="flex min-w-0 flex-1 items-center gap-2 text-left text-sm"
                     onClick={() => selectItem(item.id === selectedItem ? null : item.id)}
@@ -267,10 +337,13 @@ function ItemList({
                     </>
                   )}
                 </div>
-                {item.id === selectedItem && item.ai && (
-                  <p className="border-t border-zinc-200 px-3 py-2 text-xs text-zinc-600 dark:border-zinc-700 dark:text-zinc-300">
-                    🤖 {item.ai.summary}
-                  </p>
+                {item.id === selectedItem && (
+                  <ItemEditor
+                    item={item}
+                    editable={editable}
+                    patch={(p) => run(() => api.updateItem(jobId, item.id, p))}
+                    remove={() => run(() => api.deleteItem(jobId, item.id))}
+                  />
                 )}
               </li>
             ))}
@@ -520,14 +593,94 @@ function ItemEditor({
           ))}
         </div>
       )}
+      {editable && item.kind === "object" && <FindSimilar item={item} />}
       <div className="flex items-center justify-between text-xs text-zinc-500">
-        <span>{item.osm_ref ? `OSM ${item.osm_ref}` : t("analysis.badge_user")}</span>
+        <span>
+          {item.osm_ref
+            ? `OSM ${item.osm_ref}`
+            : item.source === "ai"
+              ? t("analysis.badge_found")
+              : t("analysis.badge_user")}
+        </span>
         {editable && (
           <Button variant="ghost" onClick={remove} data-testid="delete-item">
             🗑 {t("analysis.delete")}
           </Button>
         )}
       </div>
+    </div>
+  );
+}
+
+/** "Find similar": shows what it costs and what is sent, then runs only on a yes. */
+function FindSimilar({ item }: { item: SceneItem }) {
+  const { t } = useT();
+  const { job, setJob } = useApp();
+  const [estimate, setEstimate] = useState<SimilarEstimate | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!job?.brief?.use_ai || !job.analysis?.imagery) return null;
+
+  const fail = (e: unknown) => setError(e instanceof ApiError ? t(e.key, e.params) : String(e));
+  const ask = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      setEstimate(await api.similarEstimate(job.id, item.id));
+    } catch (e) {
+      fail(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const confirm = async () => {
+    if (!estimate) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const before = (job.analysis?.items ?? []).filter((i) => i.proposal).length;
+      const updated = await api.findSimilar(job.id, item.id, Math.min(estimate.estimate_usd, estimate.budget_usd));
+      setJob(updated);
+      const after = (updated.analysis?.items ?? []).filter((i) => i.proposal).length;
+      setEstimate(null);
+      setError(t("analysis.similar_done", { count: Math.max(0, after - before) }));
+    } catch (e) {
+      fail(e);
+      setEstimate(null);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-1.5">
+      {!estimate && (
+        <Button onClick={ask} disabled={busy} data-testid="find-similar">
+          {busy && <Spinner />}🔍 {t("analysis.find_similar")}
+        </Button>
+      )}
+      {estimate && (
+        <div className="space-y-1.5 rounded-md bg-amber-50 p-2 text-xs dark:bg-amber-500/10" data-testid="similar-confirm">
+          <p>
+            {t("analysis.similar_question", {
+              tiles: estimate.tiles,
+              model: t(`model.${estimate.model}`),
+              cost: formatUsd(Math.min(estimate.estimate_usd, estimate.budget_usd)),
+            })}
+          </p>
+          {estimate.budget_usd < estimate.estimate_usd && <p>{t("analysis.similar_budget")}</p>}
+          <div className="flex gap-2">
+            <Button variant="primary" onClick={confirm} disabled={busy || estimate.budget_usd <= 0} data-testid="similar-go">
+              {busy && <Spinner />}
+              {busy ? t("analysis.similar_running") : t("analysis.similar_go")}
+            </Button>
+            <Button variant="ghost" onClick={() => setEstimate(null)} disabled={busy}>
+              {t("common.cancel")}
+            </Button>
+          </div>
+        </div>
+      )}
+      {error && <p className="text-xs text-zinc-600 dark:text-zinc-300">{error}</p>}
     </div>
   );
 }

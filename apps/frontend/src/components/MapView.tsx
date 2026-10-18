@@ -24,7 +24,7 @@ import {
 } from "terra-draw";
 import { TerraDrawMapLibreGLAdapter } from "terra-draw-maplibre-gl-adapter";
 import { api, ApiError, imageryObjectUrl, type JobView } from "../api/client";
-import { bbox, CATEGORY_COLORS } from "../scene";
+import { bbox, CATEGORY_COLORS, DEFAULT_HEIGHTS } from "../scene";
 import { useApp } from "../store";
 
 // OpenStreetMap standard map in the German style (openstreetmap.de): shows more
@@ -161,7 +161,26 @@ export function MapView() {
     drawRef.current?.clear();
   }, [clearRequest]);
 
-  return <div ref={container} className="h-full w-full" data-testid="map" />;
+  const hasScene = useApp((s) => Boolean(s.job?.analysis?.items?.length));
+  const view3d = useApp((s) => s.view3d);
+  const setView3d = useApp((s) => s.setView3d);
+  return (
+    <div className="relative h-full w-full">
+      <div ref={container} className="h-full w-full" data-testid="map" />
+      {hasScene && (
+        <button
+          type="button"
+          onClick={() => setView3d(!view3d)}
+          className={`absolute top-3 left-3 rounded-md px-3 py-1.5 text-sm font-medium shadow ${
+            view3d ? "bg-accent-600 text-white" : "bg-white text-zinc-800"
+          }`}
+          data-testid="toggle-3d"
+        >
+          {view3d ? "2D" : "3D"}
+        </button>
+      )}
+    </div>
+  );
 }
 
 // ---- analysed objects and surfaces ------------------------------------------------
@@ -280,6 +299,22 @@ function setupSceneLayers(map: MapLibreMap) {
     },
     before,
   );
+  // 3D preview: objects as blocks of their height (real models arrive in M3).
+  map.addLayer(
+    {
+      id: "scene-3d",
+      type: "fill-extrusion",
+      source: "scene",
+      filter: ["all", ["==", ["geometry-type"], "Polygon"], ["==", ["get", "kind"], "object"]],
+      layout: { visibility: "none" },
+      paint: {
+        "fill-extrusion-color": colorExpr,
+        "fill-extrusion-height": ["get", "height"],
+        "fill-extrusion-opacity": 0.85,
+      },
+    },
+    before,
+  );
   map.addLayer(
     {
       id: "aoi-outline",
@@ -318,6 +353,10 @@ function sceneData(job: JobView | null): GeoJSON.FeatureCollection {
         category: it.category,
         included: it.included ?? true,
         proposal: it.proposal ?? false,
+        height:
+          it.kind === "object" && (it.included ?? true)
+            ? (it.attrs?.height_m ?? DEFAULT_HEIGHTS[it.category as keyof typeof DEFAULT_HEIGHTS] ?? 6)
+            : 0,
       },
     })),
   };
@@ -407,6 +446,13 @@ function useSceneSync(map: MapLibreMap | null) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, imageryKey]);
+
+  const view3d = useApp((s) => s.view3d);
+  useEffect(() => {
+    if (!map?.getLayer("scene-3d")) return;
+    map.setLayoutProperty("scene-3d", "visibility", view3d ? "visible" : "none");
+    map.easeTo({ pitch: view3d ? 55 : 0, bearing: view3d ? -20 : 0, duration: 700 });
+  }, [map, view3d]);
 
   useEffect(() => {
     if (map?.getLayer("imagery")) {

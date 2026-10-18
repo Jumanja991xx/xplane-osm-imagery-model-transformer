@@ -30,6 +30,7 @@ interface AppState {
   settingsOpen: boolean;
   selectedItem: string | null;
   imageryVisible: boolean;
+  view3d: boolean;
   itemDraft: ItemDraft | null;
 
   setAoi: (aoi: GeoJsonPolygon | null) => void;
@@ -43,6 +44,7 @@ interface AppState {
   setSettingsOpen: (open: boolean) => void;
   selectItem: (id: string | null) => void;
   setImageryVisible: (visible: boolean) => void;
+  setView3d: (on: boolean) => void;
   startItemDraft: (draft: ItemDraft | null) => void;
   reset: () => void;
 }
@@ -59,6 +61,7 @@ export const useApp = create<AppState>((set) => ({
   settingsOpen: false,
   selectedItem: null,
   imageryVisible: true,
+  view3d: false,
   itemDraft: null,
 
   setAoi: (aoi) => set({ aoi }),
@@ -74,6 +77,7 @@ export const useApp = create<AppState>((set) => ({
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   selectItem: (selectedItem) => set({ selectedItem }),
   setImageryVisible: (imageryVisible) => set({ imageryVisible }),
+  setView3d: (view3d) => set({ view3d }),
   startItemDraft: (itemDraft) => set({ itemDraft, drawMode: itemDraft ? itemDraft.mode : "none" }),
   reset: () =>
     set((s) => ({
