@@ -8,7 +8,10 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from xpsb.catalog import ObjectCategory, SurfaceMode, SurfaceType
 from xpsb.geo import GeoJsonPolygon
+from xpsb.imagery.wms import ImageryInfo
+from xpsb.scene import SceneItem
 from xpsb.settings import AiModel
 
 
@@ -33,29 +36,6 @@ class JobState(StrEnum):
 RUNNING_STATES = {JobState.ANALYZING, JobState.BUILDING, JobState.INSTALLING}
 
 GateId = Literal["A", "B", "C", "D"]
-
-
-class ObjectCategory(StrEnum):
-    BUILDINGS = "buildings"
-    GRANDSTANDS = "grandstands"
-    SCAFFOLDING = "scaffolding"
-    CANOPIES = "canopies"
-    BARRIERS = "barriers"
-    MASTS = "masts"
-
-
-class SurfaceType(StrEnum):
-    GRASS = "grass"
-    ASPHALT = "asphalt"
-    CONCRETE = "concrete"
-    GRAVEL = "gravel"
-    TARTAN = "tartan"
-    MARKINGS = "markings"
-
-
-class SurfaceMode(StrEnum):
-    MATERIAL = "material"
-    IMAGERY = "imagery"
 
 
 class ExclusionType(StrEnum):
@@ -113,35 +93,59 @@ class Brief(BaseModel):
         return self
 
 
+Params = dict[str, str | int | float | None]
+
+
 class QuestionOption(BaseModel):
     value: str
-    label_key: str
-    params: dict[str, str | int | float] = Field(default_factory=dict)
+    label_key: str | None = None
+    label: str | None = None  # free text (AI questions come in the UI language)
+    params: Params = Field(default_factory=dict)
 
 
 class Question(BaseModel):
     """A question the analysis could not answer with confidence."""
 
     id: str
-    text_key: str
-    params: dict[str, str | int | float] = Field(default_factory=dict)
+    text_key: str | None = None
+    text: str | None = None
+    params: Params = Field(default_factory=dict)
     options: list[QuestionOption]
     suggested: str | None = None
+    # Answering sets this field of this item (e.g. category, height_m).
+    item_id: str | None = None
+    field: str | None = None
+
+
+class Note(BaseModel):
+    key: str
+    params: Params = Field(default_factory=dict)
+
+
+class AiRunInfo(BaseModel):
+    model: str
+    models_used: list[str] = Field(default_factory=list)  # differs on server-side fallback
+    cost_usd: float = 0.0
+    analyzed: int = 0
+    skipped: int = 0
+    limit_reached: bool = False
+    error_key: str | None = None
 
 
 class AnalysisResult(BaseModel):
-    objects: list[dict] = Field(default_factory=list)
-    surfaces: list[dict] = Field(default_factory=list)
+    items: list[SceneItem] = Field(default_factory=list)
     questions: list[Question] = Field(default_factory=list)
-    notes: list[str] = Field(default_factory=list)  # i18n keys
-    placeholder: bool = False
+    notes: list[Note] = Field(default_factory=list)
+    imagery: ImageryInfo | None = None
+    ai: AiRunInfo | None = None
+    next_user_id: int = 1
 
 
 class PlanItem(BaseModel):
     kind: str
     label_key: str
     count: int
-    params: dict[str, str | int | float] = Field(default_factory=dict)
+    params: Params = Field(default_factory=dict)
 
 
 class BuildPlan(BaseModel):
@@ -168,7 +172,7 @@ class InstallResult(BaseModel):
 class GateItem(BaseModel):
     kind: Literal["action", "cost", "write", "warning", "info"]
     key: str
-    params: dict[str, str | int | float | None] = Field(default_factory=dict)
+    params: Params = Field(default_factory=dict)
 
 
 class PendingGate(BaseModel):

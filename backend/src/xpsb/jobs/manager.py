@@ -9,6 +9,8 @@ import uuid
 from collections.abc import Callable
 from pathlib import Path
 
+from xpsb.ai import analyze as ai
+from xpsb.ai.usage import UsageLedger
 from xpsb.geo import MAX_AOI_AREA_KM2, GeoJsonPolygon, ring_area_m2, ring_centroid
 from xpsb.jobs import pipeline
 from xpsb.jobs.events import EventLog
@@ -25,6 +27,7 @@ from xpsb.jobs.models import (
     utcnow,
 )
 from xpsb.paths import AppPaths
+from xpsb.scene import ItemPatch, NewItem, SceneItem, validate_item
 from xpsb.secrets import ANTHROPIC_ACCOUNT, SecretStore
 from xpsb.settings import SettingsStore
 from xpsb.xplane import dsftool
@@ -63,14 +66,15 @@ class JobManager:
         secrets: SecretStore,
         resources_dir: Path | None,
         xplane_running: Callable[[], bool | None] = is_xplane_running,
-        analysis_step_delay: float = 0.4,
+        ai_transport_factory: Callable[[str], ai.AiTransport] = ai.AnthropicTransport,
     ):
         self._paths = paths
         self._settings = settings
         self._secrets = secrets
         self._resources_dir = resources_dir
         self._xplane_running = xplane_running
-        self._step_delay = analysis_step_delay
+        self._ai_transport_factory = ai_transport_factory
+        self.ledger = UsageLedger(paths.root / "ai_usage.json")
         self._jobs: dict[str, Job] = {}
         self._logs: dict[str, EventLog] = {}
         self._tasks: dict[str, asyncio.Task] = {}
@@ -138,6 +142,7 @@ class JobManager:
         return GateContext(
             settings=settings,
             has_api_key=bool(self._secrets.get(ANTHROPIC_ACCOUNT)),
+            ai_month_spent=self.ledger.month_spent(),
             dsftool=dsftool.locate(settings.dsftool_path, self._resources_dir),
             xplane_running=self._xplane_running() if job.state is JobState.BUILT else None,
             job_dir=self.job_dir(job.id),
@@ -179,18 +184,94 @@ class JobManager:
         self._set_state(job, JobState.CLARIFIED)
         return job
 
-    def set_answers(self, job_id: str, answers: dict[str, str]) -> Job:
+    def _analyzed(self, job_id: str) -> Job:
         job = self.get(job_id)
         if job.state is not JobState.ANALYZED or job.analysis is None:
             raise JobConflict("error.wrong_state", state=job.state.value)
+        return job
+
+    def _item(self, job: Job, item_id: str) -> SceneItem:
+        assert job.analysis is not None
+        for item in job.analysis.items:
+            if item.id == item_id:
+                return item
+        raise JobConflict("error.item_not_found", item=item_id)
+
+    def set_answers(self, job_id: str, answers: dict[str, str]) -> Job:
+        job = self._analyzed(job_id)
+        assert job.analysis is not None
         questions = {q.id: q for q in job.analysis.questions}
         for qid, value in answers.items():
             q = questions.get(qid)
             if q is None or value not in {o.value for o in q.options}:
                 raise JobConflict("error.invalid_answer", question=qid)
+        for qid, value in answers.items():
+            q = questions[qid]
+            if q.item_id and q.field:
+                item = self._item(job, q.item_id)
+                ai.apply_answer(item, q.field, value)
         job.answers = {**job.answers, **answers}
         self._save(job)
         return job
+
+    def _drop_questions(self, job: Job, item_id: str) -> None:
+        """The user decided about this item themselves: its open AI questions are moot."""
+        assert job.analysis is not None
+        job.analysis.questions = [
+            q for q in job.analysis.questions if q.item_id != item_id or q.id in job.answers
+        ]
+
+    def update_item(self, job_id: str, item_id: str, patch: ItemPatch) -> Job:
+        job = self._analyzed(job_id)
+        item = self._item(job, item_id)
+        updated = item.model_copy(deep=True)
+        changes = patch.model_dump(exclude_unset=True)
+        if "attrs" in changes:
+            updated.attrs = updated.attrs.model_copy(update=changes.pop("attrs"))
+        for key, value in changes.items():
+            setattr(updated, key, value)
+        try:
+            validated = validate_item(updated.model_dump())
+        except ValueError as exc:
+            raise JobConflict("error.invalid_item", detail=str(exc)[:200]) from None
+        validated.edited = True
+        assert job.analysis is not None
+        job.analysis.items = [validated if it.id == item_id else it for it in job.analysis.items]
+        self._drop_questions(job, item_id)
+        self._save(job)
+        return job
+
+    def add_item(self, job_id: str, new: NewItem) -> Job:
+        job = self._analyzed(job_id)
+        assert job.analysis is not None
+        item_id = f"user/{job.analysis.next_user_id}"
+        try:
+            item = validate_item(
+                {**new.model_dump(), "id": item_id, "source": "user", "edited": True}
+            )
+        except ValueError as exc:
+            raise JobConflict("error.invalid_item", detail=str(exc)[:200]) from None
+        job.analysis.next_user_id += 1
+        job.analysis.items.append(item)
+        self._save(job)
+        return job
+
+    def delete_item(self, job_id: str, item_id: str) -> Job:
+        job = self._analyzed(job_id)
+        self._item(job, item_id)
+        assert job.analysis is not None
+        job.analysis.items = [it for it in job.analysis.items if it.id != item_id]
+        job.analysis.questions = [q for q in job.analysis.questions if q.item_id != item_id]
+        job.answers = {k: v for k, v in job.answers.items() if not k.startswith(f"ai:{item_id}:")}
+        self._save(job)
+        return job
+
+    def imagery_file(self, job_id: str) -> Path | None:
+        job = self.get(job_id)
+        if job.analysis is None or job.analysis.imagery is None:
+            return None
+        path = self.job_dir(job_id) / "imagery" / job.analysis.imagery.file
+        return path if path.exists() else None
 
     def cancel(self, job_id: str) -> Job:
         job = self.get(job_id)
@@ -220,7 +301,7 @@ class JobManager:
             self._set_state(job, JobState.ANALYZING)
             self._start(job, self._do_analysis(job))
         elif gate == "B":
-            job.plan = pipeline.make_plan(job)
+            job.plan = pipeline.make_plan(job, self.job_dir(job.id))
             self._set_state(job, JobState.PLANNED)
         elif gate == "C":
             assert ctx.dsftool is not None
@@ -255,8 +336,20 @@ class JobManager:
             self._tasks.pop(job.id, None)
 
     async def _do_analysis(self, job: Job) -> None:
-        job.analysis = await pipeline.run_analysis(job, self.events(job.id), self._step_delay)
-        self._set_state(job, JobState.ANALYZED)
+        deps = pipeline.AnalysisDeps(
+            job_dir=self.job_dir(job.id),
+            cache_dir=self._paths.cache,
+            settings=self._settings.load(),
+            api_key=self._secrets.get(ANTHROPIC_ACCOUNT)
+            if job.brief and job.brief.use_ai
+            else None,
+            transport_factory=self._ai_transport_factory,
+            ledger=self.ledger,
+        )
+        analysis = await pipeline.run_analysis(job, deps, self.events(job.id))
+        if job.state is JobState.ANALYZING:  # not cancelled meanwhile
+            job.analysis = analysis
+            self._set_state(job, JobState.ANALYZED)
 
     async def _do_build(self, job: Job, exe: Path) -> None:
         job.build = await asyncio.to_thread(

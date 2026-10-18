@@ -12,6 +12,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from xpsb.imagery.sources import resolve_source
 from xpsb.jobs.models import GateId, GateItem, Job, JobState, PendingGate
 from xpsb.settings import Settings
 from xpsb.xplane_detect import check_xplane_path
@@ -31,6 +32,7 @@ class GateContext:
     dsftool: Path | None
     xplane_running: bool | None
     job_dir: Path
+    ai_month_spent: float = 0.0
 
 
 def content_hash(payload: dict) -> str:
@@ -63,42 +65,97 @@ def compute_gate(job: Job, ctx: GateContext) -> PendingGate | None:
 def _gate_a(job: Job, ctx: GateContext):
     assert job.brief is not None
     b = job.brief
+    blocked = False
     items = [
         GateItem(kind="action", key="gate.a.osm", params={"area_km2": round(job.aoi_area_km2, 3)}),
-        GateItem(kind="action", key="gate.a.imagery"),
     ]
-    blocked = False
+    imagery = ctx.settings.imagery
+    source, reason = resolve_source(imagery, *job.aoi_center)
+    if source is not None:
+        items.append(
+            GateItem(
+                kind="action",
+                key="gate.a.imagery",
+                params={
+                    "source": source.name,
+                    "license": source.license,
+                    "attribution": source.attribution,
+                },
+            )
+        )
+        if not source.builtin and not imagery.custom_rights_confirmed:
+            items.append(GateItem(kind="warning", key="gate.a.custom_rights"))
+            blocked = True
+    else:
+        items.append(GateItem(kind="warning", key=f"gate.a.{reason}"))
+
     if b.use_ai:
+        month_left = max(0.0, ctx.settings.ai.monthly_limit_usd - ctx.ai_month_spent)
         items.append(
             GateItem(
                 kind="cost",
                 key="gate.a.ai_cost",
-                params={"model": b.ai_model, "limit_usd": b.ai_cost_limit_usd},
+                params={
+                    "model": b.ai_model,
+                    "limit_usd": round(min(b.ai_cost_limit_usd, month_left), 2),
+                },
             )
         )
+        items.append(
+            GateItem(
+                kind="info",
+                key="gate.a.ai_month",
+                params={
+                    "spent_usd": round(ctx.ai_month_spent, 2),
+                    "limit_usd": ctx.settings.ai.monthly_limit_usd,
+                },
+            )
+        )
+        if source is not None:
+            items.append(
+                GateItem(kind="action", key="gate.a.ai_upload", params={"model": b.ai_model})
+            )
+        else:
+            items.append(GateItem(kind="warning", key="gate.a.ai_needs_imagery"))
         if not ctx.has_api_key:
             items.append(GateItem(kind="warning", key="gate.a.ai_no_key"))
             blocked = True
+        elif month_left <= 0:
+            items.append(GateItem(kind="warning", key="gate.a.ai_month_exhausted"))
     else:
         items.append(GateItem(kind="cost", key="gate.a.no_ai"))
-    items += [
-        GateItem(kind="write", key="gate.a.workdir", params={"path": str(ctx.job_dir)}),
-        GateItem(kind="info", key="gate.m1_analysis_placeholder"),
-    ]
-    payload = {"aoi": job.aoi.model_dump(), "brief": b.model_dump(mode="json")}
+    items.append(GateItem(kind="write", key="gate.a.workdir", params={"path": str(ctx.job_dir)}))
+    payload = {
+        "aoi": job.aoi.model_dump(),
+        "brief": b.model_dump(mode="json"),
+        "imagery": imagery.model_dump(),
+    }
     return items, blocked, payload
 
 
 def _gate_b(job: Job, ctx: GateContext):
     assert job.analysis is not None
     a = job.analysis
+    included = [it for it in a.items if it.included]
     items = [
         GateItem(
             kind="info",
             key="gate.b.counts",
-            params={"objects": len(a.objects), "surfaces": len(a.surfaces)},
+            params={
+                "objects": sum(1 for it in included if it.kind == "object"),
+                "surfaces": sum(1 for it in included if it.kind == "surface"),
+                "excluded": len(a.items) - len(included),
+            },
         )
     ]
+    if a.ai is not None:
+        items.append(
+            GateItem(
+                kind="cost",
+                key="gate.b.ai_spent",
+                params={"cost_usd": round(a.ai.cost_usd, 2), "analyzed": a.ai.analyzed},
+            )
+        )
     open_questions = [q.id for q in a.questions if q.id not in job.answers]
     if open_questions:
         items.append(
@@ -106,18 +163,36 @@ def _gate_b(job: Job, ctx: GateContext):
                 kind="warning", key="gate.b.open_questions", params={"count": len(open_questions)}
             )
         )
+    if not included:
+        items.append(GateItem(kind="warning", key="gate.b.nothing_included"))
     items.append(GateItem(kind="action", key="gate.b.make_plan"))
+    items.append(
+        GateItem(
+            kind="write",
+            key="gate.b.scene_file",
+            params={"path": str(ctx.job_dir / "scene.geojson")},
+        )
+    )
     payload = {"analysis": a.model_dump(mode="json"), "answers": job.answers}
-    return items, bool(open_questions), payload
+    return items, bool(open_questions) or not included, payload
 
 
 def _gate_c(job: Job, ctx: GateContext):
     assert job.plan is not None
     p = job.plan
     items = [
+        GateItem(
+            kind="info", key="gate.c.confirmed", params={"label": i.label_key, "count": i.count}
+        )
+        for i in p.items
+        if i.kind == "confirmed"
+    ]
+    items += [
         GateItem(kind="action", key=f"plan.{i.kind}", params={"count": i.count, **i.params})
         for i in p.items
+        if i.kind != "confirmed"
     ]
+    items.append(GateItem(kind="info", key="gate.c.m2_test_build"))
     items.append(
         GateItem(
             kind="write",

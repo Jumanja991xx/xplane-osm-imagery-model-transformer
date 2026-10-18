@@ -76,25 +76,22 @@ def test_ai_without_key_blocks_gate_a(client):
     assert job["pending_gate"]["blocked"] is False
 
 
-def test_open_questions_block_gate_b(client):
+def test_gate_b_shows_counts_and_plan_lists_confirmed_items(client, app_ctx):
     job = to_analyzed(client)
-    assert job["analysis"]["placeholder"] is True
-    assert job["pending_gate"]["gate"] == "B" and job["pending_gate"]["blocked"] is True
-    assert approve(client, job, "B").json()["detail"]["key"] == "error.gate_blocked"
-
-    bad = client.post(
-        f"/api/jobs/{job['id']}/answers", json={"test_cube_height": "999"}, headers=AUTH
-    )
-    assert bad.status_code == 409
-
-    job = client.post(
-        f"/api/jobs/{job['id']}/answers", json={"test_cube_height": "40"}, headers=AUTH
-    ).json()
-    assert job["pending_gate"]["blocked"] is False
+    gate = job["pending_gate"]
+    assert gate["gate"] == "B" and gate["blocked"] is False
+    counts = next(i for i in gate["items"] if i["key"] == "gate.b.counts")["params"]
+    # grandstand + clubhouse + 2 buildings (canopy category not wanted) / pitch only
+    assert counts == {"objects": 4, "surfaces": 1, "excluded": 0}
     job = approve(client, job, "B").json()
     assert job["state"] == "planned"
-    assert job["plan"]["cube_height_m"] == 40.0
     assert job["plan"]["tile"] == "Earth nav data/+40+000/+49+008.dsf"
+    confirmed = {
+        i["label_key"]: i["count"] for i in job["plan"]["items"] if i["kind"] == "confirmed"
+    }
+    assert confirmed == {"object.buildings": 3, "object.grandstands": 1, "surface.grass": 1}
+    scene = app_ctx.jobs.job_dir(job["id"]) / "scene.geojson"
+    assert len(__import__("json").loads(scene.read_text())["features"]) == 5
 
 
 def test_new_brief_resets_analysis(client):
@@ -118,9 +115,6 @@ def test_full_flow_builds_and_installs_with_backup(
     client, app_ctx, fake_xplane, dsftool_exe, xplane_state
 ):
     job = to_analyzed(client)
-    job = client.post(
-        f"/api/jobs/{job['id']}/answers", json={"test_cube_height": "20"}, headers=AUTH
-    ).json()
     job = approve(client, job, "B").json()
 
     # Gate C: build into the job folder only.
@@ -158,9 +152,6 @@ def test_full_flow_builds_and_installs_with_backup(
     job = client.put(f"/api/jobs/{job['id']}/brief", json=BRIEF, headers=AUTH).json()
     assert approve(client, job, "A").status_code == 200
     job = wait_for_state(client, job["id"], {"analyzed"})
-    job = client.post(
-        f"/api/jobs/{job['id']}/answers", json={"test_cube_height": "10"}, headers=AUTH
-    ).json()
     job = approve(client, job, "B").json()
     approve(client, job, "C")
     job = wait_for_state(client, job["id"], {"built"})
@@ -184,9 +175,6 @@ def test_build_failure_rolls_back_to_planned(client, monkeypatch, tmp_path):
     client.put("/api/settings", json={**settings, "dsftool_path": str(fake)}, headers=AUTH)
 
     job = to_analyzed(client)
-    job = client.post(
-        f"/api/jobs/{job['id']}/answers", json={"test_cube_height": "20"}, headers=AUTH
-    ).json()
     job = approve(client, job, "B").json()
     approve(client, job, "C")
     job = wait_for_state(client, job["id"], {"planned", "built"})

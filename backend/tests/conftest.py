@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 
 import pytest
+from fake_ai import FakeAi
 from fastapi.testclient import TestClient
 
 from xpsb.api.app import AppContext, create_app
@@ -12,6 +13,8 @@ from xpsb.paths import resolve_paths
 from xpsb.secrets import MemorySecretStore
 from xpsb.settings import SettingsStore
 from xpsb.xplane import dsftool
+
+FIXTURES = Path(__file__).parent / "fixtures" / "speedway"
 
 TOKEN = "test-token"
 AUTH = {"Authorization": f"Bearer {TOKEN}"}
@@ -41,7 +44,18 @@ def xplane_state() -> XPlaneState:
 
 
 @pytest.fixture
-def app_ctx(tmp_path: Path, xplane_state: XPlaneState) -> AppContext:
+def fake_ai() -> FakeAi:
+    return FakeAi()
+
+
+@pytest.fixture(autouse=True)
+def offline_fixtures(monkeypatch: pytest.MonkeyPatch) -> None:
+    # OSM and imagery answers come from files; tests never touch the network.
+    monkeypatch.setenv("XPSB_FIXTURES_DIR", str(FIXTURES))
+
+
+@pytest.fixture
+def app_ctx(tmp_path: Path, xplane_state: XPlaneState, fake_ai: FakeAi) -> AppContext:
     paths = resolve_paths(tmp_path / "data")
     settings = SettingsStore(paths.settings_file)
     secrets = MemorySecretStore()
@@ -51,7 +65,7 @@ def app_ctx(tmp_path: Path, xplane_state: XPlaneState) -> AppContext:
         secrets,
         resources_dir=None,
         xplane_running=lambda: xplane_state.running,
-        analysis_step_delay=0.0,
+        ai_transport_factory=fake_ai.factory,
     )
     return AppContext(
         token=TOKEN, paths=paths, settings=settings, secrets=secrets, jobs=jobs, resources_dir=None

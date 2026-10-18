@@ -1,20 +1,30 @@
 """The work behind each approval.
 
-Milestone 1: the analysis is a clearly labelled placeholder (real OSM/imagery/AI
-analysis arrives in M2). The build produces the test scenery through the real
-toolchain (writers → DSFTool → roundtrip check), and the install step copies it
+Analysis (M2): OSM objects and surfaces of the area, an open aerial image and,
+if the user agreed, Claude's assessment of every item. The build still produces
+the test scenery (real 3D generators arrive in M3); the install step copies it
 into X-Plane with a backup of any existing package.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 import shutil
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from PIL import Image
+from shapely.geometry import Polygon
+
 from xpsb import APP_NAME, __version__
+from xpsb.ai import analyze as ai
+from xpsb.ai.usage import UsageLedger
+from xpsb.imagery import wms
+from xpsb.imagery.sources import resolve_source
 from xpsb.jobs.events import EventLog
 from xpsb.jobs.models import (
     AnalysisResult,
@@ -22,60 +32,207 @@ from xpsb.jobs.models import (
     BuildResult,
     InstallResult,
     Job,
+    JobState,
+    Note,
     PlanItem,
-    Question,
-    QuestionOption,
 )
+from xpsb.osm import classify, overpass
+from xpsb.settings import Settings
 from xpsb.xplane import dsftool
 from xpsb.xplane.dsf_text import Tile
 from xpsb.xplane.testscene import build_test_scenery, files_for
 
-TEST_CUBE_QUESTION = "test_cube_height"
-TEST_CUBE_HEIGHTS = ("10", "20", "40")
+TEST_CUBE_HEIGHT_M = 20.0
 
 
-async def run_analysis(job: Job, log: EventLog, step_delay: float) -> AnalysisResult:
-    for stage in ("osm", "imagery", "ai"):
-        log.publish(type="progress", stage=stage, progress=0.0, key=f"stage.{stage}")
-        await asyncio.sleep(step_delay)
-        log.publish(type="progress", stage=stage, progress=1.0, key="stage.placeholder_done")
-    return AnalysisResult(
-        placeholder=True,
-        notes=["analysis.m1_placeholder"],
-        questions=[
-            Question(
-                id=TEST_CUBE_QUESTION,
-                text_key="question.test_cube_height",
-                options=[
-                    QuestionOption(value=h, label_key="option.meters", params={"value": h})
-                    for h in TEST_CUBE_HEIGHTS
-                ],
-                suggested="20",
-            )
-        ],
-    )
+@dataclass
+class AnalysisDeps:
+    job_dir: Path
+    cache_dir: Path
+    settings: Settings
+    api_key: str | None
+    transport_factory: Callable[[str], ai.AiTransport]
+    ledger: UsageLedger
 
 
-def make_plan(job: Job) -> BuildPlan:
+def ai_budget(job: Job, settings: Settings, ledger: UsageLedger) -> float:
     assert job.brief is not None
+    left_this_month = max(0.0, settings.ai.monthly_limit_usd - ledger.month_spent())
+    return min(job.brief.ai_cost_limit_usd, left_this_month)
+
+
+def _progress(log: EventLog, stage: str, value: float, key: str, **params) -> None:
+    log.publish_threadsafe(type="progress", stage=stage, progress=value, key=key, params=params)
+
+
+def _osm_stage(job: Job, deps: AnalysisDeps, log: EventLog) -> list:
+    assert job.brief is not None
+    _progress(log, "osm", 0.0, "stage.osm")
+    data = overpass.fetch(overpass.build_query(job.aoi.ring), deps.cache_dir / "overpass")
+    items = classify.classify(
+        data.get("elements", []),
+        Polygon(job.aoi.ring),
+        {c.value for c in job.brief.object_categories},
+        {s.value for s in job.brief.surface_types},
+    )
+    _progress(log, "osm", 1.0, "stage.osm_done", count=len(items))
+    return items
+
+
+def _imagery_stage(job: Job, deps: AnalysisDeps, log: EventLog, notes: list[Note]):
+    lon, lat = job.aoi_center
+    source, reason = resolve_source(deps.settings.imagery, lon, lat)
+    if source is None:
+        notes.append(Note(key=reason or "imagery.off"))
+        return None
+    _progress(log, "imagery", 0.0, "stage.imagery", source=source.name)
+    ring = job.aoi.ring
+    area = wms.Bounds(
+        min(p[0] for p in ring),
+        min(p[1] for p in ring),
+        max(p[0] for p in ring),
+        max(p[1] for p in ring),
+    )
+    try:
+        info = wms.fetch_area_image(
+            source,
+            area,
+            deps.job_dir / "imagery",
+            progress=lambda p: _progress(log, "imagery", p, "stage.imagery", source=source.name),
+        )
+    except (wms.WmsError, OSError, ValueError) as exc:
+        notes.append(
+            Note(key="imagery.failed", params={"source": source.name, "detail": str(exc)[:300]})
+        )
+        return None
+    return info
+
+
+def analyze_sync(job: Job, deps: AnalysisDeps, log: EventLog) -> AnalysisResult:
+    """Runs in a worker thread."""
+    assert job.brief is not None
+    notes: list[Note] = []
+    items = _osm_stage(job, deps, log)
+    if not items:
+        notes.append(Note(key="analysis.nothing_found"))
+    info = _imagery_stage(job, deps, log, notes)
+    result = AnalysisResult(items=items, imagery=info, notes=notes)
+
+    if not job.brief.use_ai:
+        notes.append(Note(key="analysis.ai_off"))
+    elif info is None:
+        notes.append(Note(key="analysis.ai_needs_imagery"))
+    elif not deps.api_key:
+        notes.append(Note(key="analysis.ai_no_key"))
+    elif items:
+        budget = ai_budget(job, deps.settings, deps.ledger)
+        _progress(log, "ai", 0.0, "stage.ai", count=len(items), model=job.brief.ai_model)
+        with Image.open(deps.job_dir / "imagery" / info.file) as img:
+            image = img.convert("RGB")
+        questions: list = []
+        run = ai.AiRun(
+            model=job.brief.ai_model,
+            language=deps.settings.language,
+            notes=job.brief.notes,
+            budget_usd=budget,
+            transport=deps.transport_factory(deps.api_key),
+            on_cost=deps.ledger.add,
+            progress=lambda p: _progress(
+                log, "ai", p, "stage.ai", count=len(items), model=job.brief.ai_model
+            ),
+            should_stop=lambda: job.state is JobState.CANCELLED,
+            questions=questions,
+        )
+        result.ai = ai.run(items, image, info, run)
+        result.questions = questions
+        if result.ai.limit_reached:
+            notes.append(
+                Note(key="analysis.ai_limit_reached", params={"limit_usd": round(budget, 2)})
+            )
+        if result.ai.error_key:
+            notes.append(Note(key=result.ai.error_key))
+        fallback = [m for m in result.ai.models_used if m != job.brief.ai_model]
+        if fallback:
+            notes.append(
+                Note(key="analysis.ai_fallback_model", params={"model": ", ".join(fallback)})
+            )
+        _progress(
+            log,
+            "ai",
+            1.0,
+            "stage.ai_done",
+            analyzed=result.ai.analyzed,
+            cost_usd=round(result.ai.cost_usd, 4),
+        )
+    result.notes = notes  # pydantic copied the list on construction
+    return result
+
+
+async def run_analysis(job: Job, deps: AnalysisDeps, log: EventLog) -> AnalysisResult:
+    return await asyncio.to_thread(analyze_sync, job, deps, log)
+
+
+def included_counts(job: Job) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    if job.analysis:
+        for item in job.analysis.items:
+            if item.included:
+                counts[f"{item.kind}:{item.category}"] = (
+                    counts.get(f"{item.kind}:{item.category}", 0) + 1
+                )
+    return counts
+
+
+def make_plan(job: Job, job_dir: Path) -> BuildPlan:
+    """Plan from the confirmed list. Also stores that list for the 3D build (M3)."""
+    assert job.brief is not None and job.analysis is not None
     lon, lat = job.aoi_center
     tile = Tile.containing(lon, lat)
-    height = float(job.answers.get(TEST_CUBE_QUESTION, "20"))
+    scene = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "id": it.id,
+                "geometry": it.geometry,
+                "properties": {
+                    "kind": it.kind,
+                    "category": it.category,
+                    "name": it.name,
+                    "source": it.source,
+                    "osm": it.osm_ref,
+                    **it.attrs.model_dump(exclude_none=True),
+                },
+            }
+            for it in job.analysis.items
+            if it.included
+        ],
+    }
+    (job_dir / "scene.geojson").write_text(
+        json.dumps(scene, ensure_ascii=False, indent=1), encoding="utf-8"
+    )
+    items = [
+        PlanItem(
+            kind="confirmed", label_key=f"{key.split(':')[0]}.{key.split(':')[1]}", count=count
+        )
+        for key, count in sorted(included_counts(job).items())
+    ]
+    items += [
+        PlanItem(
+            kind="test_object",
+            label_key="plan.test_object",
+            count=1,
+            params={"height_m": TEST_CUBE_HEIGHT_M},
+        ),
+        PlanItem(kind="test_surface", label_key="plan.test_surface", count=2),
+    ]
     return BuildPlan(
         package_name=job.brief.package_name,
         tile=tile.dsf_relative_path,
         center=(lon, lat),
         test_scenery=True,
-        cube_height_m=height,
-        items=[
-            PlanItem(
-                kind="test_object",
-                label_key="plan.test_object",
-                count=1,
-                params={"height_m": height},
-            ),
-            PlanItem(kind="test_surface", label_key="plan.test_surface", count=2),
-        ],
+        cube_height_m=TEST_CUBE_HEIGHT_M,
+        items=items,
         files=sorted(
             [
                 tile.dsf_relative_path,
@@ -91,13 +248,17 @@ def make_plan(job: Job) -> BuildPlan:
     )
 
 
-def _readme(plan: BuildPlan) -> str:
-    return (
+def _readme(plan: BuildPlan, job: Job) -> str:
+    text = (
         f"{plan.package_name}\n"
         f"Created with {APP_NAME} {__version__} on {datetime.now():%Y-%m-%d}.\n\n"
         "Map data (c) OpenStreetMap contributors, available under the Open Database "
         "License (ODbL): https://www.openstreetmap.org/copyright\n"
     )
+    info = job.analysis.imagery if job.analysis else None
+    if info is not None:
+        text += f"Aerial imagery: {info.attribution} ({info.license})\n"
+    return text
 
 
 def build_package(job: Job, job_dir: Path, exe: Path, log: EventLog) -> BuildResult:
@@ -112,8 +273,8 @@ def build_package(job: Job, job_dir: Path, exe: Path, log: EventLog) -> BuildRes
 
     log.publish_threadsafe(type="progress", stage="write", progress=0.0, key="stage.write")
     lon, lat = plan.center
-    text_file = build_test_scenery(package, lon, lat, plan.cube_height_m or 20.0)
-    (package / "README.txt").write_text(_readme(plan), encoding="utf-8")
+    text_file = build_test_scenery(package, lon, lat, plan.cube_height_m or TEST_CUBE_HEIGHT_M)
+    (package / "README.txt").write_text(_readme(plan, job), encoding="utf-8")
 
     log.publish_threadsafe(type="progress", stage="compile", progress=0.0, key="stage.compile")
     version = dsftool.version(exe)

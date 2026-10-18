@@ -21,7 +21,7 @@ from fastapi import (
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 from xpsb import __version__
@@ -29,6 +29,7 @@ from xpsb.geo import GeoJsonPolygon
 from xpsb.jobs.manager import JobConflict, JobManager, JobNotFound
 from xpsb.jobs.models import Brief, GateId, JobView
 from xpsb.paths import AppPaths
+from xpsb.scene import ItemPatch, NewItem
 from xpsb.secrets import ANTHROPIC_ACCOUNT, SecretStore, normalize_api_key
 from xpsb.settings import Settings, SettingsStore
 from xpsb.xplane import dsftool
@@ -107,7 +108,7 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=TAURI_ORIGINS + (DEV_ORIGINS if dev_cors else []),
-        allow_methods=["GET", "POST", "PUT", "DELETE"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
         allow_headers=["Authorization", "Content-Type"],
     )
 
@@ -213,6 +214,33 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
     async def post_answers(job_id: str, answers: Annotated[dict[str, str], Body()]) -> JobView:
         ctx.jobs.set_answers(job_id, answers)
         return ctx.jobs.view(job_id)
+
+    @app.post("/api/jobs/{job_id}/items", dependencies=auth, status_code=201)
+    async def add_item(job_id: str, body: NewItem) -> JobView:
+        ctx.jobs.add_item(job_id, body)
+        return ctx.jobs.view(job_id)
+
+    @app.patch("/api/jobs/{job_id}/items/{item_id:path}", dependencies=auth)
+    async def update_item(job_id: str, item_id: str, body: ItemPatch) -> JobView:
+        ctx.jobs.update_item(job_id, item_id, body)
+        return ctx.jobs.view(job_id)
+
+    @app.delete("/api/jobs/{job_id}/items/{item_id:path}", dependencies=auth)
+    async def delete_item(job_id: str, item_id: str) -> JobView:
+        ctx.jobs.delete_item(job_id, item_id)
+        return ctx.jobs.view(job_id)
+
+    @app.get(
+        "/api/jobs/{job_id}/imagery",
+        dependencies=auth,
+        response_class=FileResponse,
+        responses={200: {"content": {"image/jpeg": {}}}},
+    )
+    async def job_imagery(job_id: str):
+        path = ctx.jobs.imagery_file(job_id)
+        if path is None:
+            raise HTTPException(404, detail={"key": "error.no_imagery"})
+        return FileResponse(path, media_type="image/jpeg")
 
     @app.post("/api/jobs/{job_id}/gates/{gate}/approve", dependencies=auth)
     async def approve(job_id: str, gate: GateId, body: Approve) -> JobView:
