@@ -39,7 +39,17 @@ export function Wizard() {
   const gate = job?.pending_gate ?? null;
   const running = job ? RUNNING.includes(job.state) : false;
   const canEditBrief = job && !running && !editingBrief && !["draft", "installed", "cancelled"].includes(job.state);
-  const openGate = () => setGateOpen(true);
+  // Always show the current summary: settings may have changed since the job was loaded.
+  const openGate = async () => {
+    if (job) {
+      try {
+        setJob(await api.getJob(job.id));
+      } catch {
+        /* the dialog still shows the last known gate; approving re-validates it */
+      }
+    }
+    setGateOpen(true);
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -47,7 +57,7 @@ export function Wizard() {
         {STEP_KEYS.map((key, i) => (
           <li
             key={key}
-            className={`flex-1 border-b-2 px-1 py-2 text-center text-xs font-medium ${
+            className={`flex flex-1 flex-col items-center gap-1 border-b-2 px-0.5 py-2 text-center ${
               i === step
                 ? "border-accent-600 text-accent-700 dark:text-accent-100"
                 : i < step
@@ -55,10 +65,14 @@ export function Wizard() {
                   : "border-transparent text-zinc-400 dark:text-zinc-600"
             }`}
           >
-            <span className="mr-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-zinc-200 text-[10px] dark:bg-zinc-800">
+            <span
+              className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold ${
+                i === step ? "bg-accent-600 text-white" : "bg-zinc-200 dark:bg-zinc-800"
+              }`}
+            >
               {i < step ? "✓" : i + 1}
             </span>
-            <span className="hidden xl:inline">{t(key)}</span>
+            <span className="text-[11px] leading-tight font-medium">{t(key)}</span>
           </li>
         ))}
       </ol>

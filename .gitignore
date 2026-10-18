@@ -34,3 +34,4 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+tests/e2e/shots/

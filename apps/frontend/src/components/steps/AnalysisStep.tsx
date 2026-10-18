@@ -9,6 +9,8 @@ export function AnalysisStep({ onConfirm }: { onConfirm: () => void }) {
   const { t } = useT();
   const { job, setJob } = useApp();
   const [error, setError] = useState<string | null>(null);
+  // Shown immediately; the server copy follows a moment later.
+  const [picked, setPicked] = useState<Record<string, string>>({});
   if (!job) return null;
 
   if (job.state === "analyzing") {
@@ -25,9 +27,11 @@ export function AnalysisStep({ onConfirm }: { onConfirm: () => void }) {
 
   const answer = async (questionId: string, value: string) => {
     setError(null);
+    setPicked((p) => ({ ...p, [questionId]: value }));
     try {
       setJob(await api.postAnswers(job.id, { [questionId]: value }));
     } catch (e) {
+      setPicked(({ [questionId]: _rejected, ...rest }) => rest);
       setError(e instanceof ApiError ? t(e.key, e.params) : String(e));
     }
   };
@@ -55,7 +59,7 @@ export function AnalysisStep({ onConfirm }: { onConfirm: () => void }) {
                   <input
                     type="radio"
                     name={q.id}
-                    checked={job.answers?.[q.id] === o.value}
+                    checked={(picked[q.id] ?? job.answers?.[q.id]) === o.value}
                     onChange={() => answer(q.id, o.value)}
                     data-testid={`answer-${q.id}-${o.value}`}
                   />

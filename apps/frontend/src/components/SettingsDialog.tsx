@@ -40,8 +40,15 @@ export function SettingsDialog() {
   };
 
   const detect = () => run(async () => setCandidates(await api.detectXPlane()));
-  const checkXPlane = () =>
-    run(async () => setXplaneCheck(draft.xplane_path ? await api.checkXPlane(draft.xplane_path) : null));
+  // Runs on blur too, so it must not lock the buttons: otherwise a click on
+  // "Save" right after typing would land on a disabled button and get lost.
+  const checkXPlane = async () => {
+    try {
+      setXplaneCheck(draft.xplane_path ? await api.checkXPlane(draft.xplane_path) : null);
+    } catch {
+      setXplaneCheck(null);
+    }
+  };
   const checkDsfTool = () =>
     run(async () => {
       await api.checkDsfTool(draft.dsftool_path ?? "");
@@ -91,10 +98,16 @@ export function SettingsDialog() {
                 {t("common.check")}
               </Button>
             </div>
-            {xplaneCheck && <CheckBadge check={xplaneCheck} />}
-            <Button onClick={detect} disabled={busy}>
-              {t("settings.xplane_detect")}
-            </Button>
+            {xplaneCheck && (
+              <div>
+                <CheckBadge check={xplaneCheck} />
+              </div>
+            )}
+            <div>
+              <Button onClick={detect} disabled={busy}>
+                {t("settings.xplane_detect")}
+              </Button>
+            </div>
             {candidates && candidates.length === 0 && (
               <p className="text-xs text-zinc-500">{t("settings.xplane_none_found")}</p>
             )}
