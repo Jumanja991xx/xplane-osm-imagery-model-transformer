@@ -44,12 +44,24 @@ LOAD_CENTER <lat> <lon> <größe_m> <textur_px>
 TEXTURE_NOWRAP <tex>     # Ortho; für Kachel-Material: TEXTURE <tex>
 SCALE <s_m> <t_m>
 NO_ALPHA                 # optional
-LAYER_GROUP beaches 1    # WED-Standard für Orthos
+LAYER_GROUP beaches 1    # WED-Standard für Orthos – aber: Spike A zeigte, dass
+                         # vorhandene Flächen darüber liegen können → höhere Gruppe nötig
 ```
 
 - WED begrenzt Ortho-Texturen auf **2048 px** (Zweierpotenzen).
 - DDS: BC1 ohne Alpha, BC3 bei teilweiser Transparenz, mit Mipmaps.
 - `scenery.txt` wird von WED **nicht** geschrieben → nicht nötig.
+
+### Zeichenebenen (LAYER_GROUP), von unten nach oben
+
+Quelle: `src/WEDMap/WED_PreviewLayer.cpp` (`kGroupNames`)
+
+`terrain` → `beaches` → `unpaved_taxiways`/`unpaved_runways` → `shoulders` → `taxiways`
+→ `runways` → `markings` → `airports` → `footprints` → `roads` → `objects` → `light_objects`
+
+Unsere Flächen müssen über vorhandenen Flugplatz-/Szenerieflächen liegen (Spike A):
+Testflächen nutzen `airports`. Für echte Flächen legen wir die Reihenfolge in M3 fest
+(z. B. Rasen < Asphalt < Markierungen innerhalb einer Gruppe über Offsets).
 
 ## Facades (`.fac`)
 
@@ -68,4 +80,7 @@ LAYER_GROUP beaches 1    # WED-Standard für Orthos
 ## OBJ8
 
 - Achsen: +X = Ost, +Y = oben, +Z = Süd.
+- **Dreiecke im Uhrzeigersinn** (vom Betrachter aus) sind Vorderseiten – in X-Plane 12
+  verifiziert (Spike A, 18.10.2026). Gegen den Uhrzeigersinn zeigte das Innere des Würfels.
+- Textur-Orientierung (t = 0 unten) bestätigt: Schrift stand richtig herum.
 - Noch zu prüfen (M3): PBR-/Normal-Map-Attribute für X-Plane 12, Alpha-Cutout.

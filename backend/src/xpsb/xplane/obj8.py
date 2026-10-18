@@ -39,9 +39,9 @@ class Obj8:
         base = len(self.vertices)
         for (x, y, z), (s, t) in zip(corners, uv, strict=True):
             self.vertices.append(Vertex(x, y, z, *normal, s, t))
-        # Front faces are counter-clockwise (OpenGL default; Laminar's ObjView enables
-        # GL_CULL_FACE without changing glFrontFace). Confirmed visually in Spike A.
-        self.indices += [base, base + 1, base + 2, base, base + 2, base + 3]
+        # X-Plane draws faces whose corners run CLOCKWISE as seen by the viewer.
+        # Verified in X-Plane 12 (Spike A): counter-clockwise showed the inside of the cube.
+        self.indices += [base, base + 2, base + 1, base, base + 3, base + 2]
 
     def to_text(self) -> str:
         if not self.vertices or not self.indices:

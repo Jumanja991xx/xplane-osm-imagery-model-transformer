@@ -24,6 +24,9 @@ ORIENT_SIZE_M = 60.0
 CHECKER_SIZE_M = 100.0
 CUBE_SIZE_M = 20.0
 SKIRT_M = 2.0  # cube reaches below ground so it never floats on slopes
+# Above airport pavement and other draped surfaces: in Spike A an existing oval
+# surface hid the test polygons while they were in 'beaches'.
+TEST_LAYER_GROUP = "airports"
 
 
 @dataclass(frozen=True)
@@ -139,6 +142,7 @@ def build_test_scenery(package_root: Path, lon: float, lat: float, cube_height_m
             wrap=False,
             scale_s_m=ORIENT_SIZE_M,
             scale_t_m=ORIENT_SIZE_M,
+            layer_group=TEST_LAYER_GROUP,
             load_center=LoadCenter(orient_center[1], orient_center[0], ORIENT_SIZE_M, 512),
         ).to_text(),
         encoding="ascii",
@@ -150,6 +154,7 @@ def build_test_scenery(package_root: Path, lon: float, lat: float, cube_height_m
             wrap=True,
             scale_s_m=20.0,
             scale_t_m=20.0,
+            layer_group=TEST_LAYER_GROUP,
             layer_offset=2,
         ).to_text(),
         encoding="ascii",
