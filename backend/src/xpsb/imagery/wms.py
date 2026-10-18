@@ -191,11 +191,9 @@ def _fixture_map(fixtures: Path, b: Bounds, w: int, h: int) -> Image.Image:
     )
 
 
-def fetch_area_image(
-    source: ImagerySource, area: Bounds, out_dir: Path, progress=None
-) -> ImageryInfo:
-    layer = choose_layer(source, get_capabilities(source))
-    b = area.grow_m(MARGIN_M)
+def _wms_canvas(
+    source: ImagerySource, layer: str, b: Bounds, progress=None
+) -> tuple[Image.Image, float]:
     w_m, h_m = b.size_m()
     gsd = max(source.max_gsd_m, max(w_m, h_m) / MAX_SIDE_PX)
     width, height = max(1, round(w_m / gsd)), max(1, round(h_m / gsd))
@@ -217,6 +215,22 @@ def fetch_area_image(
             canvas.paste(_get_map(source, layer, tile_b, tw, th), (x0, y0))
             if progress:
                 progress((j * nx + i + 1) / (nx * ny))
+    return canvas, gsd
+
+
+def fetch_area_image(
+    source: ImagerySource, area: Bounds, out_dir: Path, progress=None
+) -> ImageryInfo:
+    b = area.grow_m(MARGIN_M)
+    if source.kind == "xyz":
+        from xpsb.imagery import xyz
+
+        canvas, gsd = xyz.fetch_mosaic(source, b, progress)
+        layer = "xyz"
+    else:
+        layer = choose_layer(source, get_capabilities(source))
+        canvas, gsd = _wms_canvas(source, layer, b, progress)
+    width, height = canvas.size
 
     out_dir.mkdir(parents=True, exist_ok=True)
     canvas.save(out_dir / "aoi.jpg", quality=90)

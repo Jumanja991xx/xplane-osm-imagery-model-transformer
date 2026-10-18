@@ -38,17 +38,26 @@ class FakeAi:
         return self
 
     def __call__(
-        self, *, model: str, system: str, content: list[dict], output_format
+        self, *, model: str, system: str, content: list[dict], output_format, effort="low"
     ) -> AiResponse:
         self.calls.append(
-            {"model": model, "system": system, "content": content, "format": output_format.__name__}
+            {
+                "model": model,
+                "system": system,
+                "content": content,
+                "format": output_format.__name__,
+                "effort": effort,
+            }
         )
         if self.fail_auth:
             raise AiAuthError("AuthenticationError")
         if self.fail_call:
             raise AiCallError(self.fail_call)
         if output_format is AiFindings:
-            return self._search(content[0]["text"], model)
+            tile_text = next(
+                b["text"] for b in content if b["type"] == "text" and " px," in b["text"]
+            )
+            return self._search(tile_text, model)
         results = []
         for block in content:
             if block["type"] != "text":

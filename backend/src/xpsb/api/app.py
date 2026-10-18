@@ -22,11 +22,11 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from xpsb import __version__
 from xpsb.geo import GeoJsonPolygon
-from xpsb.jobs.manager import JobConflict, JobManager, JobNotFound
+from xpsb.jobs.manager import JobConflict, JobManager, JobNotFound, SimilarEstimate
 from xpsb.jobs.models import Brief, GateId, JobView
 from xpsb.paths import AppPaths
 from xpsb.scene import ItemPatch, NewItem
@@ -88,6 +88,11 @@ class Approve(BaseModel):
 
 class PathBody(BaseModel):
     path: str
+
+
+class SimilarBody(BaseModel):
+    # The estimate the user confirmed; the search never spends more than this.
+    max_usd: float = Field(gt=0, le=1000)
 
 
 class ApiKeyBody(BaseModel):
@@ -218,6 +223,15 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
     @app.post("/api/jobs/{job_id}/items", dependencies=auth, status_code=201)
     async def add_item(job_id: str, body: NewItem) -> JobView:
         ctx.jobs.add_item(job_id, body)
+        return ctx.jobs.view(job_id)
+
+    @app.get("/api/jobs/{job_id}/similar/{item_id:path}", dependencies=auth)
+    async def similar_estimate(job_id: str, item_id: str) -> SimilarEstimate:
+        return ctx.jobs.similar_estimate(job_id, item_id)
+
+    @app.post("/api/jobs/{job_id}/similar/{item_id:path}", dependencies=auth)
+    async def find_similar(job_id: str, item_id: str, body: SimilarBody) -> JobView:
+        await ctx.jobs.find_similar(job_id, item_id, body.max_usd)
         return ctx.jobs.view(job_id)
 
     @app.patch("/api/jobs/{job_id}/items/{item_id:path}", dependencies=auth)

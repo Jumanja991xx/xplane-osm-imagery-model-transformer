@@ -3,13 +3,18 @@ themselves and confirms they hold the rights."""
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
 class ImagerySource(BaseModel):
     id: str
     name: str
-    url: str  # WMS endpoint (GetCapabilities is read to pick the layer)
+    kind: Literal["wms", "xyz"] = "wms"
+    # WMS: endpoint (GetCapabilities is read to pick the layer).
+    # XYZ: tile template with {z}, {x}, {y} (or {-y} for TMS).
+    url: str
     layer: str | None = None  # preferred layer; falls back to the first image layer
     attribution: str
     license: str
@@ -17,6 +22,7 @@ class ImagerySource(BaseModel):
     coverage: tuple[float, float, float, float] | None = None
     max_gsd_m: float = Field(default=0.4, gt=0)  # finest ground resolution worth requesting
     builtin: bool = True
+    max_zoom: int = Field(default=19, ge=1, le=23)  # XYZ only
 
 
 BAYERN_DOP40 = ImagerySource(
@@ -44,15 +50,20 @@ NRW_DOP = ImagerySource(
 BUILTIN_SOURCES = [BAYERN_DOP40, NRW_DOP]
 
 
-def custom_source(url: str, layer: str | None, attribution: str) -> ImagerySource:
+def custom_source(
+    url: str, layer: str | None, attribution: str, kind: str = "wms", max_zoom: int = 19
+) -> ImagerySource:
     return ImagerySource(
         id="custom",
-        name="Eigene WMS-Quelle",
+        name="Eigene XYZ-Quelle" if kind == "xyz" else "Eigene WMS-Quelle",
+        kind=kind,  # type: ignore[arg-type]
         url=url,
         layer=layer or None,
         attribution=attribution or "Eigene Quelle",
         license="vom Nutzer bestätigt",
         builtin=False,
+        max_zoom=max_zoom,
+        max_gsd_m=0.15,
     )
 
 
@@ -69,10 +80,17 @@ def resolve_source(settings, lon: float, lat: float) -> tuple[ImagerySource | No
     if choice == "none":
         return None, "imagery.off"
     if choice == "custom":
-        if not settings.custom_url.startswith(("https://", "http://")):
+        url = settings.custom_url
+        if not url.startswith(("https://", "http://")):
+            return None, "imagery.custom_missing"
+        if settings.custom_type == "xyz" and not all(k in url for k in ("{z}", "{x}")):
             return None, "imagery.custom_missing"
         return custom_source(
-            settings.custom_url, settings.custom_layer, settings.custom_attribution
+            url,
+            settings.custom_layer,
+            settings.custom_attribution,
+            settings.custom_type,
+            settings.custom_max_zoom,
         ), None
     candidates = (
         BUILTIN_SOURCES if choice == "auto" else [s for s in BUILTIN_SOURCES if s.id == choice]

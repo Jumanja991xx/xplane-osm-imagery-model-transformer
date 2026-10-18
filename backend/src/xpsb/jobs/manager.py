@@ -9,7 +9,12 @@ import uuid
 from collections.abc import Callable
 from pathlib import Path
 
+from PIL import Image
+from pydantic import BaseModel
+from shapely.geometry import Polygon
+
 from xpsb.ai import analyze as ai
+from xpsb.ai import detect
 from xpsb.ai.usage import UsageLedger
 from xpsb.geo import MAX_AOI_AREA_KM2, GeoJsonPolygon, ring_area_m2, ring_centroid
 from xpsb.jobs import pipeline
@@ -17,6 +22,7 @@ from xpsb.jobs.events import EventLog
 from xpsb.jobs.gates import GateContext, compute_gate, install_target
 from xpsb.jobs.models import (
     RUNNING_STATES,
+    AiRunInfo,
     Approval,
     Brief,
     GateId,
@@ -49,6 +55,15 @@ class JobNotFound(Exception):
     pass
 
 
+class SimilarEstimate(BaseModel):
+    """What "find similar" would do; shown to the user before anything is sent."""
+
+    model: str
+    tiles: int
+    estimate_usd: float
+    budget_usd: float  # what is left of the job and monthly limits
+
+
 # On failure a job falls back to the last stable state so the user can fix the
 # cause (e.g. set the DSFTool path) and approve again.
 ROLLBACK = {
@@ -74,6 +89,7 @@ class JobManager:
         self._resources_dir = resources_dir
         self._xplane_running = xplane_running
         self._ai_transport_factory = ai_transport_factory
+        self._busy: set[str] = set()
         self.ledger = UsageLedger(paths.root / "ai_usage.json")
         self._jobs: dict[str, Job] = {}
         self._logs: dict[str, EventLog] = {}
@@ -276,6 +292,104 @@ class JobManager:
             return None
         path = self.job_dir(job_id) / "imagery" / job.analysis.imagery.file
         return path if path.exists() else None
+
+    # ---- "find similar" (AI search with an example chosen by the user) ----------
+
+    def _similar_ready(self, job_id: str, item_id: str) -> tuple[Job, SceneItem, Path]:
+        job = self._analyzed(job_id)
+        item = self._item(job, item_id)
+        assert job.brief is not None and job.analysis is not None
+        if not job.brief.use_ai:
+            raise JobConflict("error.ai_off")
+        if not self._secrets.get(ANTHROPIC_ACCOUNT):
+            raise JobConflict("error.ai_no_key")
+        image = self.imagery_file(job_id)
+        if image is None or job.analysis.imagery is None:
+            raise JobConflict("error.no_imagery")
+        if item.kind != "object":
+            raise JobConflict("error.similar_objects_only")
+        return job, item, image
+
+    def _similar_budget(self, job: Job) -> float:
+        assert job.brief is not None and job.analysis is not None
+        settings = self._settings.load()
+        spent = job.analysis.ai.cost_usd if job.analysis.ai else 0.0
+        return max(
+            0.0,
+            min(
+                job.brief.ai_cost_limit_usd - spent,
+                settings.ai.monthly_limit_usd - self.ledger.month_spent(),
+            ),
+        )
+
+    def similar_estimate(self, job_id: str, item_id: str) -> SimilarEstimate:
+        job, _, _ = self._similar_ready(job_id, item_id)
+        assert job.brief is not None and job.analysis is not None
+        tiles = len(detect.plan_tiles(job.analysis.imagery))
+        return SimilarEstimate(
+            model=job.brief.ai_model,
+            tiles=tiles,
+            estimate_usd=round(detect.similar_cost_estimate(tiles, job.brief.ai_model), 3),
+            budget_usd=round(self._similar_budget(job), 4),
+        )
+
+    async def find_similar(self, job_id: str, item_id: str, max_usd: float) -> Job:
+        """Runs only after the user confirmed the estimate (max_usd is what they saw)."""
+        job, example, image_path = self._similar_ready(job_id, item_id)
+        if job_id in self._busy:
+            raise JobConflict("error.job_running")
+        assert job.brief is not None and job.analysis is not None
+        budget = min(max_usd, self._similar_budget(job))
+        if budget <= 0:
+            raise JobConflict("error.ai_budget_exhausted")
+        self._busy.add(job_id)
+        try:
+            with Image.open(image_path) as img:
+                image = img.convert("RGB")
+            cfg = ai.AiRun(
+                model=job.brief.ai_model,
+                language=self._settings.load().language,
+                notes=job.brief.notes,
+                budget_usd=budget,
+                transport=self._ai_transport_factory(self._secrets.get(ANTHROPIC_ACCOUNT)),
+                on_cost=self.ledger.add,
+            )
+            snapshot = [it.model_copy(deep=True) for it in job.analysis.items]
+            found, info = await asyncio.to_thread(
+                detect.find_similar,
+                snapshot,
+                example,
+                Polygon(job.aoi.ring),
+                image,
+                job.analysis.imagery,
+                cfg,
+            )
+        finally:
+            self._busy.discard(job_id)
+
+        analysis = job.analysis
+        used = {it.id for it in analysis.items}
+        n = 1
+        for item in found:
+            while f"ai/{n}" in used:
+                n += 1
+            item.id = f"ai/{n}"
+            used.add(item.id)
+        analysis.items.extend(found)
+        run = analysis.ai or AiRunInfo(model=job.brief.ai_model)
+        run.cost_usd = round(run.cost_usd + info.cost_usd, 6)
+        run.tiles_searched += info.tiles_searched
+        run.proposals += len(found)
+        for m in info.models_used:
+            if m not in run.models_used:
+                run.models_used.append(m)
+        analysis.ai = run
+        self._save(job)
+        if info.error_key:
+            raise JobConflict(
+                info.error_key.replace("analysis.", "error."), detail=info.error_detail or ""
+            )
+        return job
 
     def cancel(self, job_id: str) -> Job:
         job = self.get(job_id)

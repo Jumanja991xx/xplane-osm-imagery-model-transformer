@@ -59,7 +59,17 @@ def test_search_finds_unmapped_grandstand_as_proposal(client, fake_ai):
     job = analyze(client, job)
     a = job["analysis"]
     searches = [c for c in fake_ai.calls if c["format"] == "AiFindings"]
-    assert len(searches) == a["ai"]["tiles_searched"] == gate["gate.a.ai_detect"]["params"]["tiles"]
+    params = gate["gate.a.ai_detect"]["params"]
+    assert (
+        len(searches)
+        == a["ai"]["tiles_searched"]
+        == params["tiles"] * params["passes"]
+        == (params["tiles"] * detect.PASSES)
+    )
+    # Second look carries the instruction; the search thinks a bit more than the rating.
+    assert any(detect.SECOND_PASS in c["content"][0]["text"] for c in searches)
+    assert {c["effort"] for c in searches} == {detect.SEARCH_EFFORT}
+    assert "race/running track (sport: speedway)" in searches[0]["system"]
     with Image.open(
         __import__("io").BytesIO(
             __import__("base64").b64decode(searches[0]["content"][1]["source"]["data"])
@@ -131,3 +141,52 @@ def test_search_off_sends_no_tiles(client, fake_ai):
     assert "gate.a.ai_detect" not in keys(job["pending_gate"]["items"])
     analyze(client, job)
     assert not [c for c in fake_ai.calls if c["format"] == "AiFindings"]
+
+
+def test_find_similar_asks_with_estimate_first(client, fake_ai, app_ctx):
+    job = analyze(client, setup(client))  # no object search during the analysis
+    assert not [i for i in job["analysis"]["items"] if i["source"] == "ai"]
+    jid = job["id"]
+    spent_before = job["analysis"]["ai"]["cost_usd"]
+
+    calls_before = len(fake_ai.calls)
+    est = client.get(f"/api/jobs/{jid}/similar/way/103", headers=AUTH)
+    assert est.status_code == 200, est.text
+    est = est.json()
+    assert est["tiles"] >= 1 and 0 < est["estimate_usd"] <= est["budget_usd"]
+    assert len(fake_ai.calls) == calls_before  # the estimate itself sends nothing
+
+    r = client.post(
+        f"/api/jobs/{jid}/similar/way/103", json={"max_usd": est["estimate_usd"]}, headers=AUTH
+    )
+    assert r.status_code == 200, r.text
+    job = r.json()
+    searches = [c for c in fake_ai.calls[calls_before:] if c["format"] == "AiFindings"]
+    assert len(searches) == est["tiles"]
+    assert searches[0]["content"][0]["text"] == "EXAMPLE:"
+    assert 'category "grandstands"' in searches[0]["system"]
+    found = [i for i in job["analysis"]["items"] if i["source"] == "ai"]
+    assert len(found) == 1 and found[0]["proposal"] and found[0]["category"] == "grandstands"
+    assert iou(shape(found[0]["geometry"]), true_grandstand_lonlat()) > 0.85
+    assert job["analysis"]["ai"]["cost_usd"] > spent_before
+    assert job["analysis"]["ai"]["proposals"] == 1
+
+    # Running it again finds nothing new (already proposed).
+    job = client.post(f"/api/jobs/{jid}/similar/way/103", json={"max_usd": 1}, headers=AUTH).json()
+    assert len([i for i in job["analysis"]["items"] if i["source"] == "ai"]) == 1
+
+    # Only objects can serve as example.
+    r = client.get(f"/api/jobs/{jid}/similar/way/102", headers=AUTH)
+    assert r.status_code == 409 and r.json()["detail"]["key"] == "error.similar_objects_only"
+
+
+def test_bulk_accept_with_new_category(client):
+    job = analyze(client, setup(client, brief=DETECT))
+    jid = job["id"]
+    job = client.patch(
+        f"/api/jobs/{jid}/items/ai/1",
+        json={"proposal": False, "category": "canopies"},
+        headers=AUTH,
+    ).json()
+    item = next(i for i in job["analysis"]["items"] if i["id"] == "ai/1")
+    assert item["category"] == "canopies" and item["included"] and not item["proposal"]

@@ -99,7 +99,13 @@ class AiResponse:
 
 class AiTransport(Protocol):
     def __call__(
-        self, *, model: str, system: str, content: list[dict], output_format: type[BaseModel]
+        self,
+        *,
+        model: str,
+        system: str,
+        content: list[dict],
+        output_format: type[BaseModel],
+        effort: str = "low",
     ) -> AiResponse: ...
 
 
@@ -121,7 +127,13 @@ class AnthropicTransport:
         self._client = anthropic.Anthropic(api_key=api_key, max_retries=3, timeout=180)
 
     def __call__(
-        self, *, model: str, system: str, content: list[dict], output_format: type[BaseModel]
+        self,
+        *,
+        model: str,
+        system: str,
+        content: list[dict],
+        output_format: type[BaseModel],
+        effort: str = "low",
     ) -> AiResponse:
         a = self._anthropic
         try:
@@ -131,8 +143,8 @@ class AnthropicTransport:
                 system=system,
                 messages=[{"role": "user", "content": content}],
                 output_format=output_format,
-                # Low effort keeps thinking (and cost) small; Haiku runs without it.
-                **({} if "haiku" in model else {"output_config": {"effort": "low"}}),
+                # Effort steers thinking (and cost); Haiku runs without it.
+                **({} if "haiku" in model else {"output_config": {"effort": effort}}),
                 # If the model declines, the server retries on its default fallback
                 # model; the answer says which model replied and we tell the user.
                 fallbacks="default",

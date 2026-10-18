@@ -126,7 +126,10 @@ def _gate_a(job: Job, ctx: GateContext):
                         key="gate.a.ai_detect",
                         params={
                             "tiles": tiles,
-                            "estimate_usd": round(tiles * detect.estimate_tile_cost(b.ai_model), 3),
+                            "passes": detect.PASSES,
+                            "estimate_usd": round(
+                                tiles * detect.PASSES * detect.estimate_tile_cost(b.ai_model), 3
+                            ),
                         },
                     )
                 )

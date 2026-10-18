@@ -475,6 +475,110 @@
         }
       }
     },
+    "/api/jobs/{job_id}/similar/{item_id}": {
+      "get": {
+        "summary": "Similar Estimate",
+        "operationId": "similar_estimate_api_jobs__job_id__similar__item_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimilarEstimate"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Find Similar",
+        "operationId": "find_similar_api_jobs__job_id__similar__item_id__post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimilarBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobs/{job_id}/items/{item_id}": {
       "patch": {
         "summary": "Update Item",
@@ -1410,6 +1514,22 @@
             "title": "Source",
             "default": "auto"
           },
+          "custom_type": {
+            "type": "string",
+            "enum": [
+              "wms",
+              "xyz"
+            ],
+            "title": "Custom Type",
+            "default": "wms"
+          },
+          "custom_max_zoom": {
+            "type": "integer",
+            "maximum": 23.0,
+            "minimum": 10.0,
+            "title": "Custom Max Zoom",
+            "default": 19
+          },
           "custom_url": {
             "type": "string",
             "maxLength": 1000,
@@ -2317,6 +2437,50 @@
         },
         "type": "object",
         "title": "Settings"
+      },
+      "SimilarBody": {
+        "properties": {
+          "max_usd": {
+            "type": "number",
+            "maximum": 1000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Max Usd"
+          }
+        },
+        "type": "object",
+        "required": [
+          "max_usd"
+        ],
+        "title": "SimilarBody"
+      },
+      "SimilarEstimate": {
+        "properties": {
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "tiles": {
+            "type": "integer",
+            "title": "Tiles"
+          },
+          "estimate_usd": {
+            "type": "number",
+            "title": "Estimate Usd"
+          },
+          "budget_usd": {
+            "type": "number",
+            "title": "Budget Usd"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model",
+          "tiles",
+          "estimate_usd",
+          "budget_usd"
+        ],
+        "title": "SimilarEstimate",
+        "description": "What \"find similar\" would do; shown to the user before anything is sent."
       },
       "SurfaceMode": {
         "type": "string",

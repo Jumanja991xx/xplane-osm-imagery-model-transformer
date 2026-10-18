@@ -210,6 +210,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/jobs/{job_id}/similar/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Similar Estimate */
+        get: operations["similar_estimate_api_jobs__job_id__similar__item_id__get"];
+        put?: never;
+        /** Find Similar */
+        post: operations["find_similar_api_jobs__job_id__similar__item_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs/{job_id}/items/{item_id}": {
         parameters: {
             query?: never;
@@ -581,6 +599,17 @@ export interface components {
              */
             source: "auto" | "bayern_dop40" | "nrw_dop" | "custom" | "none";
             /**
+             * Custom Type
+             * @default wms
+             * @enum {string}
+             */
+            custom_type: "wms" | "xyz";
+            /**
+             * Custom Max Zoom
+             * @default 19
+             */
+            custom_max_zoom: number;
+            /**
              * Custom Url
              * @default
              */
@@ -878,6 +907,25 @@ export interface components {
              * @default false
              */
             update_check: boolean;
+        };
+        /** SimilarBody */
+        SimilarBody: {
+            /** Max Usd */
+            max_usd: number;
+        };
+        /**
+         * SimilarEstimate
+         * @description What "find similar" would do; shown to the user before anything is sent.
+         */
+        SimilarEstimate: {
+            /** Model */
+            model: string;
+            /** Tiles */
+            tiles: number;
+            /** Estimate Usd */
+            estimate_usd: number;
+            /** Budget Usd */
+            budget_usd: number;
         };
         /**
          * SurfaceMode
@@ -1323,6 +1371,74 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    similar_estimate_api_jobs__job_id__similar__item_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimilarEstimate"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    find_similar_api_jobs__job_id__similar__item_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SimilarBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

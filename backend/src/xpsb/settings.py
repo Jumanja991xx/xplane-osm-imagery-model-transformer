@@ -26,6 +26,8 @@ ImagerySourceChoice = Literal["auto", "bayern_dop40", "nrw_dop", "custom", "none
 class ImagerySettings(BaseModel):
     # "auto": the built-in open source that covers the area, if any.
     source: ImagerySourceChoice = "auto"
+    custom_type: Literal["wms", "xyz"] = "wms"
+    custom_max_zoom: int = Field(default=19, ge=10, le=23)  # XYZ only
     custom_url: str = Field(default="", max_length=1000)
     custom_layer: str = Field(default="", max_length=200)
     custom_attribution: str = Field(default="", max_length=300)
