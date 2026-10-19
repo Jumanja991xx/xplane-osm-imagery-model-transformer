@@ -233,3 +233,52 @@ def test_plan_generates_3d_preview_of_every_object(client, app_ctx):
     )
     gate = {i["key"] for i in job["pending_gate"]["items"]}
     assert {"plan.objects", "plan.surfaces"} <= gate
+
+
+def test_exclusions_under_objects_and_aerial_ground(client, app_ctx, dsftool_exe):
+    brief = {
+        **BRIEF,
+        "exclusions": ["facades", "objects"],
+        "surface_mode": "imagery",
+    }
+    settings = client.get("/api/settings", headers=AUTH).json()
+    imagery = {
+        "source": "custom",
+        "custom_url": "https://wms.example.test/dop",
+        "custom_attribution": "Test-Luftbild",
+        "custom_rights_confirmed": True,
+    }
+    client.put("/api/settings", json={**settings, "imagery": imagery}, headers=AUTH)
+    job = create(client)
+    job = client.put(f"/api/jobs/{job['id']}/brief", json=brief, headers=AUTH).json()
+    approve(client, job, "A")
+    job = wait_for_state(client, job["id"], {"analyzed"})
+    assert job["analysis"]["imagery"] is not None
+    job = approve(client, job, "B").json()
+    plan = job["plan"]
+    built = sum(1 for o in plan["objects"] if o["status"] == "ok")
+    assert built and plan["exclusion_rects"] == built
+    keys = {i["key"] for i in job["pending_gate"]["items"]}
+    assert {"gate.c.exclude_objects", "gate.c.ortho_in_package"} <= keys
+    assert "gate.c.no_exclusions" not in keys
+    assert "polygons/xpsb_ortho.pol" in plan["files"]
+
+    approve(client, job, "C")
+    job = wait_for_state(client, job["id"], {"built", "planned"})
+    assert job["state"] == "built", job["error"]
+    package = Path(job["build"]["package_dir"])
+    text = (package.parent / f"{package.name}.dsf.txt").read_text()
+    # One small rectangle per new object, not the whole area.
+    assert text.count("PROPERTY sim/exclude_fac ") == built
+    assert text.count("PROPERTY sim/exclude_obj ") == built
+    assert "BEGIN_POLYGON 0 65535 4" in text
+    assert "TEXTURE_NOWRAP xpsb_ortho.png" in (package / "polygons/xpsb_ortho.pol").read_text()
+    roundtrip = (package.parent / "roundtrip.txt").read_text()
+    assert roundtrip.count("sim/exclude_fac") == built
+
+
+def test_no_exclusions_warns_at_gate_c(client):
+    job = to_analyzed(client)
+    job = approve(client, job, "B").json()
+    keys = {i["key"] for i in job["pending_gate"]["items"]}
+    assert "gate.c.no_exclusions" in keys

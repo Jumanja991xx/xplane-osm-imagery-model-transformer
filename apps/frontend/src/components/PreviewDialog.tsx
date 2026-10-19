@@ -88,7 +88,8 @@ export function PreviewDialog({ jobId, onClose }: { jobId: string; onClose: () =
           ground.receiveShadow = true;
           scene.add(ground);
         }
-        for (const s of d.surfaces) {
+        // With the aerial image as ground texture the photo already is the surface.
+        for (const s of d.imagery && d.surface_mode === "imagery" ? [] : d.surfaces) {
           const shape = new THREE.Shape(s.rings[0].map(([x, y]) => new THREE.Vector2(x, y)));
           shape.holes = s.rings.slice(1).map((r) => new THREE.Path(r.map(([x, y]) => new THREE.Vector2(x, y))));
           const mesh = new THREE.Mesh(

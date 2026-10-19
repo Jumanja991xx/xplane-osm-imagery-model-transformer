@@ -1,12 +1,15 @@
+import { useState } from "react";
 import { api } from "../../api/client";
 import { useT } from "../../i18n";
 import { useApp } from "../../store";
+import { PreviewDialog } from "../PreviewDialog";
 import { ProgressList } from "../ProgressList";
 import { Alert, Button } from "../ui";
 
 export function InstallStep({ onInstall }: { onInstall: () => void }) {
   const { t } = useT();
   const { job, reset, setJob } = useApp();
+  const [previewOpen, setPreviewOpen] = useState(false);
   if (!job) return null;
   const backToList = async () => setJob(await api.reopen(job.id, "analyzed"));
   const back = job.analysis && (
@@ -36,9 +39,19 @@ export function InstallStep({ onInstall }: { onInstall: () => void }) {
     );
   }
 
+  const previewButton = job.plan && !job.plan.test_scenery && (
+    <>
+      {previewOpen && <PreviewDialog jobId={job.id} onClose={() => setPreviewOpen(false)} />}
+      <Button onClick={() => setPreviewOpen(true)} data-testid="result-preview">
+        🧊 {t("install.preview")}
+      </Button>
+    </>
+  );
+
   if (job.state === "installed" && job.install) {
     return (
       <div className="space-y-3" data-testid="install-done">
+        {previewButton}
         <Alert kind="success">{t("install.done", { path: job.install.target_dir })}</Alert>
         {job.install.backup_dir && (
           <p className="text-xs break-all text-zinc-600 dark:text-zinc-300">
@@ -58,6 +71,7 @@ export function InstallStep({ onInstall }: { onInstall: () => void }) {
   return (
     <div className="space-y-3">
       <p className="text-sm">{t("install.intro")}</p>
+      {previewButton}
       {job.build && <code className="block text-xs break-all text-zinc-600 dark:text-zinc-300">{job.build.package_dir}</code>}
       <div className="flex justify-end gap-2">
         {back}

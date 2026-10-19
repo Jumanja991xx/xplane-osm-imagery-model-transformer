@@ -223,6 +223,21 @@ def _gate_c(job: Job, ctx: GateContext):
         for i in p.items
         if i.kind != "confirmed"
     ]
+    ok = sum(1 for o in p.objects if o.status == "ok")
+    if p.exclusions and (p.exclusion_rects or p.exclusion_scope == "area"):
+        items += [
+            GateItem(
+                kind="action",
+                key=f"gate.c.exclude_{p.exclusion_scope}",
+                params={"label": f"exclusion.{kind}", "count": p.exclusion_rects},
+            )
+            for kind in p.exclusions
+        ]
+    elif ok and not p.test_scenery:
+        # The usual surprise: simHeaven/autogen houses stay inside the new objects.
+        items.append(GateItem(kind="warning", key="gate.c.no_exclusions"))
+    if p.surface_mode == "imagery" and p.surfaces:
+        items.append(GateItem(kind="info", key="gate.c.ortho_in_package"))
     failed = [o for o in p.objects if o.status == "error"]
     skipped = [o for o in p.objects if o.status == "skipped"]
     if failed:

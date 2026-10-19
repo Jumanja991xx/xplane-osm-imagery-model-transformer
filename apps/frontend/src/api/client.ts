@@ -176,6 +176,7 @@ export interface PreviewData {
   objects: PreviewObject[];
   surfaces: { category: string; rings: [number, number][][] }[];
   imagery: { sw: [number, number]; ne: [number, number] } | null;
+  surface_mode?: string;
 }
 
 export interface PreviewMesh {

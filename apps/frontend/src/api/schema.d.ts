@@ -490,6 +490,8 @@ export interface components {
             surface_mode: components["schemas"]["SurfaceMode"];
             /** Exclusions */
             exclusions?: components["schemas"]["ExclusionType"][];
+            /** @default objects */
+            exclusion_scope: components["schemas"]["ExclusionScope"];
             /**
              * Use Ai
              * @default true
@@ -549,6 +551,23 @@ export interface components {
              */
             surfaces: number;
             /**
+             * Surface Mode
+             * @default material
+             */
+            surface_mode: string;
+            /** Exclusions */
+            exclusions?: string[];
+            /**
+             * Exclusion Scope
+             * @default objects
+             */
+            exclusion_scope: string;
+            /**
+             * Exclusion Rects
+             * @default 0
+             */
+            exclusion_rects: number;
+            /**
              * Test Scenery
              * @default false
              */
@@ -585,6 +604,11 @@ export interface components {
             /** Error */
             error?: string | null;
         };
+        /**
+         * ExclusionScope
+         * @enum {string}
+         */
+        ExclusionScope: "objects" | "area";
         /**
          * ExclusionType
          * @enum {string}

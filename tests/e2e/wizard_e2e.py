@@ -67,6 +67,8 @@ with sync_playwright() as p:
     page.get_by_test_id("package-name").fill("XPSB Test Hockenheim")
     expect(page.get_by_test_id("find-everything")).to_be_checked()
     page.screenshot(path=OUT / "03-brief.png", full_page=True)
+    page.get_by_test_id("surface-mode-imagery").check()
+    page.screenshot(path=OUT / "03b-brief-surfaces.png", full_page=True)
     page.get_by_test_id("brief-submit").click()
     expect(page.get_by_role("dialog")).to_be_visible()
     page.screenshot(path=OUT / "04-gate-a-blocked.png")
@@ -210,6 +212,10 @@ with sync_playwright() as p:
     page.get_by_test_id("gate-approve").click()
     expect(page.get_by_test_id("install-done")).to_be_visible(timeout=30000)
     page.screenshot(path=OUT / "14-installed.png")
+    # The finished result can still be looked at in 3D.
+    page.get_by_test_id("result-preview").click()
+    page.wait_for_timeout(4000)
+    page.screenshot(path=OUT / "15-result-preview.png")
     browser.close()
 
 print("CONSOLE ERRORS:" if errors else "no console errors")

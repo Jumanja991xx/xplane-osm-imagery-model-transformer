@@ -574,6 +574,7 @@ class JobManager:
             "objects": [{**o.model_dump(), "offset": local(*o.anchor)} for o in job.plan.objects],
             "surfaces": surfaces,
             "imagery": imagery,
+            "surface_mode": job.plan.surface_mode,
         }
 
     def preview_file(self, job_id: str, name: str) -> Path | None:

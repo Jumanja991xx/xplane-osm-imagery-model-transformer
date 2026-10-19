@@ -46,6 +46,12 @@ class ExclusionType(StrEnum):
     ROADS = "roads"
 
 
+class ExclusionScope(StrEnum):
+    # Only where the new objects stand (one rectangle per object): neighbours stay.
+    OBJECTS = "objects"
+    AREA = "area"  # the whole drawn area
+
+
 class DetailLevel(StrEnum):
     LOW = "low"
     MEDIUM = "medium"
@@ -62,6 +68,7 @@ class Brief(BaseModel):
     surface_types: list[SurfaceType] = Field(default_factory=list)
     surface_mode: SurfaceMode = SurfaceMode.MATERIAL
     exclusions: list[ExclusionType] = Field(default_factory=list)
+    exclusion_scope: ExclusionScope = ExclusionScope.OBJECTS
     use_ai: bool = True
     ai_model: AiModel = "claude-opus-5-5"
     ai_cost_limit_usd: float = Field(default=5.0, ge=0, le=1000)
@@ -177,6 +184,10 @@ class BuildPlan(BaseModel):
     detail: str = "medium"
     objects: list[PlanObject] = Field(default_factory=list)
     surfaces: int = 0
+    surface_mode: str = "material"
+    exclusions: list[str] = Field(default_factory=list)  # kinds, e.g. "objects"
+    exclusion_scope: str = "objects"
+    exclusion_rects: int = 0  # rectangles per kind
     test_scenery: bool = False
     cube_height_m: float | None = None
 

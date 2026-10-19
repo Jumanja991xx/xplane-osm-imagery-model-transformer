@@ -1262,6 +1262,10 @@
             "type": "array",
             "title": "Exclusions"
           },
+          "exclusion_scope": {
+            "$ref": "#/components/schemas/ExclusionScope",
+            "default": "objects"
+          },
           "use_ai": {
             "type": "boolean",
             "title": "Use Ai",
@@ -1365,6 +1369,28 @@
           "surfaces": {
             "type": "integer",
             "title": "Surfaces",
+            "default": 0
+          },
+          "surface_mode": {
+            "type": "string",
+            "title": "Surface Mode",
+            "default": "material"
+          },
+          "exclusions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Exclusions"
+          },
+          "exclusion_scope": {
+            "type": "string",
+            "title": "Exclusion Scope",
+            "default": "objects"
+          },
+          "exclusion_rects": {
+            "type": "integer",
+            "title": "Exclusion Rects",
             "default": 0
           },
           "test_scenery": {
@@ -1486,6 +1512,14 @@
           "found"
         ],
         "title": "DsfToolStatus"
+      },
+      "ExclusionScope": {
+        "type": "string",
+        "enum": [
+          "objects",
+          "area"
+        ],
+        "title": "ExclusionScope"
       },
       "ExclusionType": {
         "type": "string",

@@ -44,7 +44,9 @@ export function BriefStep({ onSubmitted }: { onSubmitted: () => void }) {
         object_categories: [...CATEGORIES],
         surface_types: [...SURFACES],
         surface_mode: "material",
-        exclusions: [],
+        // Houses of X-Plane/simHeaven would otherwise stand inside the new objects.
+        exclusions: ["facades", "forests", "objects"],
+        exclusion_scope: "objects",
         use_ai: Boolean(system?.has_api_key && settings?.ai?.enabled),
         ai_model: settings?.ai?.model ?? "claude-opus-5-5",
         ai_cost_limit_usd: settings?.ai?.job_limit_usd ?? 5,
@@ -138,6 +140,22 @@ export function BriefStep({ onSubmitted }: { onSubmitted: () => void }) {
         )}
       </Section>
 
+      <Section title={t("brief.surface_mode")}>
+        {(["material", "imagery"] as const).map((mode) => (
+          <label key={mode} className="flex items-center gap-2 text-sm">
+            <input
+              type="radio"
+              name="surface_mode"
+              checked={(brief.surface_mode ?? "material") === mode}
+              onChange={() => update({ surface_mode: mode })}
+              data-testid={`surface-mode-${mode}`}
+            />
+            {t(`brief.surface_mode.${mode}`)}
+          </label>
+        ))}
+        {brief.surface_mode === "imagery" && <p className="text-xs text-zinc-500">{t("brief.surface_mode_hint")}</p>}
+      </Section>
+
       <Section title={t("brief.exclusions")}>
         <p className="text-xs text-zinc-500">{t("brief.exclusions_hint")}</p>
         <div className="grid grid-cols-2 gap-1.5">
@@ -150,6 +168,22 @@ export function BriefStep({ onSubmitted }: { onSubmitted: () => void }) {
             />
           ))}
         </div>
+        {(brief.exclusions?.length ?? 0) > 0 && (
+          <div className="space-y-1">
+            <div className="text-xs font-semibold text-zinc-500 uppercase">{t("brief.exclusion_scope")}</div>
+            {(["objects", "area"] as const).map((scope) => (
+              <label key={scope} className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="exclusion_scope"
+                  checked={(brief.exclusion_scope ?? "objects") === scope}
+                  onChange={() => update({ exclusion_scope: scope })}
+                />
+                {t(`brief.exclusion_scope.${scope}`)}
+              </label>
+            ))}
+          </div>
+        )}
       </Section>
 
       <Section title={t("brief.ai")}>

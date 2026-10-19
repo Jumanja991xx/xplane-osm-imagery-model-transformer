@@ -264,6 +264,56 @@ def _windings(geom) -> list[list[list[tuple[float, float]]]]:
 
 
 @dataclass
+class Ortho:
+    """Aerial image (north up, plain lon/lat grid) used as ground texture."""
+
+    image: Path
+    bounds: tuple[float, float, float, float]  # west, south, east, north
+
+
+ORTHO_MAX_PX = 4096
+
+
+def _write_ortho(ortho: Ortho, polygons_dir: Path) -> str:
+    """Saves the image at a power-of-two size (what X-Plane's texture loader likes)
+    and the matching non-repeating .pol. Returns the .pol path."""
+    with Image.open(ortho.image) as src:
+        img = src.convert("RGB")
+    w, h = img.size
+
+    def pot(n: int) -> int:
+        return min(ORTHO_MAX_PX, 1 << max(6, round(math.log2(max(1, n)))))
+
+    img.resize((pot(w), pot(h)), Image.Resampling.LANCZOS).save(polygons_dir / "xpsb_ortho.png")
+    west, south, east, north = ortho.bounds
+    lat = (south + north) / 2
+    width_m = (east - west) * meters_per_deg_lon(lat)
+    height_m = (north - south) * METERS_PER_DEG_LAT
+    (polygons_dir / "xpsb_ortho.pol").write_text(
+        DrapedPolygonDef(
+            texture="xpsb_ortho.png",
+            wrap=False,
+            scale_s_m=width_m,
+            scale_t_m=height_m,
+            layer_group=SURFACE_LAYER,
+            layer_offset=0,
+            no_alpha=True,
+        ).to_text(),
+        encoding="ascii",
+        newline="\n",
+    )
+    return "polygons/xpsb_ortho.pol"
+
+
+def _ortho_uv(windings, bounds):
+    west, south, east, north = bounds
+    return [
+        [(x, y, (x - west) / (east - west), (y - south) / (north - south)) for x, y in ring]
+        for ring in windings
+    ]
+
+
+@dataclass
 class PackageResult:
     dsf_text: Path
     objects: list[ItemResult]
@@ -276,6 +326,7 @@ def write_package(
     tile: Tile,
     detail: str,
     exclusions: list[tuple[str, tuple[float, float, float, float]]],
+    ortho: Ortho | None = None,
     progress: Callable[[float], None] | None = None,
 ) -> PackageResult:
     objects_dir = package / "objects"
@@ -293,10 +344,22 @@ def write_package(
 
     surface_defs: dict[str, int] = {}
     surfaces = 0
+    if ortho is not None:
+        # One aerial image under every surface: they look like the real place.
+        polygons_dir.mkdir(parents=True, exist_ok=True)
+        ortho_def = dsf.add_polygon_def(_write_ortho(ortho, polygons_dir))
+        for item in items:
+            if item.kind == "surface" and item.included and not item.proposal:
+                for windings in _windings(shape(item.geometry)):
+                    # 65535: texture coordinates come with each point (no tiling).
+                    dsf.add_polygon(ortho_def, 65535, _ortho_uv(windings, ortho.bounds))
+                    surfaces += 1
     for item in sorted(
         (i for i in items if i.kind == "surface" and i.included and not i.proposal),
         key=lambda i: SURFACE_ORDER.get(str(i.category), 0),
     ):
+        if ortho is not None:
+            break
         kind = str(item.category)
         if kind not in surface_defs:
             polygons_dir.mkdir(parents=True, exist_ok=True)
