@@ -13,7 +13,7 @@ import json
 import re
 import shutil
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
@@ -54,6 +54,8 @@ class AnalysisDeps:
     api_key: str | None
     transport_factory: Callable[[str], ai.AiTransport]
     ledger: UsageLedger
+    memory_items: list = field(default_factory=list)
+    memory_edits: dict = field(default_factory=dict)
 
 
 def ai_budget(job: Job, settings: Settings, ledger: UsageLedger) -> float:
@@ -109,11 +111,46 @@ def _imagery_stage(job: Job, deps: AnalysisDeps, log: EventLog, notes: list[Note
     return info
 
 
+def _apply_memory(items: list, deps: AnalysisDeps) -> int:
+    """Brings back what the user decided in earlier jobs of this area."""
+    from shapely.geometry import shape
+
+    count = 0
+    for item in items:
+        mem = deps.memory_edits.get(item.osm_ref or "")
+        if mem is not None:
+            item.category, item.attrs, item.included = mem.category, mem.attrs, mem.included
+            item.name = mem.name or item.name
+            item.ai, item.remembered = mem.ai, True
+            count += 1
+    known = [shape(it.geometry) for it in items if it.kind == "object"]
+    for n, mem in enumerate(deps.memory_items, start=1):
+        geom = shape(mem.geometry)
+        if any(geom.intersects(g) and geom.intersection(g).area > 0.5 * geom.area for g in known):
+            continue  # meanwhile mapped in OSM
+        items.append(
+            mem.model_copy(
+                update={
+                    "id": f"mem/{n}",
+                    "source": "memory",
+                    "remembered": True,
+                    "included": True,
+                    "edited": False,
+                }
+            )
+        )
+        count += 1
+    return count
+
+
 def analyze_sync(job: Job, deps: AnalysisDeps, log: EventLog) -> AnalysisResult:
     """Runs in a worker thread."""
     assert job.brief is not None
     notes: list[Note] = []
     items = _osm_stage(job, deps, log)
+    remembered = _apply_memory(items, deps)
+    if remembered:
+        notes.append(Note(key="analysis.remembered", params={"count": remembered}))
     if not items:
         notes.append(Note(key="analysis.nothing_found"))
     info = _imagery_stage(job, deps, log, notes)
@@ -158,13 +195,21 @@ def analyze_sync(job: Job, deps: AnalysisDeps, log: EventLog) -> AnalysisResult:
             )
             for n, item in enumerate(proposals, start=1):
                 item.id = f"ai/{n}"
+            if run_info.dropped.get("category"):
+                notes.append(
+                    Note(
+                        key="analysis.dropped_category",
+                        params={"count": run_info.dropped["category"]},
+                    )
+                )
             _progress(log, "detect", 1.0, "stage.detect_done", count=len(proposals))
         if items:
             run.progress = lambda p: _progress(
                 log, "ai", p, "stage.ai", count=len(items), model=job.brief.ai_model
             )
             run.progress(0.0)
-            result.ai = ai.run(items, image, info, run, result=run_info)
+            to_rate = [it for it in items if not it.remembered]
+            result.ai = ai.run(to_rate, image, info, run, result=run_info)
         else:
             result.ai = run_info
         result.items = items + proposals

@@ -55,6 +55,10 @@ class JobNotFound(Exception):
     pass
 
 
+# Brief fields the analysis depends on; changing others keeps the analysis.
+ANALYSIS_FIELDS = ("object_categories", "surface_types", "use_ai", "ai_model", "ai_detect", "notes")
+
+
 class SimilarEstimate(BaseModel):
     """What "find similar" would do; shown to the user before anything is sent."""
 
@@ -90,6 +94,7 @@ class JobManager:
         self._xplane_running = xplane_running
         self._ai_transport_factory = ai_transport_factory
         self._busy: set[str] = set()
+        self._side_tasks: set[asyncio.Task] = set()
         self.ledger = UsageLedger(paths.root / "ai_usage.json")
         self._jobs: dict[str, Job] = {}
         self._logs: dict[str, EventLog] = {}
@@ -193,12 +198,87 @@ class JobManager:
     def set_brief(self, job_id: str, brief: Brief) -> Job:
         job = self.get(job_id)
         self._require_not_running(job)
+        keep = (
+            job.analysis is not None
+            and job.brief is not None
+            and all(getattr(job.brief, f) == getattr(brief, f) for f in ANALYSIS_FIELDS)
+        )
         job.brief = brief
-        # A changed brief invalidates everything derived from the previous one.
-        job.analysis, job.answers, job.plan, job.build, job.install = None, {}, None, None, None
+        job.plan, job.build, job.install = None, None, None
         job.error = None
+        if keep:
+            # Only build options changed (name, detail, exclusions...): the analysis
+            # and everything the user edited stay.
+            self._set_state(job, JobState.ANALYZED)
+            return job
+        job.analysis, job.answers = None, {}
         self._set_state(job, JobState.CLARIFIED)
         return job
+
+    def reopen(self, job_id: str, to: JobState) -> Job:
+        """Step back without losing work: to the list (analyzed) or the brief."""
+        job = self.get(job_id)
+        self._require_not_running(job)
+        if to is JobState.ANALYZED and job.analysis is not None:
+            job.plan, job.build, job.install = None, None, None
+        elif to is JobState.CLARIFIED and job.brief is not None:
+            pass  # the brief form opens with the current values; analysis kept until changed
+        else:
+            raise JobConflict("error.wrong_state", state=job.state.value)
+        job.error = None
+        self._set_state(job, to)
+        return job
+
+    def memory(self, job: Job) -> tuple[list[SceneItem], dict[str, SceneItem]]:
+        """What the user confirmed in earlier jobs of this area (list approved at B):
+        own/AI/remembered items, and edits to OSM items by their OSM reference."""
+        from shapely.geometry import Polygon, shape
+
+        aoi = Polygon(job.aoi.ring)
+        items: list[SceneItem] = []
+        edits: dict[str, SceneItem] = {}
+        taken: list = []
+        for other in self.list():  # newest first: the latest decision wins
+            if other.id == job.id or other.analysis is None:
+                continue
+            if not any(a.gate == "B" for a in other.approvals):
+                continue
+            for it in other.analysis.items:
+                if it.proposal:
+                    continue
+                geom = shape(it.geometry)
+                if not aoi.intersects(geom) or not aoi.contains(geom.representative_point()):
+                    continue
+                if it.source == "osm":
+                    if it.osm_ref and (it.edited or it.remembered) and it.osm_ref not in edits:
+                        edits[it.osm_ref] = it.model_copy(deep=True)
+                    continue
+                if not it.included or any(
+                    geom.intersects(g) and geom.intersection(g).area > 0.5 * geom.area
+                    for g in taken
+                ):
+                    continue
+                taken.append(geom)
+                items.append(it.model_copy(deep=True))
+        return items, edits
+
+    def summaries(self) -> list[dict]:
+        return [
+            {
+                "id": j.id,
+                "created_at": j.created_at.isoformat(),
+                "updated_at": j.updated_at.isoformat(),
+                "state": j.state.value,
+                "package_name": j.brief.package_name if j.brief else None,
+                "area_km2": round(j.aoi_area_km2, 3),
+                "objects": sum(
+                    1
+                    for it in (j.analysis.items if j.analysis else [])
+                    if it.kind == "object" and it.included and not it.proposal
+                ),
+            }
+            for j in self.list()
+        ]
 
     def _analyzed(self, job_id: str) -> Job:
         job = self.get(job_id)
@@ -273,8 +353,73 @@ class JobManager:
             raise JobConflict("error.invalid_item", detail=str(exc)[:200]) from None
         job.analysis.next_user_id += 1
         job.analysis.items.append(item)
+        if self._can_rate(job):
+            # Height, roof and colours for what the user drew, within the job's limit.
+            item.rating = True
+            self._start_side_task(self._rate_user_item(job.id, item_id))
         self._save(job)
         return job
+
+    def _can_rate(self, job: Job) -> bool:
+        return bool(
+            job.brief
+            and job.brief.use_ai
+            and job.analysis
+            and job.analysis.imagery
+            and self.imagery_file(job.id)
+            and self._secrets.get(ANTHROPIC_ACCOUNT)
+            and self._similar_budget(job) > 0
+        )
+
+    def _start_side_task(self, coro) -> None:
+        task = asyncio.get_running_loop().create_task(coro)
+        self._side_tasks.add(task)
+        task.add_done_callback(self._side_tasks.discard)
+
+    async def _rate_user_item(self, job_id: str, item_id: str) -> None:
+        job = self.get(job_id)
+        assert job.brief is not None and job.analysis is not None
+        try:
+            item = self._item(job, item_id).model_copy(deep=True)
+            with Image.open(self.imagery_file(job_id)) as img:
+                image = img.convert("RGB")
+            questions: list = []
+            cfg = ai.AiRun(
+                model=job.brief.ai_model,
+                language=self._settings.load().language,
+                notes=job.brief.notes,
+                budget_usd=self._similar_budget(job),
+                transport=self._ai_transport_factory(self._secrets.get(ANTHROPIC_ACCOUNT)),
+                on_cost=self.ledger.add,
+                questions=questions,
+                context=detect.area_context(job.analysis.items),
+            )
+            info = await asyncio.to_thread(ai.run, [item], image, job.analysis.imagery, cfg)
+        except Exception:  # noqa: BLE001 - rating is optional; the item stays as drawn
+            log.exception("rating drawn item failed")
+            info, questions, item = None, [], None
+        if job.analysis is None:
+            return
+        for target in job.analysis.items:
+            if target.id == item_id:
+                target.rating = False
+                if item is not None and item.ai is not None:
+                    target.attrs = target.attrs.model_copy(
+                        update={
+                            k: v
+                            for k, v in item.attrs.model_dump().items()
+                            if getattr(target.attrs, k) is None and v is not None
+                        }
+                    )
+                    target.ai = item.ai
+        if info is not None:
+            run = job.analysis.ai or AiRunInfo(model=job.brief.ai_model)
+            run.cost_usd = round(run.cost_usd + info.cost_usd, 6)
+            run.analyzed += info.analyzed
+            job.analysis.ai = run
+            job.analysis.questions += questions
+        self._save(job)
+        self.events(job_id).publish(type="state", state=job.state.value)
 
     def delete_item(self, job_id: str, item_id: str) -> Job:
         job = self._analyzed(job_id)
@@ -501,6 +646,7 @@ class JobManager:
             self._tasks.pop(job.id, None)
 
     async def _do_analysis(self, job: Job) -> None:
+        memory_items, memory_edits = self.memory(job)
         deps = pipeline.AnalysisDeps(
             job_dir=self.job_dir(job.id),
             cache_dir=self._paths.cache,
@@ -510,6 +656,8 @@ class JobManager:
             else None,
             transport_factory=self._ai_transport_factory,
             ledger=self.ledger,
+            memory_items=memory_items,
+            memory_edits=memory_edits,
         )
         analysis = await pipeline.run_analysis(job, deps, self.events(job.id))
         if job.state is JobState.ANALYZING:  # not cancelled meanwhile

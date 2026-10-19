@@ -14,7 +14,9 @@ import base64
 import io
 import logging
 import math
+import threading
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
@@ -314,7 +316,12 @@ def _clean_color(value: str | None) -> str | None:
 def apply_result(item: SceneItem, r: AiItemResult, model: str) -> Question | None:
     """Merges one AI answer into the item. Returns a question for the user, if any."""
     attrs = item.attrs
-    explicit_height = "height" in item.tags or "building:levels" in item.tags
+    user_set = item.source in ("user", "memory")
+    explicit_height = (
+        "height" in item.tags
+        or "building:levels" in item.tags
+        or (user_set and attrs.height_m is not None)
+    )
     if r.height_m is not None and not explicit_height and 0 < r.height_m <= 300:
         attrs.height_m = round(r.height_m, 1)
     if r.levels is not None and attrs.levels is None and 0 <= r.levels <= 100:
@@ -331,7 +338,8 @@ def apply_result(item: SceneItem, r: AiItemResult, model: str) -> Question | Non
 
     confidence = min(1.0, max(0.0, r.confidence))
     changed_category = (
-        r.category != item.category
+        not user_set  # the user chose the category when drawing
+        and r.category != item.category
         and _valid_category(item.kind, r.category)
         and confidence >= CATEGORY_CHANGE_CONFIDENCE
     )
@@ -381,6 +389,44 @@ def apply_answer(item: SceneItem, field_name: str, value: str) -> None:
 
 # ---- run -----------------------------------------------------------------------
 
+PARALLEL_CALLS = 4  # Claude requests in flight at the same time
+
+
+class Budget:
+    """Thread-safe cost book: every call reserves its estimate before it is sent,
+    so parallel calls together can never exceed the limit."""
+
+    def __init__(self, limit_usd: float, run_info: AiRunInfo, on_cost):
+        self.limit = limit_usd
+        self.info = run_info
+        self.on_cost = on_cost
+        self.reserved = 0.0
+        self.lock = threading.Lock()
+
+    # Estimates are rough; with calls in flight in parallel we keep a safety margin
+    # so the actual spending stays within the limit the user approved.
+    SAFETY = 1.5
+
+    def reserve(self, estimate: float) -> bool:
+        estimate *= self.SAFETY
+        with self.lock:
+            if self.info.cost_usd + self.reserved + estimate > self.limit:
+                self.info.limit_reached = True
+                return False
+            self.reserved += estimate
+            return True
+
+    def settle(self, estimate: float, response: AiResponse | None) -> None:
+        with self.lock:
+            self.reserved -= estimate * self.SAFETY
+            if response is None:
+                return
+            spent = cost_usd(response.model, response.input_tokens, response.output_tokens)
+            self.info.cost_usd = round(self.info.cost_usd + spent, 6)
+            if response.model not in self.info.models_used:
+                self.info.models_used.append(response.model)
+        self.on_cost(spent)
+
 
 @dataclass
 class AiRun:
@@ -427,7 +473,7 @@ def run(
     if result.error_key:
         return result
     todo = items[:MAX_ITEMS]
-    result.skipped = len(items) - len(todo)
+    result.skipped += len(items) - len(todo)
     system = system_prompt(cfg.language, cfg.notes, cfg.context)
 
     prepared: list[tuple[SceneItem, bytes, float]] = []
@@ -440,53 +486,60 @@ def run(
         prepared.append((item, png, gsd))
 
     batches = [prepared[i : i + BATCH_SIZE] for i in range(0, len(prepared), BATCH_SIZE)]
-    for index, batch in enumerate(batches):
-        if cfg.should_stop():
-            break
-        estimate = estimate_cost(cfg.model, [image_tokens(png) for _, png, _ in batch])
-        if result.cost_usd + estimate > cfg.budget_usd:
-            result.limit_reached = True
-            result.skipped += sum(len(b) for b in batches[index:])
-            break
+    budget = Budget(cfg.budget_usd, result, cfg.on_cost)
+    lock = threading.Lock()
+    done = [0]
 
+    def rate(batch) -> None:
+        if cfg.should_stop() or result.error_key:
+            with lock:
+                result.skipped += len(batch)
+            return
+        estimate = estimate_cost(cfg.model, [image_tokens(png) for _, png, _ in batch])
+        if not budget.reserve(estimate):
+            with lock:
+                result.skipped += len(batch)
+            return
         content: list[dict] = []
         for item, png, gsd in batch:
             content.append({"type": "text", "text": item_text(item, gsd)})
             content.append(png_block(png))
-
+        response = None
         try:
             response = cfg.transport(
                 model=cfg.model, system=system, content=content, output_format=AiBatchResult
             )
         except AiAuthError:
-            result.error_key = "analysis.ai_auth_failed"
-            result.skipped += sum(len(b) for b in batches[index:])
-            break
+            with lock:
+                result.error_key = "analysis.ai_auth_failed"
+                result.skipped += len(batch)
+            return
         except AiCallError as exc:
             log.warning("AI call failed: %s", exc)
-            result.error_key = "analysis.ai_call_failed"
-            result.error_detail = str(exc)
-            result.skipped += sum(len(b) for b in batches[index:])
-            break
+            with lock:
+                result.error_key = "analysis.ai_call_failed"
+                result.error_detail = str(exc)
+                result.skipped += len(batch)
+            return
+        finally:
+            budget.settle(estimate, response)
+        with lock:
+            if response.refused or response.parsed is None:
+                result.skipped += len(batch)
+            else:
+                by_id = {r.item_id: r for r in response.parsed.items}
+                for item, _, _ in batch:
+                    r = by_id.get(item.id)
+                    if r is None:
+                        result.skipped += 1
+                        continue
+                    question = apply_result(item, r, response.model)
+                    if question:
+                        cfg.questions.append(question)
+                    result.analyzed += 1
+            done[0] += 1
+            cfg.progress(done[0] / len(batches))
 
-        spent = cost_usd(response.model, response.input_tokens, response.output_tokens)
-        result.cost_usd = round(result.cost_usd + spent, 6)
-        cfg.on_cost(spent)
-        if response.model not in result.models_used:
-            result.models_used.append(response.model)
-
-        if response.refused or response.parsed is None:
-            result.skipped += len(batch)
-        else:
-            by_id = {r.item_id: r for r in response.parsed.items}
-            for item, _, _ in batch:
-                r = by_id.get(item.id)
-                if r is None:
-                    result.skipped += 1
-                    continue
-                question = apply_result(item, r, response.model)
-                if question:
-                    cfg.questions.append(question)
-                result.analyzed += 1
-        cfg.progress((index + 1) / len(batches))
+    with ThreadPoolExecutor(max_workers=PARALLEL_CALLS) as pool:
+        list(pool.map(rate, batches))
     return result

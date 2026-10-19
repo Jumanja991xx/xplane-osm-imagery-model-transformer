@@ -39,6 +39,15 @@ export function Wizard() {
   const gate = job?.pending_gate ?? null;
   const running = job ? RUNNING.includes(job.state) : false;
   const canEditBrief = job && !running && !editingBrief && !["draft", "installed", "cancelled"].includes(job.state);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  // Earlier steps can be revisited without losing the analysis and the edited list.
+  const canGoBack = (i: number) =>
+    Boolean(job && !running && i < step && (i === 1 ? job.brief : i === 2 ? job.analysis : false));
+  const goBack = async (i: number) => {
+    if (!job || !canGoBack(i)) return;
+    if (i === 1) setEditingBrief(true);
+    if (i === 2) setJob(await api.reopen(job.id, "analyzed"));
+  };
   // Always show the current summary: settings may have changed since the job was loaded.
   const openGate = async () => {
     if (job) {
@@ -54,27 +63,36 @@ export function Wizard() {
   return (
     <div className="flex h-full flex-col">
       <ol className="flex border-b border-zinc-200 px-3 dark:border-zinc-800">
-        {STEP_KEYS.map((key, i) => (
-          <li
-            key={key}
-            className={`flex flex-1 flex-col items-center gap-1 border-b-2 px-0.5 py-2 text-center ${
-              i === step
-                ? "border-accent-600 text-accent-700 dark:text-accent-100"
-                : i < step
-                  ? "border-transparent text-zinc-500"
-                  : "border-transparent text-zinc-400 dark:text-zinc-600"
-            }`}
-          >
-            <span
-              className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold ${
-                i === step ? "bg-accent-600 text-white" : "bg-zinc-200 dark:bg-zinc-800"
-              }`}
-            >
-              {i < step ? "✓" : i + 1}
-            </span>
-            <span className="text-[11px] leading-tight font-medium">{t(key)}</span>
-          </li>
-        ))}
+        {STEP_KEYS.map((key, i) => {
+          const back = canGoBack(i);
+          return (
+            <li key={key} className="flex flex-1">
+              <button
+                type="button"
+                disabled={!back}
+                onClick={() => goBack(i)}
+                title={back ? t("steps.back_to", { step: t(key) }) : undefined}
+                data-testid={`step-${i}`}
+                className={`flex flex-1 flex-col items-center gap-1 border-b-2 px-0.5 py-2 text-center ${
+                  i === step
+                    ? "border-accent-600 text-accent-700 dark:text-accent-100"
+                    : i < step
+                      ? "border-transparent text-zinc-500 hover:text-accent-700 disabled:hover:text-zinc-500"
+                      : "border-transparent text-zinc-400 dark:text-zinc-600"
+                } ${back ? "cursor-pointer" : "cursor-default"}`}
+              >
+                <span
+                  className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold ${
+                    i === step ? "bg-accent-600 text-white" : "bg-zinc-200 dark:bg-zinc-800"
+                  }`}
+                >
+                  {i < step ? "✓" : i + 1}
+                </span>
+                <span className="text-[11px] leading-tight font-medium">{t(key)}</span>
+              </button>
+            </li>
+          );
+        })}
       </ol>
 
       <div className="flex-1 space-y-4 overflow-y-auto p-4">
@@ -107,19 +125,46 @@ export function Wizard() {
       </div>
 
       {job && (
-        <div className="flex flex-wrap justify-between gap-2 border-t border-zinc-200 px-4 py-2 dark:border-zinc-800">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-zinc-200 px-4 py-2 dark:border-zinc-800">
           {canEditBrief ? (
             <Button variant="ghost" onClick={() => setEditingBrief(true)}>
               {t("common.edit_brief")}
             </Button>
+          ) : job.state === "cancelled" && job.analysis ? (
+            <Button variant="ghost" onClick={async () => setJob(await api.reopen(job.id, "analyzed"))} data-testid="resume-job">
+              ↩ {t("common.resume_job")}
+            </Button>
           ) : (
             <span />
           )}
-          {!["installed", "cancelled"].includes(job.state) && (
-            <Button variant="ghost" onClick={async () => setJob(await api.cancel(job.id))}>
-              {t("common.cancel_job")}
-            </Button>
-          )}
+          {!["installed", "cancelled"].includes(job.state) &&
+            (confirmCancel ? (
+              <span className="flex items-center gap-2 text-xs">
+                {t("common.cancel_confirm")}
+                <Button
+                  variant="danger"
+                  onClick={async () => {
+                    setConfirmCancel(false);
+                    setJob(await api.cancel(job.id));
+                  }}
+                  data-testid="cancel-confirm"
+                >
+                  {t("common.yes")}
+                </Button>
+                <Button variant="ghost" onClick={() => setConfirmCancel(false)}>
+                  {t("common.no")}
+                </Button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="text-xs text-zinc-500 underline hover:text-red-600"
+                onClick={() => setConfirmCancel(true)}
+                data-testid="cancel-job"
+              >
+                {t("common.cancel_job")}
+              </button>
+            ))}
         </div>
       )}
 

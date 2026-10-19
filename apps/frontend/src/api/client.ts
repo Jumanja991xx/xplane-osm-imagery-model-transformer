@@ -26,6 +26,16 @@ export type ImageryInfo = S["ImageryInfo"];
 export type ImagerySettings = S["ImagerySettings"];
 export type SimilarEstimate = S["SimilarEstimate"];
 
+export interface JobSummary {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  state: JobState;
+  package_name: string | null;
+  area_km2: number;
+  objects: number;
+}
+
 export interface JobEvent {
   seq: number;
   ts: string;
@@ -131,6 +141,9 @@ export const api = {
   approve: (id: string, gate: GateId, hash: string) =>
     request<JobView>("POST", `/api/jobs/${id}/gates/${gate}/approve`, { hash }),
   cancel: (id: string) => request<JobView>("POST", `/api/jobs/${id}/cancel`),
+  reopen: (id: string, to: "analyzed" | "clarified") =>
+    request<JobView>("POST", `/api/jobs/${id}/reopen`, { to }),
+  listJobs: () => request<JobSummary[]>("GET", "/api/jobs"),
 };
 
 export async function jobEventsUrl(jobId: string): Promise<string> {

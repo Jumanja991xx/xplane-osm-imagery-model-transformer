@@ -248,6 +248,27 @@
       }
     },
     "/api/jobs": {
+      "get": {
+        "summary": "List Jobs",
+        "operationId": "list_jobs_api_jobs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response List Jobs Api Jobs Get"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "summary": "Create Job",
         "operationId": "create_job_api_jobs_post",
@@ -263,6 +284,55 @@
         },
         "responses": {
           "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/reopen": {
+      "post": {
+        "summary": "Reopen",
+        "operationId": "reopen_api_jobs__job_id__reopen_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReopenBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
@@ -968,6 +1038,13 @@
             "type": "integer",
             "title": "Proposals",
             "default": 0
+          },
+          "dropped": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Dropped"
           },
           "limit_reached": {
             "type": "boolean",
@@ -2452,6 +2529,23 @@
         ],
         "title": "QuestionOption"
       },
+      "ReopenBody": {
+        "properties": {
+          "to": {
+            "type": "string",
+            "enum": [
+              "analyzed",
+              "clarified"
+            ],
+            "title": "To"
+          }
+        },
+        "type": "object",
+        "required": [
+          "to"
+        ],
+        "title": "ReopenBody"
+      },
       "SceneItem": {
         "properties": {
           "id": {
@@ -2487,7 +2581,8 @@
             "enum": [
               "osm",
               "user",
-              "ai"
+              "ai",
+              "memory"
             ],
             "title": "Source"
           },
@@ -2546,6 +2641,16 @@
           "proposal": {
             "type": "boolean",
             "title": "Proposal",
+            "default": false
+          },
+          "remembered": {
+            "type": "boolean",
+            "title": "Remembered",
+            "default": false
+          },
+          "rating": {
+            "type": "boolean",
+            "title": "Rating",
             "default": false
           }
         },

@@ -132,10 +132,28 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List Jobs */
+        get: operations["list_jobs_api_jobs_get"];
         put?: never;
         /** Create Job */
         post: operations["create_job_api_jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reopen */
+        post: operations["reopen_api_jobs__job_id__reopen_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -375,6 +393,10 @@ export interface components {
              * @default 0
              */
             proposals: number;
+            /** Dropped */
+            dropped?: {
+                [key: string]: number;
+            };
             /**
              * Limit Reached
              * @default false
@@ -922,6 +944,14 @@ export interface components {
                 [key: string]: string | number | null;
             };
         };
+        /** ReopenBody */
+        ReopenBody: {
+            /**
+             * To
+             * @enum {string}
+             */
+            to: "analyzed" | "clarified";
+        };
         /** SceneItem */
         SceneItem: {
             /** Id */
@@ -941,7 +971,7 @@ export interface components {
              * Source
              * @enum {string}
              */
-            source: "osm" | "user" | "ai";
+            source: "osm" | "user" | "ai" | "memory";
             /** Name */
             name?: string | null;
             /** Osm Ref */
@@ -967,6 +997,16 @@ export interface components {
              * @default false
              */
             proposal: boolean;
+            /**
+             * Remembered
+             * @default false
+             */
+            remembered: boolean;
+            /**
+             * Rating
+             * @default false
+             */
+            rating: boolean;
         };
         /** Settings */
         Settings: {
@@ -1298,6 +1338,28 @@ export interface operations {
             };
         };
     };
+    list_jobs_api_jobs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
     create_job_api_jobs_post: {
         parameters: {
             query?: never;
@@ -1313,6 +1375,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reopen_api_jobs__job_id__reopen_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReopenBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

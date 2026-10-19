@@ -10,7 +10,11 @@ export function ProgressList({ runningState }: { runningState: string }) {
   events.forEach((e, i) => {
     if (e.type === "state" && e.state === runningState) start = i;
   });
-  const progress = start >= 0 ? events.slice(start + 1).filter((e) => e.type === "progress") : [];
+  const all = start >= 0 ? events.slice(start + 1).filter((e) => e.type === "progress") : [];
+  // One line per stage, showing its latest state (no repeated lines per tile/batch).
+  const latest = new Map<string, (typeof all)[number]>();
+  for (const e of all) latest.set(e.stage ?? String(e.seq), e);
+  const progress = [...latest.values()];
   const running = useApp((s) => s.job?.state === runningState);
 
   return (
@@ -20,7 +24,12 @@ export function ProgressList({ runningState }: { runningState: string }) {
         return (
           <li key={e.seq} className="flex items-center gap-2">
             {last && running && (e.progress ?? 0) < 1 ? <Spinner /> : <span className="w-4 text-emerald-600">✓</span>}
-            <span className="break-all">{t(e.key ?? "", e.params ?? undefined)}</span>
+            <span className="break-all">
+              {t(e.key ?? "", e.params ?? undefined)}
+              {(e.progress ?? 0) > 0 && (e.progress ?? 0) < 1 && (
+                <span className="ml-1 text-xs text-zinc-500">{Math.round((e.progress ?? 0) * 100)} %</span>
+              )}
+            </span>
           </li>
         );
       })}

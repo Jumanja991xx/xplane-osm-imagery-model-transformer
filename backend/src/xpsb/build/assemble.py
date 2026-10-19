@@ -53,6 +53,13 @@ SURFACE_TILE_M = {
     "markings": 8.0,
 }
 SOLAR_WORDS = ("solar", "photovolt", "pv-")
+ROOF_MATERIALS = {
+    "metal": "roof_metal",
+    "membrane": "membrane",
+    "tiles": "roof_tiles",
+    "glass": "glass",
+    "flat": "roof_flat",
+}
 
 
 @dataclass
@@ -108,6 +115,7 @@ def _params(item: SceneItem, items: list[SceneItem], local, detail: str) -> dict
     summary = (item.ai.summary if item.ai else "").lower()
     material = (a.material or "").lower()
     solar = any(w in summary or w in material for w in SOLAR_WORDS)
+    roof_material = "solar" if solar else ROOF_MATERIALS.get(material.removeprefix("roof:"))
     return {
         "height": a.height_m,
         "levels": a.levels,
@@ -117,7 +125,7 @@ def _params(item: SceneItem, items: list[SceneItem], local, detail: str) -> dict
         "seat_color": a.seat_color,
         "covered": a.covered,
         "material": a.material,
-        "roof_material": "solar" if solar else None,
+        "roof_material": roof_material,
         "facing": _facing(item, items, local),
         "detail": detail,
         "name": item.name,

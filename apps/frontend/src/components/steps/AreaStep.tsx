@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { api, ApiError } from "../../api/client";
+import { useEffect, useState } from "react";
+import { api, ApiError, type JobSummary } from "../../api/client";
 import { MAX_AOI_AREA_KM2, ringAreaKm2 } from "../../geo";
 import { useT } from "../../i18n";
 import { useApp } from "../../store";
@@ -10,6 +10,14 @@ export function AreaStep() {
   const { aoi, drawMode, job, setDrawMode, requestClear, setJob, reset } = useApp();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [recent, setRecent] = useState<JobSummary[]>([]);
+  useEffect(() => {
+    if (!job) void api.listJobs().then(setRecent).catch(() => setRecent([]));
+  }, [job]);
+  const open = async (id: string) => {
+    const opened = await api.getJob(id);
+    setJob(opened);
+  };
 
   const geometry = job?.aoi ?? aoi;
   const area = geometry ? ringAreaKm2(geometry.coordinates[0]) : 0;
@@ -73,6 +81,27 @@ export function AreaStep() {
         <p className="text-sm text-zinc-500">{t("area.none")}</p>
       )}
       {tooLarge && <Alert kind="warning">{t("area.too_large", { max: MAX_AOI_AREA_KM2 })}</Alert>}
+      {recent.length > 0 && !aoi && (
+        <div className="space-y-1 pt-2" data-testid="recent-jobs">
+          <h3 className="text-xs font-semibold text-zinc-500 uppercase">{t("area.recent")}</h3>
+          <ul className="divide-y divide-zinc-200 rounded-md bg-white ring-1 ring-zinc-200 dark:divide-zinc-700 dark:bg-zinc-800 dark:ring-zinc-700">
+            {recent.slice(0, 6).map((r) => (
+              <li key={r.id} className="flex items-center justify-between gap-2 px-2 py-1.5 text-sm">
+                <span className="min-w-0">
+                  <span className="block truncate">{r.package_name ?? t("area.unnamed")}</span>
+                  <span className="text-xs text-zinc-500">
+                    {new Date(r.updated_at).toLocaleString()} · {t(`state.${r.state}`)} · {r.objects}{" "}
+                    {t("analysis.objects")}
+                  </span>
+                </span>
+                <Button onClick={() => open(r.id)} data-testid={`open-job-${r.id}`}>
+                  {t("area.open")}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {error && <Alert kind="error">{error}</Alert>}
       <div className="flex justify-end">
         <Button variant="primary" onClick={next} disabled={!aoi || tooLarge || busy} data-testid="area-next">

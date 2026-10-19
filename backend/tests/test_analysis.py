@@ -51,6 +51,17 @@ def analyze(client, job: dict) -> dict:
     return job
 
 
+def wait_until_rated(client, jid: str) -> dict:
+    import time
+
+    for _ in range(100):
+        job = client.get(f"/api/jobs/{jid}", headers=AUTH).json()
+        if not any(i.get("rating") for i in job["analysis"]["items"]):
+            return job
+        time.sleep(0.05)
+    raise AssertionError("rating did not finish")
+
+
 def keys(items) -> set[str]:
     return {i["key"] for i in items}
 
@@ -275,6 +286,11 @@ def test_analysis_with_ai_questions_and_editor(client, fake_ai, app_ctx):
     r = client.get(f"/api/jobs/{jid}/imagery", headers=AUTH)
     assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
 
+    # The drawn scaffolding is rated by the AI in the background (height, roof ...).
+    job = wait_until_rated(client, jid)
+    drawn = next(i for i in job["analysis"]["items"] if i["id"] == "user/1")
+    assert drawn["ai"] is not None and drawn["attrs"]["height_m"] == 6  # user value kept
+    assert drawn["category"] == "scaffolding"
     job = client.post(
         f"/api/jobs/{jid}/gates/B/approve", json={"hash": job["pending_gate"]["hash"]}, headers=AUTH
     ).json()

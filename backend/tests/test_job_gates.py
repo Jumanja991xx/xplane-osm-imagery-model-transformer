@@ -94,11 +94,41 @@ def test_gate_b_shows_counts_and_plan_lists_confirmed_items(client, app_ctx):
     assert len(__import__("json").loads(scene.read_text())["features"]) == 5
 
 
-def test_new_brief_resets_analysis(client):
+def test_new_brief_resets_analysis_only_when_needed(client):
     job = to_analyzed(client)
-    job = client.put(f"/api/jobs/{job['id']}/brief", json=BRIEF, headers=AUTH).json()
+    # Same analysis settings (only the package name changes): the list stays.
+    job = client.put(
+        f"/api/jobs/{job['id']}/brief",
+        json={**BRIEF, "package_name": "Anderer Name"},
+        headers=AUTH,
+    ).json()
+    assert job["state"] == "analyzed" and job["analysis"] is not None
+    # Different categories: analysis has to run again.
+    job = client.put(
+        f"/api/jobs/{job['id']}/brief", json={**BRIEF, "surface_types": []}, headers=AUTH
+    ).json()
     assert job["state"] == "clarified"
     assert job["analysis"] is None and job["answers"] == {}
+
+
+def test_step_back_keeps_the_list(client):
+    job = to_analyzed(client)
+    client.patch(
+        f"/api/jobs/{job['id']}/items/way/103", json={"attrs": {"height_m": 14}}, headers=AUTH
+    )
+    job = client.get(f"/api/jobs/{job['id']}", headers=AUTH).json()
+    job = approve(client, job, "B").json()
+    assert job["state"] == "planned"
+    job = client.post(f"/api/jobs/{job['id']}/reopen", json={"to": "analyzed"}, headers=AUTH).json()
+    assert job["state"] == "analyzed" and job["plan"] is None
+    item = next(i for i in job["analysis"]["items"] if i["id"] == "way/103")
+    assert item["attrs"]["height_m"] == 14
+    # A cancelled job can be resumed as well.
+    job = client.post(f"/api/jobs/{job['id']}/cancel", headers=AUTH).json()
+    job = client.post(f"/api/jobs/{job['id']}/reopen", json={"to": "analyzed"}, headers=AUTH).json()
+    assert job["state"] == "analyzed"
+    jobs = client.get("/api/jobs", headers=AUTH).json()
+    assert jobs[0]["id"] == job["id"] and jobs[0]["objects"] == 4
 
 
 def test_too_large_area_is_rejected(client):
@@ -149,9 +179,7 @@ def test_full_flow_builds_and_installs_with_backup(
     assert job["install"]["backup_dir"] is None
 
     # Second run over an existing package: backup goes outside Custom Scenery.
-    job = client.put(f"/api/jobs/{job['id']}/brief", json=BRIEF, headers=AUTH).json()
-    assert approve(client, job, "A").status_code == 200
-    job = wait_for_state(client, job["id"], {"analyzed"})
+    job = client.post(f"/api/jobs/{job['id']}/reopen", json={"to": "analyzed"}, headers=AUTH).json()
     job = approve(client, job, "B").json()
     approve(client, job, "C")
     job = wait_for_state(client, job["id"], {"built"})

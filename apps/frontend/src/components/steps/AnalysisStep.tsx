@@ -15,6 +15,7 @@ import { ProgressList } from "../ProgressList";
 import { Alert, Button, Checkbox, inputClass, Section, Spinner } from "../ui";
 
 const WARNING_NOTES = new Set([
+  "analysis.dropped_category",
   "imagery.failed",
   "imagery.not_covered",
   "imagery.custom_missing",
@@ -143,7 +144,7 @@ export function AnalysisStep({ onConfirm }: { onConfirm: () => void }) {
 
       {error && <Alert kind="error">{error}</Alert>}
       {editable && (
-        <div className="flex justify-end">
+        <div className="sticky -bottom-4 z-10 -mx-4 flex justify-end gap-2 border-t border-zinc-200 bg-zinc-50/95 px-4 py-2 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95">
           <Button variant="primary" onClick={onConfirm} data-testid="analysis-confirm">
             {t("analysis.confirm")}
           </Button>
@@ -596,8 +597,12 @@ function ItemRow({
           <span className="ml-auto shrink-0 text-[10px] uppercase text-zinc-400">
             {item.edited
               ? t("analysis.badge_edited")
-              : item.source === "ai"
-                ? t("analysis.badge_found")
+              : item.rating
+                ? t("analysis.badge_rating")
+                : item.remembered
+                  ? t("analysis.badge_memory")
+                  : item.source === "ai"
+                    ? t("analysis.badge_found")
                 : item.ai
                   ? t("analysis.badge_ai")
                   : t(`analysis.badge_${item.source}`)}

@@ -65,15 +65,7 @@ with sync_playwright() as p:
     page.get_by_test_id("area-next").click()
     expect(page.get_by_role("heading", name="Auftrag klären")).to_be_visible()
     page.get_by_test_id("package-name").fill("XPSB Test Hockenheim")
-    for label in (
-        "Überdachungen & Zelte",
-        "Zäune, Mauern, Leitplanken",
-        "Masten (Flutlicht, Fahnen)",
-        "Rasen",
-        "Asphalt",
-        "Sand/Asche (z. B. Speedway)",
-    ):
-        page.get_by_label(label).check()
+    expect(page.get_by_test_id("find-everything")).to_be_checked()
     page.screenshot(path=OUT / "03-brief.png", full_page=True)
     page.get_by_test_id("brief-submit").click()
     expect(page.get_by_role("dialog")).to_be_visible()
@@ -184,6 +176,17 @@ with sync_playwright() as p:
     page.wait_for_timeout(1500)
     page.screenshot(path=OUT / "09c-preview-closeup.png")
     page.get_by_test_id("preview-close").click()
+    # One step back to the list and forward again: nothing is lost, no new analysis.
+    page.get_by_test_id("back-to-list").click()
+    expect(page.get_by_test_id("item-ai/1")).to_be_visible(timeout=10000)
+    expect(page.get_by_test_id("item-way/103")).to_contain_text("12 m")
+    page.get_by_test_id("analysis-confirm").click()
+    page.get_by_test_id("gate-approve").click()
+    expect(page.get_by_test_id("plan-build")).to_be_visible(timeout=20000)
+    # Cancel needs a confirmation.
+    page.get_by_test_id("cancel-job").click()
+    expect(page.get_by_test_id("cancel-confirm")).to_be_visible()
+    page.get_by_role("button", name="Nein", exact=True).click()
     page.get_by_test_id("plan-build").click()
     page.screenshot(path=OUT / "10-gate-c.png")
     page.get_by_test_id("gate-approve").click()

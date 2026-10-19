@@ -8,7 +8,7 @@ import sys
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import (
     Body,
@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 from xpsb import __version__
 from xpsb.geo import GeoJsonPolygon
 from xpsb.jobs.manager import JobConflict, JobManager, JobNotFound, SimilarEstimate
-from xpsb.jobs.models import Brief, GateId, JobView
+from xpsb.jobs.models import Brief, GateId, JobState, JobView
 from xpsb.paths import AppPaths
 from xpsb.scene import ItemPatch, NewItem
 from xpsb.secrets import ANTHROPIC_ACCOUNT, SecretStore, normalize_api_key
@@ -88,6 +88,10 @@ class Approve(BaseModel):
 
 class PathBody(BaseModel):
     path: str
+
+
+class ReopenBody(BaseModel):
+    to: Literal["analyzed", "clarified"]
 
 
 class SimilarBody(BaseModel):
@@ -205,6 +209,15 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
     async def create_job(body: CreateJob) -> JobView:
         job = ctx.jobs.create(body.aoi)
         return ctx.jobs.view(job.id)
+
+    @app.get("/api/jobs", dependencies=auth)
+    async def list_jobs() -> list[dict]:
+        return ctx.jobs.summaries()
+
+    @app.post("/api/jobs/{job_id}/reopen", dependencies=auth)
+    async def reopen(job_id: str, body: ReopenBody) -> JobView:
+        ctx.jobs.reopen(job_id, JobState(body.to))
+        return ctx.jobs.view(job_id)
 
     @app.get("/api/jobs/{job_id}", dependencies=auth)
     async def get_job(job_id: str) -> JobView:

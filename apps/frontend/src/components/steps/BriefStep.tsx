@@ -40,8 +40,9 @@ export function BriefStep({ onSubmitted }: { onSubmitted: () => void }) {
   const [brief, setBrief] = useState<Brief>(
     () =>
       job?.brief ?? {
-        object_categories: ["buildings", "grandstands"],
-        surface_types: [],
+        // Most users do not know in advance what is there: find everything.
+        object_categories: [...CATEGORIES],
+        surface_types: [...SURFACES],
         surface_mode: "material",
         exclusions: [],
         use_ai: Boolean(system?.has_api_key && settings?.ai?.enabled),
@@ -55,6 +56,10 @@ export function BriefStep({ onSubmitted }: { onSubmitted: () => void }) {
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const everything =
+    (brief.object_categories?.length ?? 0) === CATEGORIES.length &&
+    (brief.surface_types?.length ?? 0) === SURFACES.length;
+  const [restrict, setRestrict] = useState(!everything);
   const update = (patch: Partial<Brief>) => setBrief((b) => ({ ...b, ...patch }));
   const nothingSelected = !brief.object_categories?.length && !brief.surface_types?.length;
 
@@ -77,41 +82,60 @@ export function BriefStep({ onSubmitted }: { onSubmitted: () => void }) {
     <div className="space-y-5">
       <p className="text-sm text-zinc-600 dark:text-zinc-300">{t("brief.intro")}</p>
 
-      <Section title={t("brief.objects")}>
-        <div className="grid grid-cols-1 gap-1.5">
-          {CATEGORIES.map((c) => (
-            <Checkbox
-              key={c}
-              label={t(`category.${c}`)}
-              checked={brief.object_categories?.includes(c) ?? false}
-              onChange={(on) => update({ object_categories: toggle(brief.object_categories ?? [], c, on) })}
-            />
-          ))}
-        </div>
-      </Section>
-
-      <Section title={t("brief.surfaces")}>
-        <div className="grid grid-cols-2 gap-1.5">
-          {SURFACES.map((s) => (
-            <Checkbox
-              key={s}
-              label={t(`surface.${s}`)}
-              checked={brief.surface_types?.includes(s) ?? false}
-              onChange={(on) => update({ surface_types: toggle(brief.surface_types ?? [], s, on) })}
-            />
-          ))}
-        </div>
-        <label className="block text-sm">
-          <span className="mb-1 block text-zinc-600 dark:text-zinc-300">{t("brief.surface_mode")}</span>
-          <select
-            className={inputClass}
-            value={brief.surface_mode}
-            onChange={(e) => update({ surface_mode: e.target.value as Brief["surface_mode"] })}
-          >
-            <option value="material">{t("brief.surface_mode.material")}</option>
-            <option value="imagery">{t("brief.surface_mode.imagery")}</option>
-          </select>
+      <Section title={t("brief.what")}>
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="radio"
+            className="mt-1"
+            checked={!restrict}
+            onChange={() => {
+              setRestrict(false);
+              update({ object_categories: [...CATEGORIES], surface_types: [...SURFACES] });
+            }}
+            data-testid="find-everything"
+          />
+          <span>
+            <span className="font-medium">{t("brief.everything")}</span>
+            <span className="block text-xs text-zinc-500">{t("brief.everything_hint")}</span>
+          </span>
         </label>
+        <label className="flex items-start gap-2 text-sm">
+          <input type="radio" className="mt-1" checked={restrict} onChange={() => setRestrict(true)} data-testid="restrict" />
+          <span>
+            <span className="font-medium">{t("brief.restrict")}</span>
+            <span className="block text-xs text-zinc-500">{t("brief.restrict_hint")}</span>
+          </span>
+        </label>
+        {restrict && (
+          <div className="space-y-3 rounded-md bg-white p-3 ring-1 ring-zinc-200 dark:bg-zinc-800 dark:ring-zinc-700">
+            <div>
+              <div className="mb-1 text-xs font-semibold text-zinc-500 uppercase">{t("brief.objects")}</div>
+              <div className="grid grid-cols-1 gap-1.5">
+                {CATEGORIES.map((c) => (
+                  <Checkbox
+                    key={c}
+                    label={t(`category.${c}`)}
+                    checked={brief.object_categories?.includes(c) ?? false}
+                    onChange={(on) => update({ object_categories: toggle(brief.object_categories ?? [], c, on) })}
+                  />
+                ))}
+              </div>
+            </div>
+            <div>
+              <div className="mb-1 text-xs font-semibold text-zinc-500 uppercase">{t("brief.surfaces")}</div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {SURFACES.map((x) => (
+                  <Checkbox
+                    key={x}
+                    label={t(`surface.${x}`)}
+                    checked={brief.surface_types?.includes(x) ?? false}
+                    onChange={(on) => update({ surface_types: toggle(brief.surface_types ?? [], x, on) })}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </Section>
 
       <Section title={t("brief.exclusions")}>

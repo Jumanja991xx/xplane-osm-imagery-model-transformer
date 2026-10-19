@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { api } from "../../api/client";
 import { useT } from "../../i18n";
 import { useApp } from "../../store";
 import { PreviewDialog } from "../PreviewDialog";
@@ -8,6 +9,8 @@ import { Alert, Button, Section } from "../ui";
 export function PlanStep({ onBuild }: { onBuild: () => void }) {
   const { t } = useT();
   const job = useApp((s) => s.job);
+  const setJob = useApp((s) => s.setJob);
+  const backToList = async () => job && setJob(await api.reopen(job.id, "analyzed"));
   const [previewOpen, setPreviewOpen] = useState(false);
   const plan = job?.plan;
   if (!job || !plan) return null;
@@ -65,7 +68,10 @@ export function PlanStep({ onBuild }: { onBuild: () => void }) {
           ))}
         </ul>
       </Section>
-      <div className="flex justify-end">
+      <div className="sticky -bottom-4 z-10 -mx-4 flex justify-end gap-2 border-t border-zinc-200 bg-zinc-50/95 px-4 py-2 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95">
+        <Button variant="ghost" onClick={backToList} data-testid="back-to-list">
+          ← {t("common.back_to_list")}
+        </Button>
         <Button variant="primary" onClick={onBuild} data-testid="plan-build">
           {t("plan.build")}
         </Button>

@@ -132,6 +132,8 @@ class AiRunInfo(BaseModel):
     skipped: int = 0
     tiles_searched: int = 0
     proposals: int = 0
+    # Finds of the object search that were left out, by reason (shown to the user).
+    dropped: dict[str, int] = Field(default_factory=dict)
     limit_reached: bool = False
     error_key: str | None = None
     error_detail: str | None = None

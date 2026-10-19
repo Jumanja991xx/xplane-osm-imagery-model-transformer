@@ -128,12 +128,21 @@ def test_rejecting_a_proposal_deletes_it(client):
 
 
 def test_search_respects_the_budget(client, fake_ai):
-    budget = detect.estimate_tile_cost("claude-sonnet-5-5") * 1.2
+    # Room for about one call (estimates carry a safety margin for parallel calls).
+    budget = detect.estimate_tile_cost("claude-sonnet-5-5") * 1.6
     job = analyze(client, setup(client, brief={**DETECT, "ai_cost_limit_usd": round(budget, 4)}))
     searches = [c for c in fake_ai.calls if c["format"] == "AiFindings"]
-    assert len(searches) == 1
+    tiles = len(detect.plan_tiles(wms_info(client, job)))
+    assert 1 <= len(searches) < tiles * detect.PASSES
     assert job["analysis"]["ai"]["limit_reached"] is True
+    assert job["analysis"]["ai"]["cost_usd"] <= budget
     assert "analysis.ai_limit_reached" in keys(job["analysis"]["notes"])
+
+
+def wms_info(client, job):
+    from xpsb.imagery.wms import ImageryInfo
+
+    return ImageryInfo(**job["analysis"]["imagery"])
 
 
 def test_search_off_sends_no_tiles(client, fake_ai):
@@ -190,3 +199,70 @@ def test_bulk_accept_with_new_category(client):
     ).json()
     item = next(i for i in job["analysis"]["items"] if i["id"] == "ai/1")
     assert item["category"] == "canopies" and item["included"] and not item["proposal"]
+
+
+def test_finds_bring_roof_and_seats(client):
+    job = analyze(client, setup(client, brief=DETECT))
+    p = next(i for i in job["analysis"]["items"] if i["proposal"])
+    assert p["attrs"]["covered"] is True and p["attrs"]["material"] == "roof:solar"
+    assert p["attrs"]["seat_color"] == "#c03030"
+
+
+def test_small_area_goes_as_one_picture(tmp_path):
+    area = wms.Bounds(8.5650, 49.3270, 8.5665, 49.3282)  # ~110 x 130 m
+    info = wms.fetch_area_image(BAYERN_DOP40, area, tmp_path)
+    tiles = detect.plan_tiles(info)
+    assert len(tiles) == 1 and tiles[0].overview
+    assert detect.count_tiles(170, 190) == 1
+
+
+def test_similar_takes_over_the_example_attributes(client):
+    job = analyze(client, setup(client))
+    jid = job["id"]
+    client.patch(
+        f"/api/jobs/{jid}/items/way/103",
+        json={"attrs": {"height_m": 11, "covered": True, "material": "roof:solar"}},
+        headers=AUTH,
+    )
+    est = client.get(f"/api/jobs/{jid}/similar/way/103", headers=AUTH).json()
+    job = client.post(
+        f"/api/jobs/{jid}/similar/way/103", json={"max_usd": est["estimate_usd"]}, headers=AUTH
+    ).json()
+    found = next(i for i in job["analysis"]["items"] if i["source"] == "ai")
+    assert found["attrs"]["height_m"] == 11 and found["attrs"]["covered"] is True
+
+
+def test_memory_brings_back_earlier_decisions(client, fake_ai):
+    first = analyze(client, setup(client, brief=DETECT))
+    jid = first["id"]
+    client.patch(f"/api/jobs/{jid}/items/ai/1", json={"proposal": False}, headers=AUTH)
+    client.patch(f"/api/jobs/{jid}/items/way/103", json={"attrs": {"height_m": 14}}, headers=AUTH)
+    job = client.get(f"/api/jobs/{jid}", headers=AUTH).json()
+    job = client.post(
+        f"/api/jobs/{jid}/answers",
+        json={q["id"]: q["suggested"] for q in job["analysis"]["questions"]},
+        headers=AUTH,
+    ).json()
+    assert (
+        client.post(
+            f"/api/jobs/{jid}/gates/B/approve",
+            json={"hash": job["pending_gate"]["hash"]},
+            headers=AUTH,
+        ).status_code
+        == 200
+    )
+
+    calls_before = len(fake_ai.calls)
+    second = analyze(client, setup(client, brief=DETECT))
+    items = {i["id"]: i for i in second["analysis"]["items"]}
+    assert items["way/103"]["attrs"]["height_m"] == 14 and items["way/103"]["remembered"]
+    mem = [i for i in items.values() if i["source"] == "memory"]
+    assert len(mem) == 1 and mem[0]["category"] == "grandstands" and mem[0]["included"]
+    # nothing new to propose: the stand is known from the first job
+    assert not [i for i in items.values() if i["proposal"]]
+    assert "analysis.remembered" in keys(second["analysis"]["notes"])
+    rated = [c for c in fake_ai.calls[calls_before:] if c["format"] == "AiBatchResult"]
+    rated_ids = {
+        b["text"].split("\n")[0] for c in rated for b in c["content"] if b["type"] == "text"
+    }
+    assert "item_id: way/103" not in rated_ids
