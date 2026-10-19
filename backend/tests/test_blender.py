@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
+
+import pytest
 
 import numpy as np
 from PIL import Image
@@ -29,9 +32,9 @@ def test_bake_runs_the_fixed_script_and_shades_only_own_texture_pieces():
         assert "--python" in cmd and Path(cmd[cmd.index("--python") + 1]) == blender.SCRIPT
         assert "--factory-startup" in cmd
         src, dst = cmd[-2], cmd[-1]
-        d = np.load(src)
-        seen["rec"], seen["occ"] = len(d["receivers"]), len(d["occluders"])
-        w, h = (int(v) for v in d["size"])
+        with np.load(src) as d:  # closed again: Windows cannot delete open files
+            seen["rec"], seen["occ"] = len(d["receivers"]), len(d["occluders"])
+            w, h = (int(v) for v in d["size"])
         Image.new("L", (w, h), 64).save(dst)  # "everything occluded"
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
@@ -53,6 +56,7 @@ def test_failed_blender_leaves_the_object_alone():
     assert blender.bake_ao("blender", mesh, baked, run=broken) is None
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="uses a shell script as fake Blender")
 def test_find_ignores_missing_or_odd_programs(tmp_path):
     assert blender.find(str(tmp_path / "nope.exe")) is None
     fake = tmp_path / "blender"
