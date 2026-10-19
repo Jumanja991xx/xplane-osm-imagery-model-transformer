@@ -38,13 +38,24 @@ def main():
     r = oriented_rect(footprint)
     L = r["length"]
     D = r["width"]
-    # Front = long side towards the field (if known).
-    nx = -r["uy"]
-    ny = r["ux"]
+    ax = r["ux"]
+    ay = r["uy"]
+    # Front = the side towards the field (if known): normally a long side, but
+    # near-square stands in curves and corners may face it with a short side.
+    nx = -ay
+    ny = ax
     f = params.get("facing")
-    if f != None and nx * f[0] + ny * f[1] < 0:
-        nx = -nx
-        ny = -ny
+    if f != None:
+        d_long = nx * f[0] + ny * f[1]
+        d_short = ax * f[0] + ay * f[1]
+        if abs(d_short) > abs(d_long) + 0.25 and L < 2.5 * D:
+            nx = ax
+            ny = ay
+            d_long = d_short
+            L, D = D, L
+        if d_long < 0:
+            nx = -nx
+            ny = -ny
     # Walk along the stand so that "left" (+across in sweep profiles) is the back.
     tx = -ny
     ty = nx
@@ -56,17 +67,25 @@ def main():
     covered = g("covered", False) == True or g("roof_material", "") == "solar"
     H = params.get("height")
     front_wall = 1.1
+    clearance = 2.6  # head room between the top row and the roof
     aisle = 1.2 if D > 6 else 0.5
     rows = max(2, int((D - aisle) / 0.8))
-    row_d = (D - aisle) / rows
+    if H != None:
+        # Never more rows than fit under the given height (min. rise 0.25 m);
+        # the remaining depth becomes a flat walkway at the back.
+        top = H - clearance if covered else H
+        rows = max(2, min(rows, int((top - front_wall) / 0.25)))
+    row_d = min((D - aisle) / rows, 0.95)
     if H != None and covered:
-        tier_top = max(front_wall + rows * 0.25, H - 3.2)
+        tier_top = max(front_wall + rows * 0.25, H - clearance)
     elif H != None:
         tier_top = H
     else:
         tier_top = front_wall + rows * 0.42
     row_h = clamp((tier_top - front_wall) / rows, 0.25, 0.6)
-    roof_h = H if (H != None and covered) else front_wall + rows * row_h + 3.0
+    z_top = front_wall + (rows - 1) * row_h
+    # The roof always clears the top row, even if the given height is too low.
+    roof_h = max(H, z_top + clearance) if (H != None and covered) else z_top + clearance + 0.4
 
     # Cross-section: front wall, rows of seats (tread + riser), aisle, back wall.
     prof = [[0, 0], [0, front_wall]]

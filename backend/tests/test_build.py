@@ -114,6 +114,20 @@ def test_grandstand_faces_the_field():
     assert sum(p[1] for p in low) / len(low) < sum(p[1] for p in high) / len(high)
 
 
+def test_grandstand_roof_clears_the_rows_and_corner_stands_face_the_field():
+    # 12 m wide, 20 m deep stand in a curve: the field lies to the south, i.e. in
+    # front of a short side. Given height 6 m is too low for 20 m of rows.
+    params = {"facing": [0, -1], "covered": True, "roof_material": "solar", "height": 6}
+    mesh = run(DEFAULT_SCRIPTS["grandstands"], [[0, 0], [12, 0], [12, 20], [0, 20]], params)
+    seats = [p for patch in mesh.patches if patch.material == "seats" for p in patch.positions]
+    roof = [p for patch in mesh.patches if patch.material == "solar" for p in patch.positions]
+    assert max(p[2] for p in seats) + 2.0 < min(p[2] for p in roof)
+    # rows climb away from the field (south low, north high)
+    low = min(seats, key=lambda p: p[2])
+    high = max(seats, key=lambda p: p[2])
+    assert low[1] < high[1]
+
+
 def test_obj8_winding_and_skirt():
     mesh = run("extrude(footprint, 0, 6, top=None)")
     obj = to_obj8(mesh, bake(mesh, 512), "t.png", 2000)
