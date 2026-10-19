@@ -361,3 +361,79 @@ def test_rating_knows_the_area(client, fake_ai):
     ratings = [c for c in fake_ai.calls if c["format"] == "AiBatchResult"]
     assert "race/running track (sport: speedway)" in ratings[0]["system"]
     assert "grandstands" in ratings[0]["system"] and "solar panels" in ratings[0]["system"]
+
+
+# ---- AI architect ------------------------------------------------------------------
+
+
+def planned(client) -> dict:
+    job = analyze(client, setup(client))
+    # Open questions block approval B: answer them.
+    answers = {q["id"]: "9" for q in job["analysis"]["questions"] if not q.get("answer")}
+    if answers:
+        client.post(f"/api/jobs/{job['id']}/answers", json=answers, headers=AUTH)
+    job = client.get(f"/api/jobs/{job['id']}", headers=AUTH).json()
+    r = client.post(
+        f"/api/jobs/{job['id']}/gates/B/approve",
+        json={"hash": job["pending_gate"]["hash"]},
+        headers=AUTH,
+    )
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_architect_writes_fixes_and_checks_a_script(client, fake_ai, app_ctx):
+    job = planned(client)
+    jid = job["id"]
+    obj = next(o for o in job["plan"]["objects"] if o["category"] == "buildings")
+    url = f"/api/jobs/{jid}/design/{obj['item_id']}"
+
+    est = client.get(url, headers=AUTH).json()
+    assert 0 < est["estimate_usd"] <= est["max_usd"] <= est["budget_usd"] + 5
+    fake_ai.calls.clear()
+
+    # The first script is broken ("kaputt"): the sandbox error goes back to the model.
+    r = client.post(
+        url,
+        json={"request": "kaputt: mach eine Glashalle mit Turm", "max_usd": est["max_usd"]},
+        headers=AUTH,
+    )
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["summary"] == "Passt so." and out["cost_usd"] > 0
+    formats = [c["format"] for c in fake_ai.calls]
+    assert formats == ["ArchitectScript", "ArchitectScript", "ArchitectReview"]
+    first = fake_ai.calls[0]["content"]
+    assert any(b["type"] == "image" for b in first)  # aerial crop and current views
+    assert "Current script:" in "".join(b.get("text", "") for b in first)
+    assert "failed in the sandbox" in "".join(
+        b.get("text", "") for b in fake_ai.calls[1]["content"]
+    )
+    assert "extrude(" in fake_ai.calls[0]["system"]  # tool reference
+
+    job = out["job"]
+    item = next(i for i in job["analysis"]["items"] if i["id"] == obj["item_id"])
+    assert "cylinder(" in item["script"] and item["script_request"].startswith("kaputt")
+    plan_obj = next(o for o in job["plan"]["objects"] if o["item_id"] == obj["item_id"])
+    assert plan_obj["status"] == "ok" and plan_obj["triangles"] > obj["triangles"]
+    assert "gate.c.custom_scripts" in keys(job["pending_gate"]["items"])
+
+    # Back to the default script, free of charge.
+    fake_ai.calls.clear()
+    job = client.delete(url, headers=AUTH).json()
+    item = next(i for i in job["analysis"]["items"] if i["id"] == obj["item_id"])
+    assert item["script"] is None and not fake_ai.calls
+    assert "gate.c.custom_scripts" not in keys(job["pending_gate"]["items"])
+
+
+def test_architect_never_exceeds_the_confirmed_maximum(client, fake_ai):
+    job = planned(client)
+    obj = next(o for o in job["plan"]["objects"] if o["category"] == "buildings")
+    fake_ai.calls.clear()
+    r = client.post(
+        f"/api/jobs/{job['id']}/design/{obj['item_id']}",
+        json={"request": "einen Turm bitte", "max_usd": 0.0001},
+        headers=AUTH,
+    )
+    assert r.status_code == 409 and r.json()["detail"]["key"] == "error.ai_budget_exhausted"
+    assert not fake_ai.calls

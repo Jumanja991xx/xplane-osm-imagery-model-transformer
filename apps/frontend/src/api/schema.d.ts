@@ -332,6 +332,25 @@ export interface paths {
         patch: operations["adjust_object_api_jobs__job_id__objects__item_id__patch"];
         trace?: never;
     };
+    "/api/jobs/{job_id}/design/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Design Estimate */
+        get: operations["design_estimate_api_jobs__job_id__design__item_id__get"];
+        put?: never;
+        /** Redesign */
+        post: operations["redesign_api_jobs__job_id__design__item_id__post"];
+        /** Reset Design */
+        delete: operations["reset_design_api_jobs__job_id__design__item_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs/{job_id}/gates/{gate}/approve": {
         parameters: {
             query?: never;
@@ -611,6 +630,35 @@ export interface components {
         /** CreateJob */
         CreateJob: {
             aoi: components["schemas"]["GeoJsonPolygon"];
+        };
+        /** DesignBody */
+        DesignBody: {
+            /** Request */
+            request: string;
+            /** Max Usd */
+            max_usd: number;
+        };
+        /**
+         * DesignEstimate
+         * @description What a request to the AI architect may cost; shown before anything is sent.
+         */
+        DesignEstimate: {
+            /** Model */
+            model: string;
+            /** Estimate Usd */
+            estimate_usd: number;
+            /** Max Usd */
+            max_usd: number;
+            /** Budget Usd */
+            budget_usd: number;
+        };
+        /** DesignOutcome */
+        DesignOutcome: {
+            job: components["schemas"]["JobView"];
+            /** Summary */
+            summary: string;
+            /** Cost Usd */
+            cost_usd: number;
         };
         /**
          * DetailLevel
@@ -1867,6 +1915,106 @@ export interface operations {
                 "application/json": components["schemas"]["AdjustBody"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    design_estimate_api_jobs__job_id__design__item_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DesignEstimate"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    redesign_api_jobs__job_id__design__item_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DesignBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DesignOutcome"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_design_api_jobs__job_id__design__item_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

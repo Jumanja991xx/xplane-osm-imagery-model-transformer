@@ -15,7 +15,16 @@ from xpsb.ai.analyze import (
     AiQuestion,
     AiResponse,
 )
+from xpsb.ai.architect import ArchitectReview, ArchitectScript
 from xpsb.ai.detect import AiFind, AiFindings
+
+# What the fake architect "writes": the outline as a glass hall with a round tower.
+ARCHITECT_SCRIPT = """
+h = params.get("height") or 8
+extrude(footprint, 0, h, mat="glass", top="roof_flat")
+c = polygon_centroid(footprint)
+cylinder(c[0], c[1], h, 2.5, 6, mat="brick", segments=12)
+"""
 
 _spec = importlib.util.spec_from_file_location(
     "make_speedway", Path(__file__).parent / "fixtures" / "make_speedway.py"
@@ -53,6 +62,25 @@ class FakeAi:
             raise AiAuthError("AuthenticationError")
         if self.fail_call:
             raise AiCallError(self.fail_call)
+        if output_format is ArchitectScript:
+            text = "\n".join(b.get("text", "") for b in content)
+            broken = "kaputt" in text and "failed in the sandbox" not in text
+            return AiResponse(
+                parsed=ArchitectScript(
+                    script="extrude(footprint, 0, -1)" if broken else ARCHITECT_SCRIPT,
+                    summary="Glashalle mit rundem Turm.",
+                ),
+                model=self.served_model or model,
+                input_tokens=self.tokens[0],
+                output_tokens=self.tokens[1],
+            )
+        if output_format is ArchitectReview:
+            return AiResponse(
+                parsed=ArchitectReview(ok=True, problems="", script=None, summary="Passt so."),
+                model=self.served_model or model,
+                input_tokens=self.tokens[0],
+                output_tokens=self.tokens[1],
+            )
         if output_format is AiFindings:
             tile_text = next(
                 b["text"] for b in content if b["type"] == "text" and " px," in b["text"]

@@ -144,6 +144,11 @@ export const api = {
   reopen: (id: string, to: "analyzed" | "clarified") =>
     request<JobView>("POST", `/api/jobs/${id}/reopen`, { to }),
   listJobs: () => request<JobSummary[]>("GET", "/api/jobs"),
+  designEstimate: (id: string, itemId: string) =>
+    request<S["DesignEstimate"]>("GET", `/api/jobs/${id}/design/${itemId}`),
+  redesign: (id: string, itemId: string, text: string, maxUsd: number) =>
+    request<S["DesignOutcome"]>("POST", `/api/jobs/${id}/design/${itemId}`, { request: text, max_usd: maxUsd }),
+  resetDesign: (id: string, itemId: string) => request<JobView>("DELETE", `/api/jobs/${id}/design/${itemId}`),
   adjustObject: (id: string, itemId: string, attrs: Partial<ItemAttrs>) =>
     request<JobView>("PATCH", `/api/jobs/${id}/objects/${itemId}`, { attrs }),
 };

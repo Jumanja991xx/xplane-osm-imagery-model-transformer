@@ -262,6 +262,16 @@ def _gate_c(job: Job, ctx: GateContext):
         items.append(GateItem(kind="warning", key="gate.c.no_exclusions"))
     if p.surface_mode == "imagery" and p.surfaces:
         items.append(GateItem(kind="info", key="gate.c.ortho_in_package"))
+    assert job.analysis is not None
+    scripts = {
+        it.id: hashlib.sha256(it.script.encode()).hexdigest()[:16]
+        for it in job.analysis.items
+        if it.script and it.included and not it.proposal
+    }
+    if scripts:
+        items.append(
+            GateItem(kind="info", key="gate.c.custom_scripts", params={"count": len(scripts)})
+        )
     failed = [o for o in p.objects if o.status == "error"]
     skipped = [o for o in p.objects if o.status == "skipped"]
     if failed:
@@ -282,7 +292,7 @@ def _gate_c(job: Job, ctx: GateContext):
     blocked = ctx.dsftool is None
     if blocked:
         items.append(GateItem(kind="warning", key="gate.c.no_dsftool"))
-    payload = {"plan": p.model_dump(mode="json"), "dsftool": str(ctx.dsftool)}
+    payload = {"plan": p.model_dump(mode="json"), "dsftool": str(ctx.dsftool), "scripts": scripts}
     return items, blocked, payload
 
 

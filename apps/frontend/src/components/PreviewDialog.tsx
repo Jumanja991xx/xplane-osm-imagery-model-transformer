@@ -7,6 +7,7 @@ import {
   imageryObjectUrl,
   preview,
   type ItemAttrs,
+  type JobView,
   type PreviewData,
   type PreviewObject,
 } from "../api/client";
@@ -421,6 +422,126 @@ function ObjectControls({
           ))}
         </select>
       </label>
+      {error && <Alert kind="error">{error}</Alert>}
+      <DesignPanel jobId={jobId} object={object} onAdjusted={onAdjusted} />
+    </div>
+  );
+}
+
+/** Request to the AI architect in own words: cost first, then send, then keep or reset. */
+function DesignPanel({
+  jobId,
+  object,
+  onAdjusted,
+}: {
+  jobId: string;
+  object: PreviewObject;
+  onAdjusted: (o: PreviewObject) => Promise<void>;
+}) {
+  const { t } = useT();
+  const job = useApp((s) => s.job);
+  const setJob = useApp((s) => s.setJob);
+  const item = job?.analysis?.items?.find((i) => i.id === object.item_id);
+  const [text, setText] = useState("");
+  const [estimate, setEstimate] = useState<{ typical: number; max: number; budget: number; model: string } | null>(
+    null,
+  );
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  if (!item) return null;
+  const aiOn = Boolean(job?.brief?.use_ai);
+
+  const run = async (fn: () => Promise<void>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await fn();
+    } catch (e) {
+      setError(e instanceof ApiError ? t(e.key, e.params) : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const showNew = async (view: JobView) => {
+    setJob(view);
+    const next = view.plan?.objects?.find((o) => o.item_id === object.item_id);
+    if (next) await onAdjusted({ ...object, ...next });
+  };
+  const check = () =>
+    run(async () => {
+      const e = await api.designEstimate(jobId, object.item_id);
+      setEstimate({ typical: e.estimate_usd, max: Math.min(e.max_usd, e.budget_usd), budget: e.budget_usd, model: e.model });
+    });
+  const send = () =>
+    run(async () => {
+      if (!estimate) return;
+      const out = await api.redesign(jobId, object.item_id, text.trim(), estimate.max);
+      setEstimate(null);
+      setText("");
+      setDone(t("design.done", { summary: out.summary, cost: out.cost_usd.toFixed(3) }));
+      await showNew(out.job);
+    });
+  const reset = () =>
+    run(async () => {
+      setDone(null);
+      await showNew(await api.resetDesign(jobId, object.item_id));
+    });
+
+  return (
+    <div className="space-y-1.5 border-t border-zinc-200 pt-2 dark:border-zinc-700" data-testid="design-panel">
+      <div className="text-xs font-semibold text-zinc-500 uppercase">✨ {t("design.title")}</div>
+      {item.script && item.script_request && (
+        <div className="flex items-start justify-between gap-2 text-xs">
+          <span className="text-zinc-600 dark:text-zinc-300">{t("design.custom", { request: item.script_request })}</span>
+          <Button variant="ghost" onClick={reset} disabled={busy} data-testid="design-reset">
+            {t("design.reset")}
+          </Button>
+        </div>
+      )}
+      {!aiOn ? (
+        <p className="text-xs text-zinc-500">{t("design.no_ai")}</p>
+      ) : (
+        <>
+          <textarea
+            className="w-full rounded border border-zinc-300 bg-white p-1.5 text-xs dark:border-zinc-600 dark:bg-zinc-800"
+            rows={3}
+            value={text}
+            placeholder={t("design.placeholder")}
+            onChange={(e) => {
+              setText(e.target.value);
+              setEstimate(null);
+            }}
+            disabled={busy}
+            data-testid="design-text"
+          />
+          {!estimate ? (
+            <Button onClick={check} disabled={busy || text.trim().length < 3} data-testid="design-check">
+              {t("design.check")}
+            </Button>
+          ) : (
+            <div className="space-y-1.5">
+              <p className="text-xs text-zinc-600 dark:text-zinc-300">
+                {t("design.estimate", {
+                  typical: estimate.typical.toFixed(2),
+                  max: estimate.max.toFixed(2),
+                  budget: estimate.budget.toFixed(2),
+                  model: estimate.model,
+                })}
+              </p>
+              <Button variant="primary" onClick={send} disabled={busy || estimate.max <= 0} data-testid="design-send">
+                {t("design.send", { max: estimate.max.toFixed(2) })}
+              </Button>
+            </div>
+          )}
+          {busy && estimate && (
+            <div className="flex items-center gap-2 text-xs">
+              <Spinner /> {t("design.running")}
+            </div>
+          )}
+        </>
+      )}
+      {done && <Alert kind="success">{done}</Alert>}
       {error && <Alert kind="error">{error}</Alert>}
     </div>
   );

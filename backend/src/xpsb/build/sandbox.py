@@ -15,6 +15,8 @@ from xpsb.build import tools
 from xpsb.build.mesh import GeometryError, Mesh
 
 MAX_SOURCE_BYTES = 100_000
+GEOMETRY_TOOLS = ("extrude", "box", "cylinder", "tube", "sweep", "revolve", "quad", "face")
+HELPER_TOOLS = ("oriented_rect", "offset_polygon", "polygon_area", "polygon_centroid", "resample")
 DEFAULT_TIMEOUT_S = 5.0
 
 
@@ -48,15 +50,9 @@ def run_script(
     mesh = Mesh(max_triangles=max_triangles)
     t = tools.Tools(mesh)
     module = sl.Module()
-    for fname in ("extrude", "box", "cylinder", "tube", "sweep", "revolve", "quad", "face"):
+    for fname in GEOMETRY_TOOLS:
         module.add_callable(fname, getattr(t, fname))
-    for fname in (
-        "oriented_rect",
-        "offset_polygon",
-        "polygon_area",
-        "polygon_centroid",
-        "resample",
-    ):
+    for fname in HELPER_TOOLS:
         module.add_callable(fname, getattr(tools, fname))
     for fname, fn in tools.MATH.items():
         module.add_callable(fname, fn)

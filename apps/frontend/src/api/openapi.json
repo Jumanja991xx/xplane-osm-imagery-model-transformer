@@ -928,6 +928,156 @@
         }
       }
     },
+    "/api/jobs/{job_id}/design/{item_id}": {
+      "get": {
+        "summary": "Design Estimate",
+        "operationId": "design_estimate_api_jobs__job_id__design__item_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignEstimate"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Redesign",
+        "operationId": "redesign_api_jobs__job_id__design__item_id__post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DesignBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignOutcome"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Reset Design",
+        "operationId": "reset_design_api_jobs__job_id__design__item_id__delete",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobs/{job_id}/gates/{gate}/approve": {
       "post": {
         "summary": "Approve",
@@ -1526,6 +1676,79 @@
           "aoi"
         ],
         "title": "CreateJob"
+      },
+      "DesignBody": {
+        "properties": {
+          "request": {
+            "type": "string",
+            "maxLength": 1500,
+            "minLength": 3,
+            "title": "Request"
+          },
+          "max_usd": {
+            "type": "number",
+            "maximum": 1000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Max Usd"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request",
+          "max_usd"
+        ],
+        "title": "DesignBody"
+      },
+      "DesignEstimate": {
+        "properties": {
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "estimate_usd": {
+            "type": "number",
+            "title": "Estimate Usd"
+          },
+          "max_usd": {
+            "type": "number",
+            "title": "Max Usd"
+          },
+          "budget_usd": {
+            "type": "number",
+            "title": "Budget Usd"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model",
+          "estimate_usd",
+          "max_usd",
+          "budget_usd"
+        ],
+        "title": "DesignEstimate",
+        "description": "What a request to the AI architect may cost; shown before anything is sent."
+      },
+      "DesignOutcome": {
+        "properties": {
+          "job": {
+            "$ref": "#/components/schemas/JobView"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "cost_usd": {
+            "type": "number",
+            "title": "Cost Usd"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job",
+          "summary",
+          "cost_usd"
+        ],
+        "title": "DesignOutcome"
       },
       "DetailLevel": {
         "type": "string",

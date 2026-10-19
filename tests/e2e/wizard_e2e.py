@@ -187,6 +187,16 @@ with sync_playwright() as p:
     expect(page.get_by_test_id("adjust-rows")).to_be_enabled(timeout=15000)
     page.wait_for_timeout(1500)
     page.screenshot(path=OUT / "09d-preview-adjusted.png")
+    # AI architect (fake AI): own words → cost first → send → rebuilt object.
+    page.get_by_test_id("preview-objects").get_by_role("button", name="Clubhaus").click()
+    page.get_by_test_id("design-text").fill("Mach daraus eine Glashalle mit rundem Turm")
+    page.get_by_test_id("design-check").click()
+    expect(page.get_by_test_id("design-send")).to_be_visible(timeout=10000)
+    page.screenshot(path=OUT / "09e-design-estimate.png")
+    page.get_by_test_id("design-send").click()
+    expect(page.get_by_test_id("design-reset")).to_be_visible(timeout=30000)
+    page.wait_for_timeout(1500)
+    page.screenshot(path=OUT / "09f-design-done.png")
     page.get_by_test_id("preview-close").click()
     # One step back to the list and forward again: nothing is lost, no new analysis.
     page.get_by_test_id("back-to-list").click()

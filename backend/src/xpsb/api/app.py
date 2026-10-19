@@ -26,7 +26,13 @@ from pydantic import BaseModel, Field
 
 from xpsb import __version__
 from xpsb.geo import GeoJsonPolygon
-from xpsb.jobs.manager import JobConflict, JobManager, JobNotFound, SimilarEstimate
+from xpsb.jobs.manager import (
+    DesignEstimate,
+    JobConflict,
+    JobManager,
+    JobNotFound,
+    SimilarEstimate,
+)
 from xpsb.jobs.models import Brief, GateId, JobState, JobView
 from xpsb.paths import AppPaths
 from xpsb.scene import ItemPatch, NewItem
@@ -92,6 +98,18 @@ class PathBody(BaseModel):
 
 class ReopenBody(BaseModel):
     to: Literal["analyzed", "clarified"]
+
+
+class DesignBody(BaseModel):
+    request: str = Field(min_length=3, max_length=1500)
+    # The maximum the user confirmed; the architect never spends more than this.
+    max_usd: float = Field(gt=0, le=1000)
+
+
+class DesignOutcome(BaseModel):
+    job: JobView
+    summary: str
+    cost_usd: float
 
 
 class AdjustBody(BaseModel):
@@ -288,6 +306,20 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
     @app.patch("/api/jobs/{job_id}/objects/{item_id:path}", dependencies=auth)
     async def adjust_object(job_id: str, item_id: str, body: AdjustBody) -> JobView:
         await asyncio.to_thread(ctx.jobs.adjust_object, job_id, item_id, body.attrs)
+        return ctx.jobs.view(job_id)
+
+    @app.get("/api/jobs/{job_id}/design/{item_id:path}", dependencies=auth)
+    async def design_estimate(job_id: str, item_id: str) -> DesignEstimate:
+        return ctx.jobs.design_estimate(job_id, item_id)
+
+    @app.post("/api/jobs/{job_id}/design/{item_id:path}", dependencies=auth)
+    async def redesign(job_id: str, item_id: str, body: DesignBody) -> DesignOutcome:
+        _, summary, cost = await ctx.jobs.redesign(job_id, item_id, body.request, body.max_usd)
+        return DesignOutcome(job=ctx.jobs.view(job_id), summary=summary, cost_usd=round(cost, 4))
+
+    @app.delete("/api/jobs/{job_id}/design/{item_id:path}", dependencies=auth)
+    async def reset_design(job_id: str, item_id: str) -> JobView:
+        await asyncio.to_thread(ctx.jobs.reset_design, job_id, item_id)
         return ctx.jobs.view(job_id)
 
     @app.post("/api/jobs/{job_id}/gates/{gate}/approve", dependencies=auth)

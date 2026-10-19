@@ -69,6 +69,15 @@ class SimilarEstimate(BaseModel):
     budget_usd: float  # what is left of the job and monthly limits
 
 
+class DesignEstimate(BaseModel):
+    """What a request to the AI architect may cost; shown before anything is sent."""
+
+    model: str
+    estimate_usd: float  # typical: write + self-check
+    max_usd: float  # with all fix attempts
+    budget_usd: float  # what is left of the job and monthly limits
+
+
 # On failure a job falls back to the last stable state so the user can fix the
 # cause (e.g. set the DSFTool path) and approve again.
 ROLLBACK = {
@@ -619,6 +628,117 @@ class JobManager:
         except ValueError as exc:
             raise JobConflict("error.invalid_item", detail=str(exc)[:300]) from exc
         item.edited = True
+        self.regenerate_object(job, item)
+        self._save(job)
+        return job
+
+    # ---- AI architect: own build script for one object -------------------------
+
+    def _design_ready(self, job_id: str, item_id: str) -> tuple[Job, SceneItem]:
+        job = self._planned(job_id)
+        item = self._item(job, item_id)
+        assert job.brief is not None
+        if not job.brief.use_ai:
+            raise JobConflict("error.ai_off")
+        if not self._secrets.get(ANTHROPIC_ACCOUNT):
+            raise JobConflict("error.ai_no_key")
+        if item.kind != "object":
+            raise JobConflict("error.similar_objects_only")
+        return job, item
+
+    def _current_script(self, item: SceneItem) -> str:
+        from xpsb.build.scripts import DEFAULT_SCRIPTS
+
+        return item.script or DEFAULT_SCRIPTS.get(str(item.category), "")
+
+    def design_estimate(self, job_id: str, item_id: str) -> DesignEstimate:
+        from xpsb.ai import architect
+
+        job, item = self._design_ready(job_id, item_id)
+        assert job.brief is not None
+        typical, most = architect.cost_estimate(job.brief.ai_model, len(self._current_script(item)))
+        return DesignEstimate(
+            model=job.brief.ai_model,
+            estimate_usd=round(typical, 3),
+            max_usd=round(most, 3),
+            budget_usd=round(self._similar_budget(job), 4),
+        )
+
+    async def redesign(
+        self, job_id: str, item_id: str, request: str, max_usd: float
+    ) -> tuple[Job, str, float]:
+        """Runs only after the user confirmed the estimate (max_usd is what they saw).
+        Returns the job, the architect's summary and what it cost."""
+        from xpsb.ai import architect
+        from xpsb.build import assemble
+
+        job, item = self._design_ready(job_id, item_id)
+        if job_id in self._busy:
+            raise JobConflict("error.job_running")
+        assert job.brief is not None and job.analysis is not None and job.plan is not None
+        budget = min(max_usd, self._similar_budget(job))
+        if budget <= 0:
+            raise JobConflict("error.ai_budget_exhausted")
+        aerial = None
+        image_path = self.imagery_file(job_id)
+        if image_path is not None and job.analysis.imagery is not None:
+            with Image.open(image_path) as img:
+                try:
+                    aerial, _ = ai.render_crop(img.convert("RGB"), job.analysis.imagery, item)
+                except ValueError:
+                    aerial = None
+        cfg = ai.AiRun(
+            model=job.brief.ai_model,
+            language=self._settings.load().language,
+            notes=job.brief.notes,
+            budget_usd=budget,
+            transport=self._ai_transport_factory(self._secrets.get(ANTHROPIC_ACCOUNT)),
+            on_cost=self.ledger.add,
+        )
+        detail = job.plan.detail
+        inputs = assemble._script_inputs(item, job.analysis.items, detail)
+        max_tris = assemble.DETAIL.get(detail, assemble.DETAIL["medium"])[0]
+        label = f"{item.name or ''} ({item.category})".strip()
+        self._busy.add(job_id)
+        try:
+            result = await asyncio.to_thread(
+                architect.design,
+                request=request,
+                current_script=self._current_script(item),
+                inputs=inputs,
+                max_triangles=max_tris,
+                aerial_png=aerial,
+                cfg=cfg,
+                object_label=label,
+            )
+        finally:
+            self._busy.discard(job_id)
+
+        run = job.analysis.ai or AiRunInfo(model=job.brief.ai_model)
+        run.cost_usd = round(run.cost_usd + result.info.cost_usd, 6)
+        for m in result.info.models_used:
+            if m not in run.models_used:
+                run.models_used.append(m)
+        job.analysis.ai = run
+        if result.script is None:
+            self._save(job)
+            raise JobConflict(
+                result.error_key or "error.architect_failed", detail=result.error_detail or ""
+            )
+        item.script = result.script
+        item.script_request = (
+            f"{item.script_request} | {request}" if item.script_request else request
+        )[-2000:]
+        item.edited = True
+        self.regenerate_object(job, item)
+        self._save(job)
+        return job, result.summary, result.info.cost_usd
+
+    def reset_design(self, job_id: str, item_id: str) -> Job:
+        """Back to the default build script (free)."""
+        job = self._planned(job_id)
+        item = self._item(job, item_id)
+        item.script, item.script_request = None, None
         self.regenerate_object(job, item)
         self._save(job)
         return job

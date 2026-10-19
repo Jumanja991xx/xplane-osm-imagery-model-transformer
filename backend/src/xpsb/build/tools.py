@@ -470,10 +470,12 @@ def offset_polygon(polygon, distance) -> list[list[float]]:
 
 
 def polygon_area(polygon) -> float:
+    """Area in square metres."""
     return Polygon(_pts2(polygon, "polygon")).area
 
 
 def polygon_centroid(polygon) -> list[float]:
+    """Centre of mass [x, y] of the polygon."""
     c = Polygon(_pts2(polygon, "polygon")).centroid
     return [c.x, c.y]
 
