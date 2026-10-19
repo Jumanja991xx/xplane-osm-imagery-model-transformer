@@ -107,7 +107,15 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     if (detail && typeof detail === "object" && "key" in detail) {
       throw new ApiError(res.status, detail.key, detail.params ?? {});
     }
-    if (res.status === 422) throw new ApiError(422, "error.validation", { detail: JSON.stringify(detail) });
+    if (res.status === 422) {
+      // FastAPI: [{loc: ["body", "package_name"], msg: ...}] -> name the field
+      const fields = Array.isArray(detail)
+        ? detail.map((d: { loc?: unknown[] }) => String((d.loc ?? []).slice(-1)[0] ?? "")).filter(Boolean)
+        : [];
+      if (fields.includes("package_name")) throw new ApiError(422, "error.invalid_package_name");
+      if (fields.length) throw new ApiError(422, "error.validation_field", { field: fields.join(", ") });
+      throw new ApiError(422, "error.validation", { detail: JSON.stringify(detail) });
+    }
     throw new ApiError(res.status, "error.unexpected", { status: res.status });
   }
   return (await res.json()) as T;

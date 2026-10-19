@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api, ApiError, type JobView } from "../../api/client";
 import { useT } from "../../i18n";
+import { folderName, validPackageName } from "../../names";
 import { useApp } from "../../store";
 import { PreviewDialog } from "../PreviewDialog";
 import { ProgressList } from "../ProgressList";
@@ -84,21 +85,6 @@ export function InstallStep({ onInstall }: { onInstall: () => void }) {
   );
 }
 
-const NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9 _-]{0,59}$/;
-
-/** Folder names allow plain letters only: "Puskás Aréna" -> "Puskas Arena". */
-export function folderName(text: string): string {
-  return text
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/ß/g, "ss")
-    .replace(/[^A-Za-z0-9 _-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 60)
-    .trim();
-}
-
 /** After the build: the user may still rename the scenery folder before installing. */
 function PackageName({ job }: { job: JobView }) {
   const { t } = useT();
@@ -113,7 +99,7 @@ function PackageName({ job }: { job: JobView }) {
     items.find((i) => i.kind === "object" && i.research && i.name)?.name ??
     items.find((i) => i.kind === "object" && i.name)?.name;
   const suggestion = main ? folderName(main) : "";
-  const valid = NAME_PATTERN.test(name.trim());
+  const valid = validPackageName(name);
   const rename = async (value: string) => {
     setBusy(true);
     setError(null);
@@ -146,7 +132,7 @@ function PackageName({ job }: { job: JobView }) {
         </Button>
       </div>
       {!valid && name.trim() !== "" && <p className="text-xs text-amber-600">{t("install.name_invalid")}</p>}
-      {suggestion && suggestion !== current && NAME_PATTERN.test(suggestion) && (
+      {suggestion && suggestion !== current && validPackageName(suggestion) && (
         <Button variant="ghost" onClick={() => rename(suggestion)} disabled={busy} data-testid="package-suggestion">
           💡 {t("install.name_suggestion", { name: suggestion })}
         </Button>

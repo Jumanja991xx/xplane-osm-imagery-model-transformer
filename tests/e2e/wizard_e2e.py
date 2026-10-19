@@ -64,6 +64,12 @@ with sync_playwright() as p:
 
     page.get_by_test_id("area-next").click()
     expect(page.get_by_role("heading", name="Auftrag klären")).to_be_visible()
+    # Accents are not allowed in folder names: the form says so and offers a fix.
+    page.get_by_test_id("package-name").fill("Igazságügyi palota")
+    expect(page.get_by_test_id("package-name-invalid")).to_be_visible()
+    page.get_by_test_id("package-name-fix").click()
+    expect(page.get_by_test_id("package-name")).to_have_value("Igazsagugyi palota")
+    expect(page.get_by_test_id("package-name-invalid")).to_be_hidden()
     page.get_by_test_id("package-name").fill("XPSB Test Hockenheim")
     expect(page.get_by_test_id("find-everything")).to_be_checked()
     page.screenshot(path=OUT / "03-brief.png", full_page=True)

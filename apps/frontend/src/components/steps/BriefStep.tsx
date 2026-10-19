@@ -9,6 +9,7 @@ import {
   type SurfaceType,
 } from "../../api/client";
 import { useT } from "../../i18n";
+import { folderName, validPackageName } from "../../names";
 import { useApp } from "../../store";
 import { Alert, Button, Checkbox, inputClass, Section, Spinner } from "../ui";
 
@@ -66,6 +67,8 @@ export function BriefStep({ onSubmitted }: { onSubmitted: () => void }) {
   const [restrict, setRestrict] = useState(!everything);
   const update = (patch: Partial<Brief>) => setBrief((b) => ({ ...b, ...patch }));
   const nothingSelected = !brief.object_categories?.length && !brief.surface_types?.length;
+  const nameOk = validPackageName(brief.package_name ?? "");
+  const nameSuggestion = folderName(brief.package_name ?? "");
 
   const submit = async () => {
     if (!job) return;
@@ -277,6 +280,16 @@ export function BriefStep({ onSubmitted }: { onSubmitted: () => void }) {
           onChange={(e) => update({ package_name: e.target.value })}
           data-testid="package-name"
         />
+        {!nameOk && (
+          <div className="space-y-1 text-xs text-amber-600" data-testid="package-name-invalid">
+            <p>{t("brief.package_name_invalid")}</p>
+            {validPackageName(nameSuggestion) && (
+              <Button variant="ghost" onClick={() => update({ package_name: nameSuggestion })} data-testid="package-name-fix">
+                {t("brief.package_name_use", { name: nameSuggestion })}
+              </Button>
+            )}
+          </div>
+        )}
       </Section>
 
       <Section title={t("brief.notes")}>
