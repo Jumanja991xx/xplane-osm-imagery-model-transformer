@@ -30,10 +30,11 @@ from xpsb.jobs.models import (
     JobError,
     JobState,
     JobView,
+    PlanObject,
     utcnow,
 )
 from xpsb.paths import AppPaths
-from xpsb.scene import ItemPatch, NewItem, SceneItem, validate_item
+from xpsb.scene import ItemAttrs, ItemPatch, NewItem, SceneItem, validate_item
 from xpsb.secrets import ANTHROPIC_ACCOUNT, SecretStore
 from xpsb.settings import SettingsStore
 from xpsb.xplane import dsftool
@@ -576,6 +577,51 @@ class JobManager:
             "imagery": imagery,
             "surface_mode": job.plan.surface_mode,
         }
+
+    # ---- fine-tuning single objects in the 3D preview (plan state) ------------
+
+    def _planned(self, job_id: str) -> Job:
+        job = self.get(job_id)
+        if job.state is not JobState.PLANNED or job.plan is None or job.analysis is None:
+            raise JobConflict("error.wrong_state", state=job.state.value)
+        return job
+
+    def regenerate_object(self, job: Job, item: SceneItem) -> PlanObject:
+        """Builds one object of the plan again (preview only) and updates the plan."""
+        from xpsb.build import assemble
+
+        assert job.plan is not None and job.analysis is not None
+        idx = next((i for i, o in enumerate(job.plan.objects) if o.item_id == item.id), None)
+        if idx is None:
+            raise JobConflict("error.item_not_found", item=item.id)
+        res = assemble.generate_one(
+            item,
+            job.analysis.items,
+            job.plan.detail,
+            self.job_dir(job.id) / "preview",
+            job.plan.objects[idx].stem,
+            preview=True,
+        )
+        job.plan.objects[idx] = PlanObject(**res.__dict__)
+        ok = sum(1 for o in job.plan.objects if o.status == "ok")
+        for plan_item in job.plan.items:
+            if plan_item.kind == "objects":
+                plan_item.count = ok
+        return job.plan.objects[idx]
+
+    def adjust_object(self, job_id: str, item_id: str, attrs: dict) -> Job:
+        """Quick controls from the 3D preview: changes parameters of one object and
+        rebuilds only that one. Approval C then shows the new state."""
+        job = self._planned(job_id)
+        item = self._item(job, item_id)
+        try:
+            item.attrs = ItemAttrs.model_validate({**item.attrs.model_dump(), **attrs})
+        except ValueError as exc:
+            raise JobConflict("error.invalid_item", detail=str(exc)[:300]) from exc
+        item.edited = True
+        self.regenerate_object(job, item)
+        self._save(job)
+        return job
 
     def preview_file(self, job_id: str, name: str) -> Path | None:
         job = self.get(job_id)

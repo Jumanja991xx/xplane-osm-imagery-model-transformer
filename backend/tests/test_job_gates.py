@@ -315,3 +315,40 @@ def test_packs_above_finds_sceneries_that_hide_our_removals(tmp_path):
     assert packs_above(target, tile) == []
     # Not listed yet (first install): X-Plane puts new packs at the top.
     assert packs_above(cs / "New Pack", tile) == []
+
+
+def test_adjust_one_object_in_the_plan(client, app_ctx):
+    job = to_analyzed(client)
+    job = approve(client, job, "B").json()
+    assert job["state"] == "planned"
+    stand = next(o for o in job["plan"]["objects"] if o["category"] == "grandstands")
+    old_hash = job["pending_gate"]["hash"]
+    preview = app_ctx.jobs.job_dir(job["id"]) / "preview" / f"{stand['stem']}.json"
+    before = preview.read_text()
+
+    r = client.patch(
+        f"/api/jobs/{job['id']}/objects/{stand['item_id']}",
+        json={"attrs": {"flip": True, "rows": 4, "covered": True}},
+        headers=AUTH,
+    )
+    assert r.status_code == 200, r.text
+    job = r.json()
+    assert job["state"] == "planned"
+    item = next(i for i in job["analysis"]["items"] if i["id"] == stand["item_id"])
+    assert item["attrs"]["rows"] == 4 and item["attrs"]["flip"] is True and item["edited"]
+    # only this object was rebuilt, and approval C reflects it
+    assert preview.read_text() != before
+    assert job["pending_gate"]["hash"] != old_hash
+
+    bad = client.patch(
+        f"/api/jobs/{job['id']}/objects/{stand['item_id']}",
+        json={"attrs": {"rows": 0}},
+        headers=AUTH,
+    )
+    assert bad.status_code == 409 and bad.json()["detail"]["key"] == "error.invalid_item"
+
+    client.post(f"/api/jobs/{job['id']}/reopen", json={"to": "analyzed"}, headers=AUTH)
+    late = client.patch(
+        f"/api/jobs/{job['id']}/objects/{stand['item_id']}", json={"attrs": {}}, headers=AUTH
+    )
+    assert late.status_code == 409

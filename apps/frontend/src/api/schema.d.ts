@@ -315,6 +315,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/jobs/{job_id}/objects/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Adjust Object */
+        patch: operations["adjust_object_api_jobs__job_id__objects__item_id__patch"];
+        trace?: never;
+    };
     "/api/jobs/{job_id}/gates/{gate}/approve": {
         parameters: {
             query?: never;
@@ -353,6 +370,13 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AdjustBody */
+        AdjustBody: {
+            /** Attrs */
+            attrs?: {
+                [key: string]: unknown;
+            };
+        };
         /** AiAssessment */
         AiAssessment: {
             /** Model */
@@ -752,6 +776,10 @@ export interface components {
             covered?: boolean | null;
             /** Width M */
             width_m?: number | null;
+            /** Flip */
+            flip?: boolean | null;
+            /** Rows */
+            rows?: number | null;
         };
         /**
          * ItemPatch
@@ -1031,6 +1059,10 @@ export interface components {
              * @default false
              */
             rating: boolean;
+            /** Script */
+            script?: string | null;
+            /** Script Request */
+            script_request?: string | null;
         };
         /** Settings */
         Settings: {
@@ -1808,6 +1840,42 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    adjust_object_api_jobs__job_id__objects__item_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdjustBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
             };
             /** @description Validation Error */
             422: {

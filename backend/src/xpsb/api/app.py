@@ -8,7 +8,7 @@ import sys
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import (
     Body,
@@ -92,6 +92,10 @@ class PathBody(BaseModel):
 
 class ReopenBody(BaseModel):
     to: Literal["analyzed", "clarified"]
+
+
+class AdjustBody(BaseModel):
+    attrs: dict[str, Any] = Field(default_factory=dict)
 
 
 class SimilarBody(BaseModel):
@@ -280,6 +284,11 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
             raise HTTPException(404, detail={"key": "error.no_preview"})
         media = "image/png" if path.suffix == ".png" else "application/json"
         return FileResponse(path, media_type=media)
+
+    @app.patch("/api/jobs/{job_id}/objects/{item_id:path}", dependencies=auth)
+    async def adjust_object(job_id: str, item_id: str, body: AdjustBody) -> JobView:
+        await asyncio.to_thread(ctx.jobs.adjust_object, job_id, item_id, body.attrs)
+        return ctx.jobs.view(job_id)
 
     @app.post("/api/jobs/{job_id}/gates/{gate}/approve", dependencies=auth)
     async def approve(job_id: str, gate: GateId, body: Approve) -> JobView:

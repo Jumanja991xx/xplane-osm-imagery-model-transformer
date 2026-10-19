@@ -6,8 +6,9 @@ Inputs available to every script:
   footprint  polygon [[x, y], ...] in local metres (None for points/lines)
   path       polyline for line objects (None otherwise)
   params     dict: height, levels, roof_shape, roof_color, wall_color, seat_color,
-             covered, roof_material, facing ([x, y] unit vector towards the
-             field/track, or None), detail ("low"|"medium"|"high")
+             covered, roof_material, material, name, facing ([x, y] unit
+             vector towards the field/track, or None), flip (turn the front
+             around), rows (grandstand rows or None), detail ("low"|"medium"|"high")
 """
 
 from __future__ import annotations
@@ -56,6 +57,9 @@ def main():
         if d_long < 0:
             nx = -nx
             ny = -ny
+    if g("flip", False):
+        nx = -nx
+        ny = -ny
     # Walk along the stand so that "left" (+across in sweep profiles) is the back.
     tx = -ny
     ty = nx
@@ -75,6 +79,8 @@ def main():
         # the remaining depth becomes a flat walkway at the back.
         top = H - clearance if covered else H
         rows = max(2, min(rows, int((top - front_wall) / 0.25)))
+    if params.get("rows") != None:
+        rows = params["rows"]  # the user's choice; the roof goes up if needed
     row_d = min((D - aisle) / rows, 0.95)
     if H != None and covered:
         tier_top = max(front_wall + rows * 0.25, H - clearance)

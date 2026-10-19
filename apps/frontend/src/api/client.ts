@@ -144,6 +144,8 @@ export const api = {
   reopen: (id: string, to: "analyzed" | "clarified") =>
     request<JobView>("POST", `/api/jobs/${id}/reopen`, { to }),
   listJobs: () => request<JobSummary[]>("GET", "/api/jobs"),
+  adjustObject: (id: string, itemId: string, attrs: Partial<ItemAttrs>) =>
+    request<JobView>("PATCH", `/api/jobs/${id}/objects/${itemId}`, { attrs }),
 };
 
 export async function jobEventsUrl(jobId: string): Promise<string> {
@@ -188,7 +190,8 @@ export interface PreviewMesh {
 
 async function authedFetch(path: string): Promise<Response> {
   const { baseUrl, token } = await backend();
-  const res = await fetch(baseUrl + path, { headers: { Authorization: `Bearer ${token}` } });
+  // no-store: single objects are rebuilt under the same name when adjusted
+  const res = await fetch(baseUrl + path, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
   if (!res.ok) throw new ApiError(res.status, "error.no_preview");
   return res;
 }

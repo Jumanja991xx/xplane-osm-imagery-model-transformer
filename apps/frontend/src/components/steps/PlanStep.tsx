@@ -28,7 +28,7 @@ export function PlanStep({ onBuild }: { onBuild: () => void }) {
 
   return (
     <div className="space-y-4">
-      {previewOpen && <PreviewDialog jobId={job.id} onClose={() => setPreviewOpen(false)} />}
+      {previewOpen && <PreviewDialog jobId={job.id} editable={job.state === "planned"} onClose={() => setPreviewOpen(false)} />}
       <Section title={t("plan.confirmed")}>
         <ul className="list-disc space-y-1 pl-5 text-sm" data-testid="plan-confirmed">
           {confirmed.map((item) => (

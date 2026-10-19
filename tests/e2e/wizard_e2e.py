@@ -177,6 +177,16 @@ with sync_playwright() as p:
     page.get_by_test_id("preview-objects").get_by_role("button").first.click()
     page.wait_for_timeout(1500)
     page.screenshot(path=OUT / "09c-preview-closeup.png")
+    # Quick controls: turn the main stand around and give it 6 rows; only it is rebuilt.
+    page.get_by_test_id("preview-objects").get_by_role("button", name="Haupttribüne").click()
+    expect(page.get_by_test_id("object-controls")).to_be_visible()
+    page.get_by_test_id("adjust-flip").click()
+    expect(page.get_by_test_id("adjust-flip")).to_be_enabled(timeout=15000)
+    page.get_by_test_id("adjust-rows").fill("6")
+    page.get_by_test_id("adjust-rows").press("Enter")
+    expect(page.get_by_test_id("adjust-rows")).to_be_enabled(timeout=15000)
+    page.wait_for_timeout(1500)
+    page.screenshot(path=OUT / "09d-preview-adjusted.png")
     page.get_by_test_id("preview-close").click()
     # One step back to the list and forward again: nothing is lost, no new analysis.
     page.get_by_test_id("back-to-list").click()

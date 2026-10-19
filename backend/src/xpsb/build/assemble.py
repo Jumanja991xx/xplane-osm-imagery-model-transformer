@@ -114,8 +114,13 @@ def _params(item: SceneItem, items: list[SceneItem], local, detail: str) -> dict
     a = item.attrs
     summary = (item.ai.summary if item.ai else "").lower()
     material = (a.material or "").lower()
-    solar = any(w in summary or w in material for w in SOLAR_WORDS)
-    roof_material = "solar" if solar else ROOF_MATERIALS.get(material.removeprefix("roof:"))
+    if material.startswith("roof:"):  # chosen explicitly (AI find or the user)
+        roof_material = "solar" if "solar" in material else ROOF_MATERIALS.get(material[5:])
+    elif a.covered is False:  # the user took the roof off
+        roof_material = None
+    else:
+        solar = any(w in summary or w in material for w in SOLAR_WORDS)
+        roof_material = "solar" if solar else ROOF_MATERIALS.get(material)
     return {
         "height": a.height_m,
         "levels": a.levels,
@@ -127,6 +132,8 @@ def _params(item: SceneItem, items: list[SceneItem], local, detail: str) -> dict
         "material": a.material,
         "roof_material": roof_material,
         "facing": _facing(item, items, local),
+        "flip": bool(a.flip),
+        "rows": a.rows,
         "detail": detail,
         "name": item.name,
     }
@@ -160,14 +167,15 @@ def buildable(item: SceneItem) -> bool:
 
 def generate(item: SceneItem, items: list[SceneItem], detail: str):
     """Runs the item's build script. Returns (mesh, baked) or raises ScriptError."""
-    script = DEFAULT_SCRIPTS.get(str(item.category))
+    script = item.script or DEFAULT_SCRIPTS.get(str(item.category))
     if script is None:
         raise LookupError("no generator yet")
     budget, atlas, max_ppm = DETAIL.get(detail, DETAIL["medium"])
     inputs = _script_inputs(item, items, detail)
     if inputs.footprint is None and str(item.category) != "masts":
         raise LookupError("needs an area outline")
-    mesh = run_script(script, inputs, budget, name=f"{item.category}.star")
+    name = f"{item.id}.star" if item.script else f"{item.category}.star"
+    mesh = run_script(script, inputs, budget, name=name)
     return mesh, bake(mesh, atlas, max_ppm)
 
 
@@ -175,6 +183,31 @@ def _lod(mesh) -> float:
     (x0, y0, z0), (x1, y1, z1) = mesh.bounds()
     size = max(x1 - x0, y1 - y0, z1 - z0)
     return min(8000.0, max(1500.0, size * 40))
+
+
+def generate_one(
+    item: SceneItem, items: list[SceneItem], detail: str, out_dir: Path, stem: str, preview: bool
+) -> ItemResult:
+    res = ItemResult(item.id, stem, str(item.category), item.name, _anchor(item), "ok")
+    for ext in ("png", "json", "obj"):
+        (out_dir / f"{stem}.{ext}").unlink(missing_ok=True)
+    try:
+        mesh, baked = generate(item, items, detail)
+    except LookupError as exc:
+        res.status, res.message = "skipped", str(exc)
+    except (ScriptError, ValueError) as exc:
+        res.status, res.message = "error", str(exc)[:2000]
+    else:
+        res.triangles = mesh.triangle_count
+        baked.image.save(out_dir / f"{stem}.png", optimize=False)
+        if preview:
+            data = to_preview(mesh, baked)
+            (out_dir / f"{stem}.json").write_text(json.dumps(data), encoding="utf-8")
+        else:
+            obj = to_obj8(mesh, baked, f"{stem}.png", _lod(mesh))
+            obj.comment = f"xpsb {item.category} {item.id}"
+            (out_dir / f"{stem}.obj").write_text(obj.to_text(), encoding="ascii", newline="\n")
+    return res
 
 
 def generate_all(
@@ -189,25 +222,7 @@ def generate_all(
     todo = [it for it in items if buildable(it)]
     results: list[ItemResult] = []
     for n, item in enumerate(todo, start=1):
-        stem = f"xpsb_obj_{n:03d}"
-        res = ItemResult(item.id, stem, str(item.category), item.name, _anchor(item), "ok")
-        try:
-            mesh, baked = generate(item, items, detail)
-        except LookupError as exc:
-            res.status, res.message = "skipped", str(exc)
-        except (ScriptError, ValueError) as exc:
-            res.status, res.message = "error", str(exc)[:2000]
-        else:
-            res.triangles = mesh.triangle_count
-            baked.image.save(out_dir / f"{stem}.png", optimize=False)
-            if preview:
-                data = to_preview(mesh, baked)
-                (out_dir / f"{stem}.json").write_text(json.dumps(data), encoding="utf-8")
-            else:
-                obj = to_obj8(mesh, baked, f"{stem}.png", _lod(mesh))
-                obj.comment = f"xpsb {item.category} {item.id}"
-                (out_dir / f"{stem}.obj").write_text(obj.to_text(), encoding="ascii", newline="\n")
-        results.append(res)
+        results.append(generate_one(item, items, detail, out_dir, f"xpsb_obj_{n:03d}", preview))
         if progress:
             progress(n / max(1, len(todo)))
     return results

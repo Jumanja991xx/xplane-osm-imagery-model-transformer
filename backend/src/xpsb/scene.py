@@ -34,6 +34,9 @@ class ItemAttrs(BaseModel):
     material: str | None = None
     covered: bool | None = None
     width_m: float | None = Field(default=None, ge=0, le=200)  # lines (tracks, barriers)
+    # Fine-tuning from the 3D preview.
+    flip: bool | None = None  # turn the front (e.g. of a grandstand) around
+    rows: int | None = Field(default=None, ge=1, le=80)  # grandstand rows
 
 
 class SceneItem(BaseModel):
@@ -55,6 +58,9 @@ class SceneItem(BaseModel):
     remembered: bool = False
     # The AI is looking at this item right now (drawn by the user, being rated).
     rating: bool = False
+    # Own build script written by the AI architect on the user's request.
+    script: str | None = None
+    script_request: str | None = None
 
 
 class ItemPatch(BaseModel):

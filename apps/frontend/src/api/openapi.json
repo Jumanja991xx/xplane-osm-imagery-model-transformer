@@ -870,6 +870,64 @@
         }
       }
     },
+    "/api/jobs/{job_id}/objects/{item_id}": {
+      "patch": {
+        "summary": "Adjust Object",
+        "operationId": "adjust_object_api_jobs__job_id__objects__item_id__patch",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdjustBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobs/{job_id}/gates/{gate}/approve": {
       "post": {
         "summary": "Approve",
@@ -976,6 +1034,17 @@
   },
   "components": {
     "schemas": {
+      "AdjustBody": {
+        "properties": {
+          "attrs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Attrs"
+          }
+        },
+        "type": "object",
+        "title": "AdjustBody"
+      },
       "AiAssessment": {
         "properties": {
           "model": {
@@ -1897,6 +1966,30 @@
               }
             ],
             "title": "Width M"
+          },
+          "flip": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flip"
+          },
+          "rows": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 80.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rows"
           }
         },
         "type": "object",
@@ -2686,6 +2779,28 @@
             "type": "boolean",
             "title": "Rating",
             "default": false
+          },
+          "script": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Script"
+          },
+          "script_request": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Script Request"
           }
         },
         "type": "object",
