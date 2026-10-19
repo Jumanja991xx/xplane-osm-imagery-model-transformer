@@ -187,6 +187,17 @@ with sync_playwright() as p:
     expect(page.get_by_test_id("adjust-rows")).to_be_enabled(timeout=15000)
     page.wait_for_timeout(1500)
     page.screenshot(path=OUT / "09d-preview-adjusted.png")
+    # The same for a building: roof shape, facade, ridge direction.
+    page.get_by_test_id("preview-objects").get_by_role("button", name="Fahrerlager-Halle").click()
+    expect(page.get_by_test_id("adjust-rows")).to_have_count(0)  # only for stands
+    page.get_by_test_id("adjust-roof-shape").select_option("gabled")
+    expect(page.get_by_test_id("adjust-wall")).to_be_enabled(timeout=15000)
+    page.get_by_test_id("adjust-wall").select_option("brick")
+    expect(page.get_by_test_id("adjust-flip")).to_be_enabled(timeout=15000)
+    page.get_by_test_id("adjust-flip").click()
+    expect(page.get_by_test_id("adjust-flip")).to_be_enabled(timeout=15000)
+    page.wait_for_timeout(1500)
+    page.screenshot(path=OUT / "09d2-preview-building.png")
     # AI architect (fake AI): own words → cost first → send → rebuilt object.
     page.get_by_test_id("preview-objects").get_by_role("button", name="Clubhaus").click()
     page.get_by_test_id("design-text").fill("Mach daraus eine Glashalle mit rundem Turm")

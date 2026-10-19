@@ -828,6 +828,8 @@ export interface components {
             flip?: boolean | null;
             /** Rows */
             rows?: number | null;
+            /** Wall Material */
+            wall_material?: ("windows" | "plaster" | "brick" | "glass" | "metal_sheet" | "concrete" | "wood") | null;
         };
         /**
          * ItemPatch

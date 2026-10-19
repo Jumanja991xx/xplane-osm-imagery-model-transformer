@@ -2213,6 +2213,26 @@
               }
             ],
             "title": "Rows"
+          },
+          "wall_material": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "windows",
+                  "plaster",
+                  "brick",
+                  "glass",
+                  "metal_sheet",
+                  "concrete",
+                  "wood"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wall Material"
           }
         },
         "type": "object",

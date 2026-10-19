@@ -333,6 +333,32 @@ export function PreviewDialog({
   );
 }
 
+type Control =
+  | "flip"
+  | "height"
+  | "levels"
+  | "rows"
+  | "covered"
+  | "roof_shape"
+  | "roof"
+  | "wall_material"
+  | "wall_color"
+  | "roof_color"
+  | "seat_color";
+
+// Which quick controls make sense per kind of object (the default build scripts
+// read exactly these). Anything else: the AI architect below.
+const CONTROLS: Record<string, Control[]> = {
+  grandstands: ["flip", "height", "rows", "covered", "roof", "roof_color", "seat_color", "wall_color"],
+  buildings: ["height", "levels", "roof_shape", "flip", "roof", "wall_material", "wall_color", "roof_color"],
+  canopies: ["height", "roof", "roof_color"],
+  masts: ["height"],
+  scaffolding: ["height"],
+};
+const DEFAULT_CONTROLS: Control[] = ["height"];
+const ROOF_SHAPES = ["flat", "gabled", "hipped"] as const;
+const WALL_MATERIALS = ["windows", "plaster", "brick", "glass", "metal_sheet", "concrete", "wood"] as const;
+
 /** Quick controls for one object: free, instant, only this object is rebuilt. */
 function ObjectControls({
   jobId,
@@ -347,13 +373,13 @@ function ObjectControls({
   const job = useApp((s) => s.job);
   const setJob = useApp((s) => s.setJob);
   const item = job?.analysis?.items?.find((i) => i.id === object.item_id);
-  const attrs = item?.attrs ?? {};
-  const [height, setHeight] = useState(attrs.height_m != null ? String(attrs.height_m) : "");
-  const [rows, setRows] = useState(attrs.rows != null ? String(attrs.rows) : "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   if (!item) return null;
-  const stand = object.category === "grandstands";
+  const attrs = item.attrs ?? {};
+  // An own script of the AI architect decides itself which parameters it reads.
+  const controls = item.script ? DEFAULT_CONTROLS : (CONTROLS[object.category] ?? DEFAULT_CONTROLS);
+  const has = (c: Control) => controls.includes(c);
   const roof = (attrs.material ?? "").replace(/^roof:/, "");
 
   const apply = async (patch: Partial<ItemAttrs>) => {
@@ -370,13 +396,9 @@ function ObjectControls({
       setBusy(false);
     }
   };
-  const num = (v: string) => (v.trim() === "" ? null : Number(v.replace(",", ".")));
 
   return (
-    <div
-      className="space-y-2 rounded-md border border-accent-600/40 bg-accent-600/5 p-2"
-      data-testid="object-controls"
-    >
+    <div className="space-y-2 rounded-md border border-accent-600/40 bg-accent-600/5 p-2" data-testid="object-controls">
       <div className="flex items-center justify-between">
         <span className="font-medium">
           {object.name || t(categoryLabelKey({ kind: "object", category: object.category as never }))}
@@ -384,65 +406,213 @@ function ObjectControls({
         {busy && <Spinner />}
       </div>
       {object.status !== "ok" && <Alert kind="warning">{object.message}</Alert>}
-      <Button onClick={() => apply({ flip: !attrs.flip })} disabled={busy} data-testid="adjust-flip">
-        ↻ {t("adjust.flip")}
-      </Button>
-      <label className="flex items-center gap-2 text-xs">
-        <span className="w-24 text-zinc-600 dark:text-zinc-300">{t("adjust.height")}</span>
-        <input
-          className="w-20 rounded border border-zinc-300 bg-white px-1.5 py-0.5 dark:border-zinc-600 dark:bg-zinc-800"
-          inputMode="decimal"
-          value={height}
-          placeholder={t("adjust.auto")}
-          onChange={(e) => setHeight(e.target.value)}
-          onBlur={() => num(height) !== (attrs.height_m ?? null) && apply({ height_m: num(height) })}
-          onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-          disabled={busy}
-          data-testid="adjust-height"
-        />
-        m
-      </label>
-      {stand && (
-        <label className="flex items-center gap-2 text-xs">
-          <span className="w-24 text-zinc-600 dark:text-zinc-300">{t("adjust.rows")}</span>
-          <input
-            className="w-20 rounded border border-zinc-300 bg-white px-1.5 py-0.5 dark:border-zinc-600 dark:bg-zinc-800"
-            inputMode="numeric"
-            value={rows}
-            placeholder={t("adjust.auto")}
-            onChange={(e) => setRows(e.target.value)}
-            onBlur={() => num(rows) !== (attrs.rows ?? null) && apply({ rows: num(rows) })}
-            onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-            disabled={busy}
-            data-testid="adjust-rows"
-          />
-        </label>
+      {has("flip") && (
+        <Button onClick={() => apply({ flip: !attrs.flip })} disabled={busy} data-testid="adjust-flip">
+          ↻ {t(object.category === "buildings" ? "adjust.flip_ridge" : "adjust.flip")}
+        </Button>
       )}
-      <Checkbox
-        label={t("adjust.covered")}
-        checked={Boolean(attrs.covered) || roof === "solar"}
-        onChange={(on) => apply(on ? { covered: true } : { covered: false, material: null })}
-      />
-      <label className="flex items-center gap-2 text-xs">
-        <span className="w-24 text-zinc-600 dark:text-zinc-300">{t("adjust.roof")}</span>
-        <select
-          className="rounded border border-zinc-300 bg-white px-1.5 py-0.5 dark:border-zinc-600 dark:bg-zinc-800"
-          value={(ROOF_MATERIALS as readonly string[]).includes(roof) ? roof : ""}
-          onChange={(e) => apply({ material: e.target.value ? `roof:${e.target.value}` : null })}
+      {has("height") && (
+        <NumberField
+          label={t("adjust.height")}
+          unit="m"
+          value={attrs.height_m}
+          onCommit={(v) => apply({ height_m: v })}
           disabled={busy}
-          data-testid="adjust-roof"
-        >
-          <option value="">{t("adjust.auto")}</option>
-          {ROOF_MATERIALS.map((m) => (
-            <option key={m} value={m}>
-              {t(`roof.${m}`)}
-            </option>
-          ))}
-        </select>
-      </label>
+          testId="adjust-height"
+        />
+      )}
+      {has("levels") && (
+        <NumberField
+          label={t("adjust.levels")}
+          value={attrs.levels}
+          onCommit={(v) => apply({ levels: v == null ? null : Math.round(v) })}
+          disabled={busy}
+          testId="adjust-levels"
+        />
+      )}
+      {has("rows") && (
+        <NumberField
+          label={t("adjust.rows")}
+          value={attrs.rows}
+          onCommit={(v) => apply({ rows: v == null ? null : Math.round(v) })}
+          disabled={busy}
+          testId="adjust-rows"
+        />
+      )}
+      {has("covered") && (
+        <Checkbox
+          label={t("adjust.covered")}
+          checked={Boolean(attrs.covered) || roof === "solar"}
+          disabled={busy}
+          onChange={(on) => apply(on ? { covered: true } : { covered: false, material: null })}
+        />
+      )}
+      {has("roof_shape") && (
+        <SelectField
+          label={t("adjust.roof_shape")}
+          value={attrs.roof_shape ?? ""}
+          options={ROOF_SHAPES.map((v) => [v, t(`roof_shape.${v}`)])}
+          onChange={(v) => apply({ roof_shape: v || null })}
+          disabled={busy}
+          testId="adjust-roof-shape"
+        />
+      )}
+      {has("roof") && (
+        <SelectField
+          label={t("adjust.roof")}
+          value={(ROOF_MATERIALS as readonly string[]).includes(roof) ? roof : ""}
+          options={ROOF_MATERIALS.map((v) => [v, t(`roof.${v}`)])}
+          onChange={(v) => apply({ material: v ? `roof:${v}` : null })}
+          disabled={busy}
+          testId="adjust-roof"
+        />
+      )}
+      {has("wall_material") && (
+        <SelectField
+          label={t("adjust.wall_material")}
+          value={attrs.wall_material ?? ""}
+          options={WALL_MATERIALS.map((v) => [v, t(`wall.${v}`)])}
+          onChange={(v) => apply({ wall_material: (v || null) as ItemAttrs["wall_material"] })}
+          disabled={busy}
+          testId="adjust-wall"
+        />
+      )}
+      {(["wall_color", "roof_color", "seat_color"] as const)
+        .filter((c) => has(c))
+        .map((c) => (
+          <ColorField
+            key={c}
+            label={t(`adjust.${c}`)}
+            value={attrs[c] ?? null}
+            onCommit={(v) => apply({ [c]: v })}
+            disabled={busy}
+          />
+        ))}
       {error && <Alert kind="error">{error}</Alert>}
       <DesignPanel jobId={jobId} object={object} onAdjusted={onAdjusted} />
     </div>
+  );
+}
+
+const fieldClass =
+  "rounded border border-zinc-300 bg-white px-1.5 py-0.5 dark:border-zinc-600 dark:bg-zinc-800 disabled:opacity-60";
+
+function NumberField({
+  label,
+  unit,
+  value,
+  onCommit,
+  disabled,
+  testId,
+}: {
+  label: string;
+  unit?: string;
+  value: number | null | undefined;
+  onCommit: (v: number | null) => void;
+  disabled: boolean;
+  testId: string;
+}) {
+  const { t } = useT();
+  const [text, setText] = useState(value != null ? String(value) : "");
+  const parse = (v: string) => (v.trim() === "" ? null : Number(v.replace(",", ".")));
+  return (
+    <label className="flex items-center gap-2 text-xs">
+      <span className="w-28 text-zinc-600 dark:text-zinc-300">{label}</span>
+      <input
+        className={`w-20 ${fieldClass}`}
+        inputMode="decimal"
+        value={text}
+        placeholder={t("adjust.auto")}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => {
+          const v = parse(text);
+          if (v !== (value ?? null) && (v == null || Number.isFinite(v))) onCommit(v);
+        }}
+        onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+        disabled={disabled}
+        data-testid={testId}
+      />
+      {unit}
+    </label>
+  );
+}
+
+function SelectField({
+  label,
+  value,
+  options,
+  onChange,
+  disabled,
+  testId,
+}: {
+  label: string;
+  value: string;
+  options: [string, string][];
+  onChange: (v: string) => void;
+  disabled: boolean;
+  testId: string;
+}) {
+  const { t } = useT();
+  return (
+    <label className="flex items-center gap-2 text-xs">
+      <span className="w-28 text-zinc-600 dark:text-zinc-300">{label}</span>
+      <select
+        className={fieldClass}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        data-testid={testId}
+      >
+        <option value="">{t("adjust.auto")}</option>
+        {options.map(([v, l]) => (
+          <option key={v} value={v}>
+            {l}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+/** Colour picker; applies once the picker has been still for a moment. */
+function ColorField({
+  label,
+  value,
+  onCommit,
+  disabled,
+}: {
+  label: string;
+  value: string | null;
+  onCommit: (v: string | null) => void;
+  disabled: boolean;
+}) {
+  const { t } = useT();
+  const timer = useRef<number | undefined>(undefined);
+  const [color, setColor] = useState(value && /^#[0-9a-f]{6}$/i.test(value) ? value : "#a0a0a0");
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  return (
+    <label className="flex items-center gap-2 text-xs">
+      <span className="w-28 text-zinc-600 dark:text-zinc-300">{label}</span>
+      <input
+        type="color"
+        className="h-6 w-10 cursor-pointer rounded border border-zinc-300 dark:border-zinc-600"
+        value={color}
+        onChange={(e) => {
+          const v = e.target.value;
+          setColor(v);
+          window.clearTimeout(timer.current);
+          timer.current = window.setTimeout(() => onCommit(v.toUpperCase()), 700);
+        }}
+        disabled={disabled}
+      />
+      {value ? (
+        <button className="text-zinc-500 underline" onClick={() => onCommit(null)} disabled={disabled}>
+          {t("adjust.auto")}
+        </button>
+      ) : (
+        <span className="text-zinc-400">{t("adjust.auto")}</span>
+      )}
+    </label>
   );
 }
 

@@ -22,6 +22,9 @@ class AiAssessment(BaseModel):
     confidence: float = Field(ge=0, le=1)
 
 
+WallMaterial = Literal["windows", "plaster", "brick", "glass", "metal_sheet", "concrete", "wood"]
+
+
 class ItemAttrs(BaseModel):
     """Parameters for the generators (M3). All optional: unknown stays unknown."""
 
@@ -37,6 +40,7 @@ class ItemAttrs(BaseModel):
     # Fine-tuning from the 3D preview.
     flip: bool | None = None  # turn the front (e.g. of a grandstand) around
     rows: int | None = Field(default=None, ge=1, le=80)  # grandstand rows
+    wall_material: WallMaterial | None = None
 
 
 class SceneItem(BaseModel):

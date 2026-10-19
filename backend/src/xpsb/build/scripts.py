@@ -145,14 +145,25 @@ BUILDING = (
     COMMON
     + """
 def main():
-    H = g("height", 8.0)
+    H = params.get("height")
+    if H == None:
+        lv = params.get("levels")
+        H = lv * 3.0 if lv else 8.0
     wall = g("wall_color", None)
+    wall_mat = g("wall_material", "windows")
+    gable_mat = "plaster" if wall_mat in ("windows", "glass") else wall_mat
     roof_color = g("roof_color", None)
+    roof_mat = params.get("roof_material")
     shape = g("roof_shape", "flat")
     r = oriented_rect(footprint)
+    if g("flip", False):
+        # ridge across instead of along the long side
+        r = {"x": r["x"], "y": r["y"], "length": r["width"], "width": r["length"],
+             "ux": r["vx"], "uy": r["vy"], "vx": -r["vy"], "vy": r["vx"]}
     rect_like = polygon_area(footprint) > 0.85 * r["length"] * r["width"]
-    if shape in ("gabled", "hipped") and rect_like and r["width"] < 30:
-        extrude(footprint, 0, H, mat="windows", top=None, color=wall)
+    if shape in ("gabled", "hipped") and rect_like:
+        pitched = roof_mat or "roof_tiles"
+        extrude(footprint, 0, H, mat=wall_mat, top=None, color=wall)
         P = frame(r)
         L2 = r["length"] / 2
         W2 = r["width"] / 2
@@ -164,17 +175,17 @@ def main():
         if shape == "hipped" and r["length"] > r["width"] * 1.2:
             R1 = P(-L2 + W2, 0, H + rise)
             R2 = P(L2 - W2, 0, H + rise)
-            face([A, D, R1], mat="roof_tiles", color=roof_color)
-            face([C, B, R2], mat="roof_tiles", color=roof_color)
+            face([A, D, R1], mat=pitched, color=roof_color)
+            face([C, B, R2], mat=pitched, color=roof_color)
         else:
             R1 = P(-L2, 0, H + rise)
             R2 = P(L2, 0, H + rise)
-            face([A, D, R1], mat="plaster", color=wall)
-            face([C, B, R2], mat="plaster", color=wall)
-        quad(A, B, R2, R1, mat="roof_tiles", color=roof_color)
-        quad(C, D, R1, R2, mat="roof_tiles", color=roof_color)
+            face([A, D, R1], mat=gable_mat, color=wall)
+            face([C, B, R2], mat=gable_mat, color=wall)
+        quad(A, B, R2, R1, mat=pitched, color=roof_color)
+        quad(C, D, R1, R2, mat=pitched, color=roof_color)
     else:
-        extrude(footprint, 0, H, mat="windows", top="roof_flat", color=wall,
+        extrude(footprint, 0, H, mat=wall_mat, top=roof_mat or "roof_flat", color=wall,
                 top_color=roof_color)
 
 main()
@@ -212,6 +223,8 @@ def main():
     cylinder(0, 0, 0, 0.3, H, mat="steel", segments=segs(10), radius_top=0.18)
     f = params.get("facing")
     heading = atan2(f[0], f[1]) + 90 if f != None else 0
+    if g("flip", False):
+        heading += 180
     box(0, 0, H - 1.2, 3.0, 0.5, 1.2, heading=heading, mat="lamp")
 
 main()

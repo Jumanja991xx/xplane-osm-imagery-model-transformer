@@ -142,3 +142,33 @@ def test_obj8_winding_and_skirt():
     a, b, c = tri
     signed = (b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y)
     assert signed < 0  # clockwise seen from +Z
+
+
+def test_building_reads_the_quick_controls():
+    fp = [[0, 0], [20, 0], [20, 10], [0, 10]]  # long side east-west
+    base = {"roof_shape": "gabled", "levels": 3, "wall_material": "brick", "roof_material": "solar"}
+    mesh = run(DEFAULT_SCRIPTS["buildings"], fp, base)
+    mats = {p.material for p in mesh.patches}
+    assert {"brick", "solar"} <= mats and "windows" not in mats
+    assert max(p[2] for patch in mesh.patches for p in patch.positions) > 9  # 3 storeys + roof
+
+    def ridge(params):
+        m = run(DEFAULT_SCRIPTS["buildings"], fp, params)
+        top = max(p[2] for patch in m.patches for p in patch.positions)
+        pts = [p for patch in m.patches for p in patch.positions if p[2] > top - 0.01]
+        xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+        return max(xs) - min(xs), max(ys) - min(ys)
+
+    along = ridge(base)
+    across = ridge({**base, "flip": True})
+    assert along[0] > along[1] and across[1] > across[0]
+
+
+def test_wide_halls_get_their_pitched_roof_too():
+    fp = [[0, 0], [60, 0], [60, 40], [0, 40]]
+    for flip in (False, True):
+        m = run(
+            DEFAULT_SCRIPTS["buildings"], fp, {"roof_shape": "gabled", "height": 8, "flip": flip}
+        )
+        assert any(p.material == "roof_tiles" for p in m.patches)
+        assert max(p[2] for patch in m.patches for p in patch.positions) <= 8 + 6.01

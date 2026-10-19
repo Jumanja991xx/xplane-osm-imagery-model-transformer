@@ -135,6 +135,7 @@ def _params(item: SceneItem, items: list[SceneItem], local, detail: str) -> dict
         "facing": _facing(item, items, local),
         "flip": bool(a.flip),
         "rows": a.rows,
+        "wall_material": a.wall_material,
         "detail": detail,
         "name": item.name,
     }
