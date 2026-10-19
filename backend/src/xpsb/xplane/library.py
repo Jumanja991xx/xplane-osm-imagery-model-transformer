@@ -55,13 +55,19 @@ class Catalog:
         chosen: dict[str, LibraryObject] = {}
         for _, keys in GROUPS:
             hits = sorted(
-                (o for o in self.objects.values() if any(k in o.path.lower() for k in keys)),
+                (o for o in self.objects.values() if _matches(o.path, keys)),
                 key=lambda o: (not o.default, len(o.path), o.path),
             )
             boost = 2 if any(k in words for k in keys) else 1
             for o in hits[: PER_GROUP * boost]:
                 chosen[o.path] = o
         return list(chosen.values())
+
+
+def _matches(path: str, keys: tuple[str, ...]) -> bool:
+    """Whole words or word starts/ends ("trees", "streetlamp"); "street" is no "tree"."""
+    tokens = [t for t in re.split(r"[^a-z]+", path.lower()) if t]
+    return any(t.startswith(k) or t.endswith(k) for t in tokens for k in keys)
 
 
 _EXPORT = re.compile(r"^(EXPORT|EXPORT_EXTEND|EXPORT_BACKUP)\s+(\S+)\s+(.+?)\s*$")

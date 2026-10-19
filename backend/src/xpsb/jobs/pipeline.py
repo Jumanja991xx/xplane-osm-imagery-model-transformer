@@ -111,9 +111,8 @@ def _imagery_stage(job: Job, deps: AnalysisDeps, log: EventLog, notes: list[Note
             progress=lambda p: _progress(log, "imagery", p, "stage.imagery", source=source.name),
         )
     except (wms.WmsError, OSError, ValueError) as exc:
-        notes.append(
-            Note(key="imagery.failed", params={"source": source.name, "detail": str(exc)[:300]})
-        )
+        key = "imagery.esri_failed" if source.id == "esri" else "imagery.failed"
+        notes.append(Note(key=key, params={"source": source.name, "detail": str(exc)[:300]}))
         return None
     return info
 

@@ -27,3 +27,28 @@ class SurfaceType(StrEnum):
 class SurfaceMode(StrEnum):
     MATERIAL = "material"
     IMAGERY = "imagery"
+
+
+# Names for unnamed objects in messages built on the server (progress, approvals).
+CATEGORY_LABELS = {
+    "de": {
+        "buildings": "Gebäude",
+        "grandstands": "Tribüne",
+        "scaffolding": "Gerüst",
+        "canopies": "Überdachung",
+        "barriers": "Zaun/Mauer",
+        "masts": "Mast",
+    },
+    "en": {
+        "buildings": "Building",
+        "grandstands": "Grandstand",
+        "scaffolding": "Scaffolding",
+        "canopies": "Canopy",
+        "barriers": "Fence/wall",
+        "masts": "Mast",
+    },
+}
+
+
+def category_label(category: str, language: str) -> str:
+    return CATEGORY_LABELS.get(language, CATEGORY_LABELS["en"]).get(category, category)

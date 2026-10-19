@@ -116,11 +116,20 @@ objects, `params` a dict with: {
                     "flip",
                     "rows",
                     "detail",
+                    "building",
+                    "tags",
+                    "min_height",
+                    "parts",
                 ]
             )
         )
     }. facing is a unit vector [x, y] towards the
 field/track if known (stands face it). Values may be None: choose good defaults.
+`tags` are the OSM tags (site:name/site:type: the grounds the object stands on, e.g. a
+stadium or castle; site:derived: the outline was estimated from the grounds - trust the
+aerial image more than the outline then). `parts` are OSM building parts (each with
+footprint, height, min_height, roof_shape, colours): a mapper's description of towers,
+wings and raised roofs - use them as the shape if present.
 
 RULES:
 - Stay within the footprint (overhangs of roofs up to ~2 m are fine). Respect a given
@@ -146,7 +155,11 @@ HOW TO BUILD COMMON THINGS (adapt to the facts and photos):
   radius_top), apse.
 - Grandstand: rows of seats (sweep a stepped profile along the front), roof on columns.
 - Use offset_polygon for setbacks and upper storeys, sweep for cornices, roof edges and
-  canopies, the X-Plane library (if listed) for lamps, fences, trees, vehicles, flags.
+  canopies, the X-Plane library (if listed) for lamps, fences, trees, vehicles, flags -
+  but only things that are really there (aerial image, photos), no decoration for its
+  own sake, and nothing outside the object's own plot.
+- Colours: take wall and roof colours from the photos if there are any (walls are rarely
+  visible from above); without photos use the typical colours of the region and type.
 
 TOOLS:
 {tool_reference()}

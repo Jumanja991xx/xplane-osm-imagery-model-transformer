@@ -171,11 +171,57 @@ def _params(item: SceneItem, items: list[SceneItem], local, detail: str) -> dict
         "flip": bool(a.flip),
         "rows": a.rows,
         "wall_material": a.wall_material or WALL_MATERIALS.get(tags.get("building:material", "")),
-        "building": tags.get("building") or tags.get("building:part"),
+        "building": _building_type(item),
+        "min_height": a.min_height_m,
+        "parts": _parts(item, local),
+        "parts_cover": _parts_cover(item),
         "tags": dict(tags),
         "detail": detail,
         "name": item.name,
     }
+
+
+def _building_type(item: SceneItem) -> str | None:
+    tags = item.tags
+    b = tags.get("building") or tags.get("building:part")
+    # The main building of stadium grounds is the stadium, whatever its own tag says.
+    if b in (None, "yes") and tags.get("site:type") == "stadium" and tags.get("site:main") == "yes":
+        return "stadium"
+    return b
+
+
+def _parts(item: SceneItem, local) -> list[dict]:
+    """OSM building parts in local metres (the default script builds them instead of
+    the plain outline; the AI architect sees them as a shape description)."""
+    out = []
+    for part in item.parts:
+        geom = shape(part.geometry)
+        if geom.geom_type != "Polygon" or geom.is_empty:
+            continue
+        ring = list(orient(geom, 1.0).exterior.coords)[:-1]
+        out.append(
+            {
+                "footprint": [local(x, y) for x, y in ring],
+                "height": part.height_m,
+                "min_height": part.min_height_m,
+                "roof_shape": part.roof_shape,
+                "wall_color": part.wall_color,
+                "roof_color": part.roof_color,
+                "part": part.part,
+            }
+        )
+    return out
+
+
+def _parts_cover(item: SceneItem) -> float:
+    """Share of the outline covered by its parts (below 0.8 the rest is built too)."""
+    if not item.parts:
+        return 0.0
+    outline = shape(item.geometry)
+    if outline.area <= 0:
+        return 0.0
+    covered = unary_union([shape(p.geometry) for p in item.parts]).intersection(outline)
+    return round(min(1.0, covered.area / outline.area), 3)
 
 
 def _facing(item: SceneItem, items: list[SceneItem], local) -> list[float] | None:

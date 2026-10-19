@@ -16,7 +16,7 @@ import numpy as np
 from PIL import Image
 
 from xpsb.imagery.sources import ImagerySource
-from xpsb.imagery.wms import MAX_SIDE_PX, Bounds, WmsError, _http_get
+from xpsb.imagery.wms import MAX_SIDE_PX, Bounds, WmsError, _http_get, service_message
 
 TILE = 256
 MAX_TILES = 600  # politeness: one job never pulls more than this from a server
@@ -60,7 +60,7 @@ def _get_tile(source: ImagerySource, z: int, x: int, y: int) -> Image.Image:
     try:
         return Image.open(io.BytesIO(data)).convert("RGB")
     except OSError as exc:
-        raise WmsError(f"tile {z}/{x}/{y} is not an image ({ctype})") from exc
+        raise WmsError(f"tile {z}/{x}/{y}: {service_message(data) or ctype}") from exc
 
 
 def _tile_bounds(z: int, x: int, y: int) -> Bounds:

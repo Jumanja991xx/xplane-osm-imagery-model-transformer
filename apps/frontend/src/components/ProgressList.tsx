@@ -3,14 +3,25 @@ import { useApp } from "../store";
 import { Spinner } from "./ui";
 
 /** Progress events since the job last entered `runningState`. */
-export function ProgressList({ runningState }: { runningState: string }) {
+export function ProgressList({
+  runningState,
+  hideStage,
+}: {
+  runningState: string;
+  hideStage?: (stage: string) => boolean;
+}) {
   const { t } = useT();
   const events = useApp((s) => s.events);
   let start = -1;
   events.forEach((e, i) => {
     if (e.type === "state" && e.state === runningState) start = i;
   });
-  const all = start >= 0 ? events.slice(start + 1).filter((e) => e.type === "progress") : [];
+  const all =
+    start >= 0
+      ? events
+          .slice(start + 1)
+          .filter((e) => e.type === "progress" && !(hideStage && e.stage && hideStage(e.stage)))
+      : [];
   // One line per stage, showing its latest state (no repeated lines per tile/batch).
   const latest = new Map<string, (typeof all)[number]>();
   for (const e of all) latest.set(e.stage ?? String(e.seq), e);
@@ -33,7 +44,7 @@ export function ProgressList({ runningState }: { runningState: string }) {
           </li>
         );
       })}
-      {running && progress.length === 0 && (
+      {running && progress.length === 0 && !hideStage && (
         <li className="flex items-center gap-2">
           <Spinner />
         </li>

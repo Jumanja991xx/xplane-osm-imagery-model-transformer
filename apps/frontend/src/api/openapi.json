@@ -471,6 +471,55 @@
         }
       }
     },
+    "/api/jobs/{job_id}/package-name": {
+      "post": {
+        "summary": "Rename Package",
+        "operationId": "rename_package_api_jobs__job_id__package_name_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobs/{job_id}": {
       "get": {
         "summary": "Get Job",
@@ -2087,6 +2136,98 @@
         ],
         "title": "BuildResult"
       },
+      "BuildingPart": {
+        "properties": {
+          "geometry": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Geometry"
+          },
+          "osm_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Osm Ref"
+          },
+          "height_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height M"
+          },
+          "min_height_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Height M"
+          },
+          "roof_shape": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roof Shape"
+          },
+          "wall_color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wall Color"
+          },
+          "roof_color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roof Color"
+          },
+          "part": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Part"
+          }
+        },
+        "type": "object",
+        "required": [
+          "geometry"
+        ],
+        "title": "BuildingPart",
+        "description": "An OSM building:part inside the outline of a building (Simple 3D Buildings):\nthe outline is the object, its parts describe the shape in more detail."
+      },
       "CreateJob": {
         "properties": {
           "aoi": {
@@ -2526,6 +2667,19 @@
             ],
             "title": "Height M"
           },
+          "min_height_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 300.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Height M"
+          },
           "levels": {
             "anyOf": [
               {
@@ -2906,6 +3060,13 @@
                 "type": "null"
               }
             ]
+          },
+          "design_targets": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Design Targets"
           }
         },
         "type": "object",
@@ -3569,6 +3730,20 @@
         ],
         "title": "QuestionOption"
       },
+      "RenameBody": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "RenameBody"
+      },
       "ReopenBody": {
         "properties": {
           "to": {
@@ -3761,6 +3936,13 @@
                 "type": "null"
               }
             ]
+          },
+          "parts": {
+            "items": {
+              "$ref": "#/components/schemas/BuildingPart"
+            },
+            "type": "array",
+            "title": "Parts"
           }
         },
         "type": "object",

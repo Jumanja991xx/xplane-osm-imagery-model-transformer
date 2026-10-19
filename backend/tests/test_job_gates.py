@@ -193,6 +193,39 @@ def test_full_flow_builds_and_installs_with_backup(
     ]
 
 
+def test_rename_the_folder_after_the_build(client, app_ctx, fake_xplane, dsftool_exe):
+    settings = client.get("/api/settings", headers=AUTH).json()
+    client.put("/api/settings", json={**settings, "xplane_path": str(fake_xplane)}, headers=AUTH)
+    job = to_analyzed(client)
+    r = client.post(f"/api/jobs/{job['id']}/package-name", json={"name": "Zu früh"}, headers=AUTH)
+    assert r.status_code == 409  # only between build and install
+    job = approve(client, job, "B").json()
+    approve(client, job, "C")
+    job = wait_for_state(client, job["id"], {"built", "planned"})
+    assert job["state"] == "built", job["error"]
+    old = Path(job["build"]["package_dir"])
+
+    for bad in ("Puskás Aréna", " ", "../evil", "x" * 80):
+        r = client.post(f"/api/jobs/{job['id']}/package-name", json={"name": bad}, headers=AUTH)
+        assert r.status_code == 409 and r.json()["detail"]["key"] == "error.invalid_package_name"
+    r = client.post(
+        f"/api/jobs/{job['id']}/package-name", json={"name": "Puskas Arena"}, headers=AUTH
+    )
+    assert r.status_code == 200, r.text
+    job = r.json()
+    package = Path(job["build"]["package_dir"])
+    assert package.name == "Puskas Arena" and package.is_dir() and not old.exists()
+    assert (package / "README.txt").read_text(encoding="utf-8").startswith("Puskas Arena\n")
+    assert job["brief"]["package_name"] == job["plan"]["package_name"] == "Puskas Arena"
+    target = {i["key"]: i for i in job["pending_gate"]["items"]}["gate.d.target"]
+    assert target["params"]["path"].endswith("Puskas Arena")
+
+    approve(client, job, "D")
+    job = wait_for_state(client, job["id"], {"installed", "built"})
+    assert job["state"] == "installed", job["error"]
+    assert (fake_xplane / "Custom Scenery" / "Puskas Arena" / "README.txt").is_file()
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="uses a shell script as fake DSFTool")
 def test_build_failure_rolls_back_to_planned(client, monkeypatch, tmp_path):
     fake = tmp_path / "DSFTool"

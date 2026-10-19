@@ -119,3 +119,11 @@ def test_architect_places_library_objects_into_the_dsf(
     assert lamp == [f"OBJECT_DEF {plan_obj['library'][0]['path']}"]
     assert not (package / "lib").exists()
     assert "Requires these library packs" not in (package / "README.txt").read_text()
+
+
+def test_groups_match_words_not_fragments():
+    from xpsb.xplane.library import _matches
+
+    assert _matches("lib/vegetation/trees/oak.obj", ("tree",))
+    assert _matches("lib/street/streetlamp_1.obj", ("lamp",))
+    assert not _matches("lib/street/lights/street_lamp.obj", ("tree",))

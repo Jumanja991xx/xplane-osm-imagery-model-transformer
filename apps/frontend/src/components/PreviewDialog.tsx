@@ -130,18 +130,12 @@ export function PreviewDialog({
         mesh.receiveShadow = true;
         group.add(mesh);
       }
-      // X-Plane library objects: X-Plane draws them; here orange stand-ins of their size.
+      // X-Plane library objects: X-Plane draws them; here simple stand-ins of their kind and size.
       for (const p of o.library ?? []) {
-        const [w, d, h] = p.size && p.size.length >= 3 ? p.size : [1, 1, 2];
-        const box = new THREE.Mesh(
-          new THREE.BoxGeometry(Math.max(w, 0.2), Math.max(h, 0.2), Math.max(d, 0.2)),
-          new THREE.MeshStandardMaterial({ color: 0xeb8c28, roughness: 0.7, transparent: true, opacity: 0.85 }),
-        );
-        box.userData.library = p.path;
-        box.position.copy(toThree(p.x, p.y, Math.max(h, 0.2) / 2));
-        box.rotation.y = -(p.heading * Math.PI) / 180;
-        box.castShadow = true;
-        group.add(box);
+        const standIn = libraryStandIn(p);
+        standIn.position.copy(toThree(p.x, p.y, 0));
+        standIn.rotation.y = -(p.heading * Math.PI) / 180;
+        group.add(standIn);
       }
       objects.add(group);
       return group;
@@ -315,6 +309,7 @@ export function PreviewDialog({
             {data?.objects.some((o) => (o.library ?? []).length > 0) && (
               <p className="text-xs text-zinc-500">{t("preview.library_legend")}</p>
             )}
+            {current && (current.library ?? []).length > 0 && <LibraryList library={current.library ?? []} />}
             {current && editable && (
               <ObjectControls key={current.stem} jobId={jobId} object={current} onAdjusted={onAdjusted} />
             )}
@@ -386,6 +381,96 @@ const ROOF_SHAPES = ["flat", "gabled", "hipped"] as const;
 const WALL_MATERIALS = ["windows", "plaster", "brick", "glass", "metal_sheet", "concrete", "wood"] as const;
 
 /** Quick controls for one object: free, instant, only this object is rebuilt. */
+type LibraryKind = "tree" | "light" | "vehicle" | "person" | "flag" | "fence" | "other";
+
+const LIBRARY_WORDS: [LibraryKind, string[]][] = [
+  ["tree", ["tree", "bush", "hedge", "plant", "shrub", "palm", "conifer", "deciduous"]],
+  ["light", ["light", "lamp", "flood", "lantern"]],
+  ["vehicle", ["car", "truck", "bus", "van", "vehicle", "tractor", "trailer", "lorry"]],
+  ["person", ["people", "person", "pedestrian", "crowd"]],
+  ["flag", ["flag", "banner", "billboard", "board", "screen", "sign"]],
+  ["fence", ["fence", "barrier", "rail", "wall", "bollard", "gate"]],
+];
+
+export function libraryKind(path: string): LibraryKind {
+  // Whole words or word starts/ends ("trees", "streetlamp"), so "street" is no "tree".
+  const tokens = path.toLowerCase().split(/[^a-z]+/).filter(Boolean);
+  for (const [kind, words] of LIBRARY_WORDS) {
+    if (tokens.some((tok) => words.some((w) => tok.startsWith(w) || tok.endsWith(w)))) return kind;
+  }
+  return "other";
+}
+
+/** Recognisable stand-in for an X-Plane library object (the real look comes from X-Plane). */
+function libraryStandIn(p: { path: string; size?: number[] | null }): THREE.Group {
+  const [w0, d0, h0] = p.size && p.size.length >= 3 ? p.size : [1, 1, 2];
+  const w = Math.max(w0, 0.2);
+  const d = Math.max(d0, 0.2);
+  const h = Math.max(h0, 0.2);
+  const g = new THREE.Group();
+  const mat = (color: number, opacity = 1) =>
+    new THREE.MeshStandardMaterial({ color, roughness: 0.8, transparent: opacity < 1, opacity });
+  const add = (geo: THREE.BufferGeometry, color: number, y: number, opacity = 1) => {
+    const m = new THREE.Mesh(geo, mat(color, opacity));
+    m.position.y = y;
+    m.castShadow = true;
+    m.userData.library = p.path;
+    g.add(m);
+    return m;
+  };
+  switch (libraryKind(p.path)) {
+    case "tree": {
+      const r = Math.max(w, d) / 2;
+      add(new THREE.CylinderGeometry(Math.max(r * 0.08, 0.1), Math.max(r * 0.1, 0.12), h * 0.35, 6), 0x6b4a2b, h * 0.175);
+      add(new THREE.SphereGeometry(1, 10, 8).scale(r, h * 0.38, r), 0x4f7a35, h * 0.62);
+      break;
+    }
+    case "light":
+      add(new THREE.CylinderGeometry(0.08, 0.12, h, 6), 0x777b80, h / 2);
+      add(new THREE.BoxGeometry(Math.max(w, 0.5), 0.25, Math.max(d, 0.4)), 0xf2d16b, h);
+      break;
+    case "vehicle":
+      add(new THREE.BoxGeometry(w, h * 0.55, d), 0x4d6a8c, h * 0.3);
+      add(new THREE.BoxGeometry(w * 0.85, h * 0.4, d * 0.5), 0x8fa6bf, h * 0.75);
+      break;
+    case "person":
+      add(new THREE.CylinderGeometry(0.2, 0.2, h * 0.8, 6), 0x5a5f8a, h * 0.4);
+      add(new THREE.SphereGeometry(0.15, 8, 6), 0xd9b38c, h * 0.9);
+      break;
+    case "flag":
+      add(new THREE.CylinderGeometry(0.05, 0.06, h, 6), 0x9aa0a6, h / 2);
+      add(new THREE.BoxGeometry(Math.max(w, 1), Math.min(h * 0.3, 2), 0.05), 0xc0392b, h * 0.85);
+      break;
+    case "fence":
+      add(new THREE.BoxGeometry(w, h, Math.min(d, 0.15)), 0x8a8f94, h / 2, 0.8);
+      break;
+    default:
+      add(new THREE.BoxGeometry(w, h, d), 0xeb8c28, h / 2, 0.85);
+  }
+  return g;
+}
+
+/** Which X-Plane library objects the selected object places (counted per path). */
+function LibraryList({ library }: { library: { path: string }[] }) {
+  const { t } = useT();
+  const counts = new Map<string, number>();
+  for (const p of library) counts.set(p.path, (counts.get(p.path) ?? 0) + 1);
+  return (
+    <div className="space-y-0.5 rounded-md bg-amber-50 p-2 text-xs dark:bg-amber-500/10" data-testid="library-list">
+      <div className="font-medium">{t("preview.library_title")}</div>
+      <ul>
+        {[...counts.entries()].map(([path, n]) => (
+          <li key={path} className="truncate" title={path}>
+            {n} × {t(`preview.library_kind.${libraryKind(path)}`)}{" "}
+            <code className="text-[10px] text-zinc-500">{path.split("/").pop()}</code>
+          </li>
+        ))}
+      </ul>
+      <div className="text-zinc-500">{t("preview.library_hint")}</div>
+    </div>
+  );
+}
+
 function ObjectControls({
   jobId,
   object,

@@ -44,6 +44,29 @@ SELECTORS = [
     'nwr["man_made"~"^(mast|tower|flagpole)$"]',
     'node["tower:type"="lighting"]',
     'nwr["surface"]["area"="yes"]',
+    'wr["surface"][!"highway"]',
+    # Squares, parks, green and open ground.
+    'wr["place"="square"]',
+    'wr["highway"~"^(pedestrian|footway)$"]["area"="yes"]',
+    'wr["amenity"~"^(marketplace|parking_space)$"]',
+    'wr["landuse"~"^(village_green|meadow|flowerbed|cemetery|construction|brownfield)$"]',
+    'wr["leisure"~"^(park|garden|playground|dog_park|golf_course|common)$"]',
+    'wr["natural"~"^(sand|beach)$"]',
+    # Named grounds around buildings: what a building belongs to (name, Wikidata).
+    *(
+        f'wr["{key}"]["name"]["{key}"!~"^(nature_reserve|forest|farmland|meadow|district)$"]'
+        for key in (
+            "leisure",
+            "historic",
+            "amenity",
+            "tourism",
+            "man_made",
+            "office",
+            "healthcare",
+            "military",
+            "landuse",
+        )
+    ),
 ]
 
 

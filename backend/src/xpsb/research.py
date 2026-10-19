@@ -28,6 +28,7 @@ WIKIDATA_ENTITY = "https://www.wikidata.org/wiki/Special:EntityData/{qid}.json"
 WIKIDATA_API = "https://www.wikidata.org/w/api.php"
 WIKIPEDIA_SUMMARY = "https://{lang}.wikipedia.org/api/rest_v1/page/summary/{title}"
 MAX_OBJECTS = 15
+FEW_OBJECTS = 3  # up to this many objects in the area: all are researched and designed
 MAX_PHOTOS = 5
 NAME_MATCH_M = 800  # a Wikidata item found by name must be this close
 EXTRACT_CHARS = 1200
@@ -60,17 +61,21 @@ def score(item: SceneItem) -> float:
         (tags.get("building") or "") in IDENTITY_TYPES
         or tags.get("tourism")
         or tags.get("historic")
+        or tags.get("site:main") == "yes"
     ):
         s += 30
     if str(item.category) == "grandstands":
         s += 15
+    if item.source == "user":  # drawn by hand: the user cares about this one
+        s += 30
     area = _area_m2(item) if item.geometry.get("type") != "Point" else 0
     s += min(40.0, area / 250.0)
     return s
 
 
 def important(items: list[SceneItem], limit: int = MAX_OBJECTS) -> list[SceneItem]:
-    """Objects worth it: identified, named, large (or stands); best first."""
+    """Objects worth it: identified, named, large (or stands); best first. In a small
+    area with only a few objects (one house, one church) all of them count."""
     pool = [
         it
         for it in items
@@ -78,8 +83,9 @@ def important(items: list[SceneItem], limit: int = MAX_OBJECTS) -> list[SceneIte
         and it.included
         and not it.proposal
         and str(it.category) != "barriers"
-        and score(it) >= 30
     ]
+    if len(pool) > FEW_OBJECTS:
+        pool = [it for it in pool if score(it) >= 30]
     return sorted(pool, key=score, reverse=True)[:limit]
 
 

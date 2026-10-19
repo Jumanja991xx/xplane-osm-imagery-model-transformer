@@ -566,16 +566,20 @@ def test_research_can_be_switched_off(client, fake_ai):
 # ---- automatic design when the plan is made ----------------------------------------
 
 
-def test_architect_builds_the_important_objects_automatically(client, fake_ai):
+def test_architect_builds_the_important_objects_automatically(client, fake_ai, app_ctx):
     job = analyze(client, setup(client))  # ai_design defaults to "important"
     gate = client.get(f"/api/jobs/{job['id']}", headers=AUTH).json()["pending_gate"]
     answers = {q["id"]: "9" for q in job["analysis"]["questions"]}
     if answers:
         client.post(f"/api/jobs/{job['id']}/answers", json=answers, headers=AUTH)
-        gate = client.get(f"/api/jobs/{job['id']}", headers=AUTH).json()["pending_gate"]
+    view = client.get(f"/api/jobs/{job['id']}", headers=AUTH).json()
+    gate = view["pending_gate"]
     by_key = {i["key"]: i for i in gate["items"]}
     design = by_key["gate.b.design"]["params"]
     assert design["count"] >= 2 and "Haupttribüne" in design["names"]
+    # Step 3 already shows which objects these are (photos can be added before).
+    targets = view["design_targets"]
+    assert len(targets) == design["count"]
     cost = by_key["gate.b.design_cost"]["params"]
     assert 0 < cost["estimate_usd"] <= cost["max_usd"]
 
@@ -594,6 +598,16 @@ def test_architect_builds_the_important_objects_automatically(client, fake_ai):
     assert "What is known about the real object" in first
     assert "plan.designed" in {i["label_key"] for i in job["plan"]["items"]}
     assert sum(o["designed"] for o in job["plan"]["objects"]) == design["count"]
+    # The user saw per object what was going on.
+    events = app_ctx.jobs.events(job["id"]).events
+    for tid in targets:
+        mine = [e for e in events if e.stage == f"design:{tid}"]
+        assert mine[0].key == "design.obj.waiting"
+        steps = [e.key for e in mine]
+        assert "design.step.preparing" in steps and "design.step.writing" in steps
+        assert mine[-1].params["status"] == "done" and mine[-1].params["cost_usd"] > 0
+    overall = [e for e in events if e.stage == "design"][-2]
+    assert overall.params["cost_max"] >= overall.params["cost_usd"] > 0
 
 
 def test_no_automatic_design_without_budget_or_when_off(client, fake_ai):

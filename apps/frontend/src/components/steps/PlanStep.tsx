@@ -2,6 +2,7 @@ import { useState } from "react";
 import { api } from "../../api/client";
 import { useT } from "../../i18n";
 import { useApp } from "../../store";
+import { DesignProgress } from "../DesignProgress";
 import { PreviewDialog } from "../PreviewDialog";
 import { ProgressList } from "../ProgressList";
 import { Alert, Button, Section } from "../ui";
@@ -18,7 +19,8 @@ export function PlanStep({ onBuild }: { onBuild: () => void }) {
       <div className="space-y-3">
         <p className="text-sm font-medium">{t("plan.designing")}</p>
         <p className="text-xs text-zinc-500">{t("plan.designing_hint")}</p>
-        <ProgressList runningState="planning" />
+        <DesignProgress />
+        <ProgressList runningState="planning" hideStage={(s) => s.startsWith("design")} />
       </div>
     );
   }

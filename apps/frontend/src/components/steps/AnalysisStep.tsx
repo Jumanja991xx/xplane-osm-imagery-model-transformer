@@ -11,12 +11,15 @@ import {
 import { useT, type Translate } from "../../i18n";
 import { CATEGORY_COLORS, categoryLabelKey, draftFor, OBJECT_CATEGORIES, SURFACE_TYPES } from "../../scene";
 import { useApp } from "../../store";
+import { PhotoPanel } from "../PhotoPanel";
 import { ProgressList } from "../ProgressList";
 import { Alert, Button, Checkbox, inputClass, Section, Spinner } from "../ui";
 
 const WARNING_NOTES = new Set([
   "analysis.dropped_category",
   "imagery.failed",
+  "imagery.esri_failed",
+  "imagery.esri_no_key",
   "imagery.not_covered",
   "imagery.custom_missing",
   "analysis.ai_limit_reached",
@@ -146,6 +149,8 @@ export function AnalysisStep({
         </Section>
       )}
 
+      {editable && <DesignTargets job={job} />}
+
       <ItemList job={job} editable={editable} run={run} />
 
       {error && <Alert kind="error">{error}</Alert>}
@@ -203,6 +208,45 @@ function SourcesSummary({ job }: { job: JobView }) {
         </div>
       )}
     </div>
+  );
+}
+
+/** What the AI architect will rebuild once the list is confirmed: photos can still be
+ * added now (own ones, street-level and nearby photos), before any money is spent. */
+function DesignTargets({ job }: { job: JobView }) {
+  const { t } = useT();
+  const { selectItem } = useApp();
+  const ids = job.design_targets ?? [];
+  const items = job.analysis?.items ?? [];
+  const targets = ids.map((id) => items.find((i) => i.id === id)).filter(Boolean) as SceneItem[];
+  if (!targets.length) return null;
+  return (
+    <Section title={`🏗 ${t("analysis.targets_title", { count: targets.length })}`}>
+      <p className="text-xs text-zinc-600 dark:text-zinc-300">{t("analysis.targets_hint")}</p>
+      <ul
+        className="divide-y divide-zinc-200 rounded-md bg-white ring-1 ring-accent-200 dark:divide-zinc-700 dark:bg-zinc-800 dark:ring-accent-700/50"
+        data-testid="design-targets"
+      >
+        {targets.map((item) => {
+          const n = item.photos?.length ?? 0;
+          return (
+            <li key={item.id} className="flex items-center gap-2 px-2 py-1.5 text-sm">
+              <span
+                className="h-3 w-3 shrink-0 rounded-sm ring-1 ring-black/20"
+                style={{ background: CATEGORY_COLORS[item.category] }}
+              />
+              <span className="min-w-0 flex-1 truncate">{itemTitle(t, item)}</span>
+              <span className={`shrink-0 text-xs ${n ? "text-emerald-700 dark:text-emerald-400" : "text-amber-600"}`}>
+                📷 {n ? t("analysis.targets_photos", { count: n }) : t("analysis.targets_no_photos")}
+              </span>
+              <Button variant="ghost" onClick={() => selectItem(item.id)} data-testid={`target-photos-${item.id}`}>
+                {t("analysis.targets_add")}
+              </Button>
+            </li>
+          );
+        })}
+      </ul>
+    </Section>
   );
 }
 
@@ -380,6 +424,8 @@ function ItemList({
                 {item.id === selectedItem && (
                   <ItemEditor
                     item={item}
+                    jobId={jobId}
+                    target={false}
                     editable={editable}
                     patch={(p) => run(() => api.updateItem(jobId, item.id, p))}
                     remove={() => run(() => api.deleteItem(jobId, item.id))}
@@ -473,6 +519,7 @@ function ItemList({
                 <ItemRow
                   key={item.id}
                   item={item}
+                  target={(job.design_targets ?? []).includes(item.id)}
                   selected={item.id === selectedItem}
                   editable={editable}
                   onSelect={() => selectItem(item.id === selectedItem ? null : item.id)}
@@ -545,6 +592,7 @@ function ItemList({
 
 function ItemRow({
   item,
+  target,
   selected,
   editable,
   onSelect,
@@ -554,6 +602,7 @@ function ItemRow({
   onMark,
 }: {
   item: SceneItem;
+  target: boolean;
   selected: boolean;
   editable: boolean;
   onSelect: () => void;
@@ -608,6 +657,11 @@ function ItemRow({
           {item.kind === "object" && height != null && (
             <span className="shrink-0 text-xs text-zinc-500">{height} m</span>
           )}
+          {target && (
+            <span className="shrink-0 text-xs" title={t("analysis.target_badge")}>
+              🏗
+            </span>
+          )}
           {item.research && (
             <span className="shrink-0 text-xs" title={t("analysis.researched")} data-testid="researched">
               🔎{(item.photos?.length ?? 0) > 0 ? ` 📷${item.photos?.length}` : ""}
@@ -628,18 +682,31 @@ function ItemRow({
           </span>
         </button>
       </div>
-      {selected && <ItemEditor item={item} editable={editable} patch={patch} remove={() => run(() => api.deleteItem(jobId, item.id))} />}
+      {selected && (
+        <ItemEditor
+          item={item}
+          jobId={jobId}
+          target={target}
+          editable={editable}
+          patch={patch}
+          remove={() => run(() => api.deleteItem(jobId, item.id))}
+        />
+      )}
     </li>
   );
 }
 
 function ItemEditor({
   item,
+  jobId,
+  target,
   editable,
   patch,
   remove,
 }: {
   item: SceneItem;
+  jobId: string;
+  target: boolean;
   editable: boolean;
   patch: (p: ItemPatch) => Promise<void>;
   remove: () => Promise<void>;
@@ -681,6 +748,25 @@ function ItemEditor({
               {s}
             </div>
           ))}
+        </details>
+      )}
+      {(item.tags?.["site:derived"] || item.tags?.["site:name"] || (item.parts?.length ?? 0) > 0) && (
+        <div className="space-y-0.5 text-xs text-zinc-600 dark:text-zinc-300" data-testid="item-context">
+          {item.tags?.["site:derived"] && <p>📐 {t("analysis.site_derived")}</p>}
+          {item.tags?.["site:name"] && !item.tags?.["site:derived"] && (
+            <p>📍 {t("analysis.site_member", { name: item.tags["site:name"] })}</p>
+          )}
+          {(item.parts?.length ?? 0) > 0 && <p>🧩 {t("analysis.parts", { count: item.parts!.length })}</p>}
+        </div>
+      )}
+      {editable && item.kind === "object" && (
+        <details className="rounded-md bg-zinc-50 p-2 dark:bg-zinc-900/40" open={target} data-testid="item-photos">
+          <summary className="cursor-pointer text-xs font-medium">
+            📷 {t(target ? "analysis.photos_target" : "analysis.photos_other", { count: item.photos?.length ?? 0 })}
+          </summary>
+          <div className="pt-1.5">
+            <PhotoPanel jobId={jobId} item={item} />
+          </div>
         </details>
       )}
       <div className="grid grid-cols-2 gap-2">

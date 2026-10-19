@@ -38,6 +38,7 @@ class ItemAttrs(BaseModel):
     """Parameters for the generators (M3). All optional: unknown stays unknown."""
 
     height_m: float | None = Field(default=None, ge=0, le=300)
+    min_height_m: float | None = Field(default=None, ge=0, le=300)  # raised parts (roofs)
     levels: int | None = Field(default=None, ge=0, le=100)
     roof_shape: str | None = None
     roof_color: str | None = None
@@ -50,6 +51,20 @@ class ItemAttrs(BaseModel):
     flip: bool | None = None  # turn the front (e.g. of a grandstand) around
     rows: int | None = Field(default=None, ge=1, le=80)  # grandstand rows
     wall_material: WallMaterial | None = None
+
+
+class BuildingPart(BaseModel):
+    """An OSM building:part inside the outline of a building (Simple 3D Buildings):
+    the outline is the object, its parts describe the shape in more detail."""
+
+    geometry: dict[str, Any]  # GeoJSON Polygon (lon, lat)
+    osm_ref: str | None = None
+    height_m: float | None = None
+    min_height_m: float | None = None
+    roof_shape: str | None = None
+    wall_color: str | None = None
+    roof_color: str | None = None
+    part: str | None = None  # building:part value, e.g. "roof", "tower"
 
 
 class SceneItem(BaseModel):
@@ -77,6 +92,7 @@ class SceneItem(BaseModel):
     # Photos of the real object (input for the AI architect, never in the package).
     photos: list[Photo] = Field(default_factory=list)
     research: Research | None = None
+    parts: list[BuildingPart] = Field(default_factory=list)
 
 
 class ItemPatch(BaseModel):

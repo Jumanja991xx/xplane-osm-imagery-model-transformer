@@ -158,6 +158,23 @@ with sync_playwright() as p:
     page.screenshot(path=OUT / "07c-3d.png")
     page.get_by_test_id("toggle-3d").click()
 
+    # Step 3 says which objects the AI architect will rebuild; photos can be added now.
+    targets = page.get_by_test_id("design-targets")
+    expect(targets).to_be_visible()
+    page.screenshot(path=OUT / "07d-design-targets.png")
+    targets.get_by_role("button").first.click()
+    photos = page.get_by_test_id("item-photos")
+    expect(photos).to_be_visible(timeout=5000)
+    before = photos.get_by_test_id("photo-list").locator("img").count()
+    photos.get_by_text("Ich darf diese Fotos dafür verwenden").click()
+    photos.get_by_test_id("photo-upload").set_input_files(
+        str(Path(__file__).parents[2] / "backend/tests/fixtures/speedway/photos/sample.jpg")
+    )
+    expect(photos.get_by_test_id("photo-list").locator("img")).to_have_count(
+        before + 1, timeout=10000
+    )
+    page.screenshot(path=OUT / "07e-step3-photo.png")
+
     page.get_by_test_id("analysis-confirm").click()
     expect(page.get_by_role("dialog")).to_be_visible()
     page.screenshot(path=OUT / "08-gate-b.png")
@@ -166,8 +183,10 @@ with sync_playwright() as p:
     )
     page.get_by_test_id("gate-approve").click()
 
-    # The AI architect rebuilds the important objects first (live progress).
-    page.wait_for_timeout(1500)
+    # The AI architect rebuilds the important objects first (live progress per object).
+    expect(page.get_by_test_id("plan-design-progress")).to_be_visible(timeout=10000)
+    expect(page.get_by_test_id("design-object").first).to_be_visible()
+    page.wait_for_timeout(2500)
     page.screenshot(path=OUT / "08b-planning.png")
     expect(page.get_by_test_id("plan-build")).to_be_visible(timeout=120000)
     expect(page.get_by_test_id("plan-confirmed")).to_contain_text("Gerüste")
@@ -248,6 +267,8 @@ with sync_playwright() as p:
     expect(page.get_by_test_id("design-reset")).to_be_visible(timeout=30000)
     page.wait_for_timeout(1500)
     page.screenshot(path=OUT / "09f-design-done.png")
+    # Library objects the architect placed are named (stand-ins in the 3D view).
+    expect(page.get_by_test_id("library-list")).to_contain_text("Lampe/Mast")
     page.get_by_test_id("preview-close").click()
     # One step back to the list and forward again: nothing is lost, no new analysis.
     page.get_by_test_id("back-to-list").click()
@@ -265,11 +286,17 @@ with sync_playwright() as p:
     page.get_by_test_id("gate-approve").click()
 
     expect(page.get_by_test_id("install-button")).to_be_visible(timeout=60000)
+    # Last chance to rename the scenery folder (accents are not allowed in the name).
+    page.get_by_test_id("package-name").fill("E2E Umbenannt")
+    page.get_by_test_id("package-rename").click()
+    expect(page.get_by_text("E2E Umbenannt", exact=False).last).to_be_visible(timeout=10000)
+    page.screenshot(path=OUT / "12b-rename.png")
     page.get_by_test_id("install-button").click()
     expect(page.get_by_test_id("gate-approve")).to_be_enabled(timeout=10000)
     page.screenshot(path=OUT / "13-gate-d.png")
     page.get_by_test_id("gate-approve").click()
     expect(page.get_by_test_id("install-done")).to_be_visible(timeout=30000)
+    assert (Path(XPLANE) / "Custom Scenery" / "E2E Umbenannt").is_dir()
     page.screenshot(path=OUT / "14-installed.png")
     # The finished result can still be looked at in 3D.
     page.get_by_test_id("result-preview").click()

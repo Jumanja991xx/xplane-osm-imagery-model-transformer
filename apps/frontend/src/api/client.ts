@@ -147,6 +147,8 @@ export const api = {
   cancel: (id: string) => request<JobView>("POST", `/api/jobs/${id}/cancel`),
   reopen: (id: string, to: "analyzed" | "clarified") =>
     request<JobView>("POST", `/api/jobs/${id}/reopen`, { to }),
+  renamePackage: (id: string, name: string) =>
+    request<JobView>("POST", `/api/jobs/${id}/package-name`, { name }),
   listJobs: () => request<JobSummary[]>("GET", "/api/jobs"),
   designEstimate: (id: string, itemId: string) =>
     request<S["DesignEstimate"]>("GET", `/api/jobs/${id}/design/${itemId}`),

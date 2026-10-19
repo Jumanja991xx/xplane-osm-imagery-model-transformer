@@ -274,3 +274,6 @@ class JobView(Job):
     """What the API returns: the job plus the approval currently waiting for the user."""
 
     pending_gate: PendingGate | None = None
+    # Objects the AI architect would build individually after the list is confirmed
+    # (shown in step 3, so the user can add photos before that).
+    design_targets: list[str] = Field(default_factory=list)

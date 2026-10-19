@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import shutil
 import uuid
 from collections.abc import Callable
 from pathlib import Path
@@ -17,6 +18,7 @@ from xpsb import photos, research
 from xpsb.ai import analyze as ai
 from xpsb.ai import detect
 from xpsb.ai.usage import UsageLedger
+from xpsb.catalog import category_label
 from xpsb.geo import MAX_AOI_AREA_KM2, GeoJsonPolygon, ring_area_m2, ring_centroid
 from xpsb.imagery.sources import ESRI_ACCOUNT
 from xpsb.jobs import pipeline
@@ -211,8 +213,10 @@ class JobManager:
 
     def view(self, job_id: str) -> JobView:
         job = self.get(job_id)
-        gate = compute_gate(job, self._gate_context(job))
-        return JobView(**job.model_dump(), pending_gate=gate)
+        ctx = self._gate_context(job)
+        gate = compute_gate(job, ctx)
+        targets = [d["id"] for d in ctx.design] if job.state is JobState.ANALYZED else []
+        return JobView(**job.model_dump(), pending_gate=gate, design_targets=targets)
 
     # ---- commands without side effects outside the job folder --------------
 
@@ -267,6 +271,39 @@ class JobManager:
             raise JobConflict("error.wrong_state", state=job.state.value)
         job.error = None
         self._set_state(job, to)
+        return job
+
+    def rename_package(self, job_id: str, name: str) -> Job:
+        """After the build, before installing: give the scenery folder another name
+        (only the folder in the job's own build directory is renamed)."""
+        job = self.get(job_id)
+        self._require_not_running(job)
+        if job.state is not JobState.BUILT or job.brief is None or job.plan is None:
+            raise JobConflict("error.wrong_state", state=job.state.value)
+        try:
+            brief = Brief.model_validate({**job.brief.model_dump(), "package_name": name})
+        except ValueError:
+            raise JobConflict("error.invalid_package_name") from None
+        new = brief.package_name
+        old = job.plan.package_name
+        if new == old:
+            return job
+        build_root = self.job_dir(job.id) / "build"
+        src, dst = build_root / old, build_root / new
+        if dst.exists() and dst.resolve() != src.resolve():
+            shutil.rmtree(dst)  # a leftover of an earlier build of this job
+        if src.exists():
+            src.rename(dst)
+            readme = dst / "README.txt"
+            if readme.exists():
+                lines = readme.read_text(encoding="utf-8").split("\n", 1)
+                readme.write_text("\n".join([new, *lines[1:]]), encoding="utf-8")
+        job.brief = brief
+        job.plan.package_name = new
+        if job.build is not None:
+            job.build.package_dir = str(dst)
+        self._save(job)
+        self.events(job.id).publish(type="log", key="log.renamed", params={"name": new})
         return job
 
     def memory(self, job: Job) -> tuple[list[SceneItem], dict[str, SceneItem]]:
@@ -830,6 +867,7 @@ class JobManager:
         else:
             candidates = sorted(buildable, key=research.score, reverse=True)[:MAX_AUTO_DESIGN]
         budget = self._similar_budget(job)
+        language = self._settings.load().language
         library_lines = len(self.library().offer())
         chosen, total, cut = [], 0.0, 0
         for it in candidates:
@@ -840,7 +878,7 @@ class JobManager:
                 cut += 1
                 continue
             total += most
-            name = it.name or str(it.category)
+            name = it.name or category_label(str(it.category), language)
             chosen.append({"id": it.id, "name": name, "typical": typical, "max": most})
         return {"design": tuple(chosen), "design_cut": cut}
 
@@ -864,27 +902,75 @@ class JobManager:
                 type="progress", stage="design", progress=value, key=key, params=params
             )
 
+        def status(t: dict, state: str, key: str, **params) -> None:
+            # One line per object in the UI: what the AI architect is doing right now.
+            log.publish_threadsafe(
+                type="progress",
+                stage=f"design:{t['id']}",
+                progress=1.0 if state in ("done", "failed") else 0.0,
+                key=key,
+                params={"name": t["name"], "status": state, **params},
+            )
+
         def one(t: dict):
             if job.state is not JobState.PLANNING:  # cancelled meanwhile
                 return None
             item = self._item(job, t["id"])
-            return item, self._design_call(job, item, request, t["max"], detail, lambda k, p: None)
+            status(t, "running", "design.step.preparing", photos=len(item.photos))
+            result = self._design_call(
+                job,
+                item,
+                request,
+                t["max"],
+                detail,
+                lambda k, p: status(t, "running", k, **p),
+            )
+            return item, result
 
-        progress("stage.design", 0.0, done=0, total=total, name="")
+        cost_max = round(sum(t["max"] for t in targets), 3)
+        for t in targets:
+            status(t, "waiting", "design.obj.waiting")
+        progress("stage.design", 0.0, done=0, total=total, name="", cost_usd=0, cost_max=cost_max)
         with ThreadPoolExecutor(max_workers=DESIGN_PARALLEL) as pool:
             futures = [(pool.submit(one, t), t) for t in targets]
             for fut, t in futures:
                 out = fut.result()
                 done += 1
-                if out is not None:
+                if out is None:
+                    status(t, "failed", "design.obj.cancelled")
+                else:
                     item, result = out
                     self._add_design_cost(job, result)
                     spent += result.info.cost_usd
+                    cost = round(result.info.cost_usd, 4)
                     if result.script is not None:
                         item.script = result.script
                         item.script_request = "auto"
                         designed += 1
-                progress("stage.design", done / total, done=done, total=total, name=t["name"])
+                        status(
+                            t,
+                            "done",
+                            "design.obj.done",
+                            cost_usd=cost,
+                            summary=(result.summary or "")[:240],
+                        )
+                    else:
+                        status(
+                            t,
+                            "failed",
+                            "design.obj.failed",
+                            cost_usd=cost,
+                            error=result.error_key or "error.architect_failed",
+                        )
+                progress(
+                    "stage.design",
+                    done / total,
+                    done=done,
+                    total=total,
+                    name=t["name"],
+                    cost_usd=round(spent, 3),
+                    cost_max=cost_max,
+                )
         progress("stage.design_done", 1.0, designed=designed, total=total, cost_usd=round(spent, 3))
 
     async def _do_plan(self, job: Job, targets: tuple) -> None:

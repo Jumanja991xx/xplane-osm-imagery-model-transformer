@@ -196,6 +196,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/jobs/{job_id}/package-name": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rename Package */
+        post: operations["rename_package_api_jobs__job_id__package_name_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs/{job_id}": {
         parameters: {
             query?: never;
@@ -760,6 +777,31 @@ export interface components {
             /** Dsftool Version */
             dsftool_version: string;
         };
+        /**
+         * BuildingPart
+         * @description An OSM building:part inside the outline of a building (Simple 3D Buildings):
+         *     the outline is the object, its parts describe the shape in more detail.
+         */
+        BuildingPart: {
+            /** Geometry */
+            geometry: {
+                [key: string]: unknown;
+            };
+            /** Osm Ref */
+            osm_ref?: string | null;
+            /** Height M */
+            height_m?: number | null;
+            /** Min Height M */
+            min_height_m?: number | null;
+            /** Roof Shape */
+            roof_shape?: string | null;
+            /** Wall Color */
+            wall_color?: string | null;
+            /** Roof Color */
+            roof_color?: string | null;
+            /** Part */
+            part?: string | null;
+        };
         /** CreateJob */
         CreateJob: {
             aoi: components["schemas"]["GeoJsonPolygon"];
@@ -946,6 +988,8 @@ export interface components {
         ItemAttrs: {
             /** Height M */
             height_m?: number | null;
+            /** Min Height M */
+            min_height_m?: number | null;
             /** Levels */
             levels?: number | null;
             /** Roof Shape */
@@ -1046,6 +1090,8 @@ export interface components {
             approvals?: components["schemas"]["Approval"][];
             error?: components["schemas"]["JobError"] | null;
             pending_gate?: components["schemas"]["PendingGate"] | null;
+            /** Design Targets */
+            design_targets?: string[];
         };
         /**
          * LibraryPlacement
@@ -1281,6 +1327,11 @@ export interface components {
                 [key: string]: string | number | null;
             };
         };
+        /** RenameBody */
+        RenameBody: {
+            /** Name */
+            name: string;
+        };
         /** ReopenBody */
         ReopenBody: {
             /**
@@ -1366,6 +1417,8 @@ export interface components {
             /** Photos */
             photos?: components["schemas"]["Photo"][];
             research?: components["schemas"]["Research"] | null;
+            /** Parts */
+            parts?: components["schemas"]["BuildingPart"][];
         };
         /** SearchResult */
         SearchResult: {
@@ -1902,6 +1955,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ReopenBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_package_api_jobs__job_id__package_name_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameBody"];
             };
         };
         responses: {

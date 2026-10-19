@@ -10,7 +10,9 @@ Inputs available to every script:
              vector towards the field/track, or None), flip (turn the front
              around), rows (grandstand rows or None), wall_material, building
              (OSM building type, e.g. "industrial", "house", "stadium"), tags (OSM
-             tags of the object), detail ("low"|"medium"|"high")
+             tags of the object), detail ("low"|"medium"|"high"), min_height
+             (raised blocks), parts (OSM building parts: list of dicts with
+             footprint, height, min_height, roof_shape, wall_color, roof_color, part)
 """
 
 from __future__ import annotations
@@ -228,33 +230,20 @@ def stadium():
           colors=[g("roof_color", None), None, g("roof_color", None), None],
           closed_path=True, caps=True)
 
-def main():
-    st = style()
-    if st == "stadium":
-        stadium()
+def block(fp, z0, H, shape, look, flip):
+    # One building block: walls from z0 to H and a roof (gabled/hipped/pyramidal/flat).
+    wall, wall_mat, gable_mat, roof_color, pitched, flat, rise_k, rise_max = look
+    if H <= z0 + 0.2:
         return
-    H0, storey, wall_def, wall_col, shape_def, pitched_def, flat_def, rise_k, rise_max = STYLES[st]
-    H = params.get("height")
-    if H == None:
-        lv = params.get("levels")
-        H = lv * storey if lv else H0
-    wall = g("wall_color", wall_col)
-    wall_mat = g("wall_material", wall_def)
-    gable_mat = "plaster" if wall_mat in ("windows", "glass", "metal_sheet") else wall_mat
-    if st == "hall":
-        gable_mat = wall_mat
-    roof_color = g("roof_color", None)
-    roof_mat = params.get("roof_material")
-    shape = g("roof_shape", shape_def)
-    r = oriented_rect(footprint)
-    if g("flip", False):
+    raised = z0 > 0.3
+    r = oriented_rect(fp)
+    if flip:
         # ridge across instead of along the long side
         r = {"x": r["x"], "y": r["y"], "length": r["width"], "width": r["length"],
              "ux": r["vx"], "uy": r["vy"], "vx": -r["vy"], "vy": r["vx"]}
-    rect_like = polygon_area(footprint) > 0.85 * r["length"] * r["width"]
+    rect_like = polygon_area(fp) > 0.85 * r["length"] * r["width"]
     if shape in ("gabled", "hipped") and rect_like:
-        pitched = roof_mat or pitched_def
-        extrude(footprint, 0, H, mat=wall_mat, top=None, color=wall)
+        extrude(fp, z0, H, mat=wall_mat, top=None, color=wall, bottom=raised)
         P = frame(r)
         L2 = r["length"] / 2
         W2 = r["width"] / 2
@@ -275,9 +264,53 @@ def main():
             face([C, B, R2], mat=gable_mat, color=wall)
         quad(A, B, R2, R1, mat=pitched, color=roof_color)
         quad(C, D, R1, R2, mat=pitched, color=roof_color)
+    elif shape in ("pyramidal", "dome", "onion", "cone") and len(fp) <= 40:
+        # towers and domes: a pointed roof over the centre
+        extrude(fp, z0, H, mat=wall_mat, top=None, color=wall, bottom=raised)
+        c = polygon_centroid(fp)
+        rise = min(min(r["width"], r["length"]) * (0.9 if shape == "cone" else 0.6), 25)
+        apex = [c[0], c[1], H + rise]
+        n = len(fp)
+        for i in range(n):
+            a = fp[i]
+            b = fp[(i + 1) % n]
+            face([[a[0], a[1], H], [b[0], b[1], H], apex], mat=pitched, color=roof_color)
     else:
-        extrude(footprint, 0, H, mat=wall_mat, top=roof_mat or flat_def, color=wall,
-                top_color=roof_color)
+        extrude(fp, z0, H, mat=wall_mat, top=flat, color=wall, top_color=roof_color,
+                bottom=raised)
+
+def main():
+    st = style()
+    if st == "stadium":
+        stadium()
+        return
+    H0, storey, wall_def, wall_col, shape_def, pitched_def, flat_def, rise_k, rise_max = STYLES[st]
+    H = params.get("height")
+    if H == None:
+        lv = params.get("levels")
+        H = lv * storey if lv else H0
+    wall = g("wall_color", wall_col)
+    wall_mat = g("wall_material", wall_def)
+    gable_mat = "plaster" if wall_mat in ("windows", "glass", "metal_sheet") else wall_mat
+    if st == "hall":
+        gable_mat = wall_mat
+    roof_color = g("roof_color", None)
+    roof_mat = params.get("roof_material")
+    look = (wall, wall_mat, gable_mat, roof_color, roof_mat or pitched_def, roof_mat or flat_def,
+            rise_k, rise_max)
+    parts = params.get("parts") or []
+    if parts:
+        # OSM building parts (towers, wings, raised roofs): each its own block
+        for part in parts:
+            ph = part.get("height") or H
+            pz = part.get("min_height") or 0
+            plook = (part.get("wall_color") or wall, wall_mat, gable_mat,
+                     part.get("roof_color") or roof_color, look[4], look[5], rise_k, rise_max)
+            block(part["footprint"], pz, ph, part.get("roof_shape") or "flat", plook, False)
+        if g("parts_cover", 1.0) >= 0.8:
+            return  # the parts are the whole building
+    shape = g("roof_shape", shape_def)
+    block(footprint, g("min_height", 0), H, shape, look, g("flip", False))
 
 main()
 """

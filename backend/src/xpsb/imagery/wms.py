@@ -86,8 +86,33 @@ def _http_get(url: str, timeout: float = 60) -> tuple[bytes, str]:
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.read(), resp.headers.get("Content-Type", "")
+    except urllib.error.HTTPError as exc:
+        try:
+            detail = service_message(exc.read())
+        except OSError:
+            detail = None
+        raise WmsError(
+            f"{url.split('?')[0]}: HTTP {exc.code}" + (f" – {detail}" if detail else "")
+        ) from None
     except (urllib.error.URLError, TimeoutError) as exc:
         raise WmsError(f"{url.split('?')[0]}: {exc}") from exc
+
+
+def service_message(data: bytes) -> str | None:
+    """Tile servers (ArcGIS among them) answer errors with JSON instead of an image,
+    e.g. {"error": {"code": 498, "message": "Invalid token."}}. Never echoes the URL."""
+    try:
+        body = json.loads(data[:20_000])
+    except ValueError:
+        text = data[:200].decode("utf-8", "replace").strip()
+        return text if text and text.isprintable() else None
+    err = body.get("error") if isinstance(body, dict) else None
+    if isinstance(err, dict):
+        msg = str(err.get("message") or "").strip()
+        code = err.get("code")
+        details = "; ".join(str(d) for d in err.get("details") or [] if d)
+        return " ".join(x for x in (f"[{code}]" if code else "", msg, details) if x)[:300] or None
+    return None
 
 
 def _with_query(url: str, params: dict[str, str]) -> str:

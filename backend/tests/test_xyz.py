@@ -100,3 +100,38 @@ def test_esri_worldwide_with_own_key_for_recognition_only(client, app_ctx):
     assert items["gate.a.imagery"]["params"]["source"].startswith("Esri World Imagery")
     assert "gate.a.imagery_analysis_only" in items
     assert "AAPK" not in str(job)
+
+
+def test_tile_server_errors_are_readable_and_never_show_the_key(monkeypatch):
+    import io
+    import urllib.error
+
+    from xpsb.imagery import wms, xyz
+    from xpsb.imagery.sources import esri_source
+
+    monkeypatch.delenv("XPSB_FIXTURES_DIR", raising=False)
+    source = esri_source("SECRET-KEY-42")
+    body = b'{"error":{"code":498,"message":"Invalid token.","details":[]}}'
+
+    def json_200(url, timeout=60):
+        return body, "application/json"
+
+    monkeypatch.setattr(xyz, "_http_get", json_200)
+    try:
+        xyz._get_tile(source, 18, 1, 2)
+    except wms.WmsError as exc:
+        assert "Invalid token" in str(exc) and "SECRET" not in str(exc)
+    else:
+        raise AssertionError("expected an error")
+
+    def http_403(req, timeout=60):
+        raise urllib.error.HTTPError(req.full_url, 403, "Forbidden", {}, io.BytesIO(body))
+
+    monkeypatch.setattr(wms.urllib.request, "urlopen", http_403)
+    try:
+        wms._http_get(xyz.tile_url(source.url, 18, 1, 2))
+    except wms.WmsError as exc:
+        assert "HTTP 403" in str(exc) and "Invalid token" in str(exc)
+        assert "SECRET" not in str(exc) and "token=" not in str(exc)
+    else:
+        raise AssertionError("expected an error")

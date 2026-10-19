@@ -104,6 +104,10 @@ class ReopenBody(BaseModel):
     to: Literal["analyzed", "clarified"]
 
 
+class RenameBody(BaseModel):
+    name: str = Field(max_length=200)
+
+
 class DesignBody(BaseModel):
     request: str = Field(min_length=3, max_length=1500)
     # The maximum the user confirmed; the architect never spends more than this.
@@ -279,6 +283,11 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
     @app.post("/api/jobs/{job_id}/reopen", dependencies=auth)
     async def reopen(job_id: str, body: ReopenBody) -> JobView:
         ctx.jobs.reopen(job_id, JobState(body.to))
+        return ctx.jobs.view(job_id)
+
+    @app.post("/api/jobs/{job_id}/package-name", dependencies=auth)
+    async def rename_package(job_id: str, body: RenameBody) -> JobView:
+        ctx.jobs.rename_package(job_id, body.name)
         return ctx.jobs.view(job_id)
 
     @app.get("/api/jobs/{job_id}", dependencies=auth)
