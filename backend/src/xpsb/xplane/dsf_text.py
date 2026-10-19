@@ -114,6 +114,13 @@ class DsfText:
             f"PROPERTY sim/creation_agent {APP_NAME} {__version__}",
         ]
         out += [f"PROPERTY {name} {value}" for name, value in self.exclusions]
+        # Without these X-Plane treats our objects like autogen and drops some of
+        # them at lower object-density settings. "1/0": every definition from
+        # index 0 is shown at the lowest setting (what WED writes for "Default").
+        if self.object_defs:
+            out += ["PROPERTY sim/require_agpoint 1/0", "PROPERTY sim/require_object 1/0"]
+        if self.polygon_defs:
+            out.append("PROPERTY sim/require_facade 1/0")
         # Must be the last properties (DSFTool requirement).
         out += [
             f"PROPERTY sim/west {self.tile.lon}",

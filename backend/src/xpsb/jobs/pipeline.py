@@ -461,6 +461,8 @@ def _verify_roundtrip(original: str, roundtrip: str) -> None:
         r"^BEGIN_POLYGON ",
         r"^POLYGON_POINT ",
         r"^PROPERTY sim/overlay 1$",
+        r"^PROPERTY sim/require_object ",
+        r"^PROPERTY sim/exclude_",
     ):
         if _count(pattern, original) != _count(pattern, roundtrip):
             raise RuntimeError(f"DSF roundtrip mismatch for {pattern!r}")

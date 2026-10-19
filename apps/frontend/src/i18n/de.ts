@@ -112,6 +112,7 @@ export const de = {
   "gate.d.target": "Kopieren nach: {path}",
   "gate.d.backup": "Es gibt bereits ein Paket mit diesem Namen. Es wird vorher gesichert (außerhalb von Custom Scenery).",
   "gate.d.xplane_running": "X-Plane läuft gerade. Neue Szenerie wird erst nach einem Neustart geladen.",
+  "gate.d.packs_above": "Diese Pakete stehen in der Szenerie-Liste über deinem Paket und haben Inhalte in derselben Kachel: {packs}. Deren Gebäude kann dein Paket nicht entfernen. Schiebe dein Paket in der scenery_packs.ini (oder in xOrganizer) über diese Pakete.",
   "gate.d.restart_hint": "X-Plane lädt neue Szenerie beim nächsten Start.",
 
   "analysis.running": "Analyse läuft …",

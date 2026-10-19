@@ -114,6 +114,7 @@ export const en: Record<MessageKey, string> = {
   "gate.d.target": "Copy to: {path}",
   "gate.d.backup": "A package with this name already exists. It is backed up first (outside Custom Scenery).",
   "gate.d.xplane_running": "X-Plane is running. New scenery is only loaded after a restart.",
+  "gate.d.packs_above": "These packages are listed above yours in the scenery list and have content in the same tile: {packs}. Your package cannot remove their buildings. Move your package above them in scenery_packs.ini (or in xOrganizer).",
   "gate.d.restart_hint": "X-Plane loads new scenery the next time it starts.",
 
   "analysis.running": "Analysis running …",

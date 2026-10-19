@@ -49,6 +49,30 @@ def install_target(settings: Settings, package_name: str) -> Path | None:
     return Path(settings.xplane_path) / "Custom Scenery" / package_name
 
 
+def packs_above(target: Path, dsf_relative: str) -> list[str]:
+    """Enabled packs listed before ours in scenery_packs.ini that have a DSF for the
+    same tile. Empty if our pack is not listed yet: X-Plane adds new packs at the top."""
+    ini = target.parent / "scenery_packs.ini"
+    try:
+        lines = ini.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    names: list[tuple[str, bool]] = []
+    for line in lines:
+        key, _, rest = line.strip().partition(" ")
+        if key in ("SCENERY_PACK", "SCENERY_PACK_DISABLED"):
+            name = rest.strip().replace("\\", "/").rstrip("/").split("/")[-1]
+            names.append((name, key == "SCENERY_PACK"))
+    ours = [i for i, (name, _) in enumerate(names) if name == target.name]
+    if not ours:
+        return []
+    return [
+        name
+        for name, enabled in names[: ours[0]]
+        if enabled and (target.parent / name / dsf_relative).is_file()
+    ]
+
+
 def compute_gate(job: Job, ctx: GateContext) -> PendingGate | None:
     gate = GATE_FOR_STATE.get(job.state)
     if gate is None:
@@ -276,8 +300,24 @@ def _gate_d(job: Job, ctx: GateContext):
         items.append(GateItem(kind="write", key="gate.d.target", params={"path": str(target)}))
         if exists:
             items.append(GateItem(kind="action", key="gate.d.backup", params={"path": str(target)}))
+        above = packs_above(target, job.plan.tile)
+        if above:
+            # Our removals only reach packs listed below ours; these would keep
+            # their houses inside the new objects (airport sceneries, mostly).
+            items.append(
+                GateItem(
+                    kind="warning",
+                    key="gate.d.packs_above",
+                    params={"packs": ", ".join(above[:5]), "count": len(above)},
+                )
+            )
         if ctx.xplane_running:
             items.append(GateItem(kind="warning", key="gate.d.xplane_running"))
         items.append(GateItem(kind="info", key="gate.d.restart_hint"))
-    payload = {"target": str(target), "exists": exists, "running": ctx.xplane_running}
+    payload = {
+        "target": str(target),
+        "exists": exists,
+        "running": ctx.xplane_running,
+        "above": packs_above(target, job.plan.tile) if target else [],
+    }
     return items, blocked, payload

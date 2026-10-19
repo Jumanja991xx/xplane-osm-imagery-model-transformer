@@ -273,7 +273,10 @@ def test_exclusions_under_objects_and_aerial_ground(client, app_ctx, dsftool_exe
     assert text.count("PROPERTY sim/exclude_obj ") == built
     assert "BEGIN_POLYGON 0 65535 4" in text
     assert "TEXTURE_NOWRAP xpsb_ortho.png" in (package / "polygons/xpsb_ortho.pol").read_text()
+    # Every object is shown regardless of the user's object density.
+    assert "PROPERTY sim/require_object 1/0" in text
     roundtrip = (package.parent / "roundtrip.txt").read_text()
+    assert "sim/require_object 1/0" in roundtrip
     assert roundtrip.count("sim/exclude_fac") == built
 
 
@@ -282,3 +285,33 @@ def test_no_exclusions_warns_at_gate_c(client):
     job = approve(client, job, "B").json()
     keys = {i["key"] for i in job["pending_gate"]["items"]}
     assert "gate.c.no_exclusions" in keys
+
+
+def test_packs_above_finds_sceneries_that_hide_our_removals(tmp_path):
+    from xpsb.jobs.gates import packs_above
+
+    cs = tmp_path / "Custom Scenery"
+    tile = "Earth nav data/+40+010/+48+012.dsf"
+    for name in ("EDML Landshut", "Other Tile", "XPSB Test", "simHeaven"):
+        (cs / name).mkdir(parents=True)
+    for name in ("EDML Landshut", "simHeaven"):
+        (cs / name / tile).parent.mkdir(parents=True)
+        (cs / name / tile).write_bytes(b"")
+    target = cs / "XPSB Test"
+    ini = cs / "scenery_packs.ini"
+    ini.write_text(
+        "I\n1000 Version\nSCENERY\n\n"
+        "SCENERY_PACK Custom Scenery/EDML Landshut/\n"
+        "SCENERY_PACK Custom Scenery/Other Tile/\n"
+        "SCENERY_PACK Custom Scenery/XPSB Test/\n"
+        "SCENERY_PACK Custom Scenery/simHeaven/\n"
+    )
+    assert packs_above(target, tile) == ["EDML Landshut"]
+    ini.write_text(
+        ini.read_text().replace(
+            "SCENERY_PACK Custom Scenery/EDML", "SCENERY_PACK_DISABLED Custom Scenery/EDML"
+        )
+    )
+    assert packs_above(target, tile) == []
+    # Not listed yet (first install): X-Plane puts new packs at the top.
+    assert packs_above(cs / "New Pack", tile) == []
