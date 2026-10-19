@@ -82,12 +82,19 @@ export function SettingsDialog() {
       setSystem(await api.system());
       setMessage({ kind: "success", text: t("settings.saved") });
     });
+  const [esriCheck, setEsriCheck] = useState<{ ok?: boolean | null; detail?: string | null } | null>(null);
   const saveEsri = () =>
     run(async () => {
-      await api.setEsriKey(esriKey.trim());
+      setEsriCheck(null);
+      const check = await api.setEsriKey(esriKey);
       setEsriKey("");
       setSystem(await api.system());
-      setMessage({ kind: "success", text: t("settings.saved") });
+      setEsriCheck(check);
+    });
+  const testEsri = () =>
+    run(async () => {
+      setEsriCheck(null);
+      setEsriCheck(await api.checkEsriKey());
     });
   const removeEsri = () =>
     run(async () => {
@@ -324,11 +331,26 @@ export function SettingsDialog() {
                     {t("common.save")}
                   </Button>
                   {system.has_esri_key && (
+                    <Button variant="ghost" onClick={testEsri} disabled={busy} data-testid="esri-test">
+                      {t("settings.esri_test")}
+                    </Button>
+                  )}
+                  {system.has_esri_key && (
                     <Button variant="ghost" onClick={removeEsri} disabled={busy}>
                       {t("common.remove")}
                     </Button>
                   )}
                 </div>
+                {esriCheck?.ok === true && (
+                  <div data-testid="esri-ok">
+                    <Alert kind="success">{t("settings.esri_ok")}</Alert>
+                  </div>
+                )}
+                {esriCheck?.ok === false && (
+                  <div data-testid="esri-failed">
+                    <Alert kind="warning">{t("settings.esri_failed", { detail: esriCheck.detail ?? "" })}</Alert>
+                  </div>
+                )}
                 <p className="text-xs text-zinc-500">{t("settings.esri_hint")}</p>
               </div>
             )}

@@ -151,11 +151,31 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Set Esri Key */
+        /**
+         * Set Esri Key
+         * @description Stores the key and tries it right away with one tile.
+         */
         put: operations["set_esri_key_api_secrets_esri_put"];
         post?: never;
         /** Delete Esri Key */
         delete: operations["delete_esri_key_api_secrets_esri_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/secrets/esri/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Check Esri Key */
+        post: operations["check_esri_key_api_secrets_esri_check_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1093,6 +1113,15 @@ export interface components {
             /** Design Targets */
             design_targets?: string[];
         };
+        /** KeyCheck */
+        KeyCheck: {
+            /** Has Esri Key */
+            has_esri_key: boolean;
+            /** Ok */
+            ok?: boolean | null;
+            /** Detail */
+            detail?: string | null;
+        };
         /**
          * LibraryPlacement
          * @description An object of the X-Plane library placed by a build script.
@@ -1861,9 +1890,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["KeyCheck"];
                 };
             };
             /** @description Validation Error */
@@ -1895,6 +1922,26 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    check_esri_key_api_secrets_esri_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeyCheck"];
                 };
             };
         };

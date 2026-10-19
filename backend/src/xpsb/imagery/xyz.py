@@ -123,3 +123,16 @@ def fetch_mosaic(
     )
     out = src[rows][:, cols]
     return Image.fromarray(np.ascontiguousarray(out), "RGB"), gsd
+
+
+# A tile over Europe at a low zoom: enough to know whether the service takes the key.
+CHECK_TILE = (3, 4, 2)
+
+
+def check_source(source: ImagerySource) -> tuple[bool, str | None]:
+    """Fetches one tile: (True, None) or (False, the service's message without the key)."""
+    try:
+        _get_tile(source, *CHECK_TILE)
+    except WmsError as exc:
+        return False, str(exc)[:300]
+    return True, None

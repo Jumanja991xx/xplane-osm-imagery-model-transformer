@@ -26,7 +26,8 @@ from pydantic import BaseModel, Field
 
 from xpsb import __version__
 from xpsb.geo import GeoJsonPolygon
-from xpsb.imagery.sources import ESRI_ACCOUNT
+from xpsb.imagery import xyz
+from xpsb.imagery.sources import ESRI_ACCOUNT, esri_source
 from xpsb.jobs.manager import (
     DesignEstimate,
     JobConflict,
@@ -127,7 +128,20 @@ class PhotoUpload(BaseModel):
 
 
 class TokenBody(BaseModel):
-    token: str = Field(min_length=10, max_length=500)
+    # ArcGIS API keys can be several hundred characters long; the Windows
+    # credential store takes up to 1280.
+    token: str = Field(min_length=10, max_length=1200)
+
+    @property
+    def clean(self) -> str:
+        """Without spaces and line breaks picked up when copying from a web page."""
+        return "".join(self.token.split())
+
+
+class KeyCheck(BaseModel):
+    has_esri_key: bool
+    ok: bool | None = None  # None: not checked (no key)
+    detail: str | None = None
 
 
 class AdjustBody(BaseModel):
@@ -249,15 +263,27 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
     async def set_mapillary_token(body: TokenBody) -> dict:
         if not ctx.secrets.available():
             raise HTTPException(409, detail={"key": "error.keyring_unavailable"})
-        ctx.secrets.set(MAPILLARY_ACCOUNT, body.token.strip())
+        ctx.secrets.set(MAPILLARY_ACCOUNT, body.clean)
         return {"has_mapillary_token": True}
 
+    async def check_esri() -> KeyCheck:
+        key = ctx.secrets.get(ESRI_ACCOUNT)
+        if not key:
+            return KeyCheck(has_esri_key=False)
+        ok, detail = await asyncio.to_thread(xyz.check_source, esri_source(key))
+        return KeyCheck(has_esri_key=True, ok=ok, detail=detail)
+
     @app.put("/api/secrets/esri", dependencies=auth)
-    async def set_esri_key(body: TokenBody) -> dict:
+    async def set_esri_key(body: TokenBody) -> KeyCheck:
+        """Stores the key and tries it right away with one tile."""
         if not ctx.secrets.available():
             raise HTTPException(409, detail={"key": "error.keyring_unavailable"})
-        ctx.secrets.set(ESRI_ACCOUNT, body.token.strip())
-        return {"has_esri_key": True}
+        ctx.secrets.set(ESRI_ACCOUNT, body.clean)
+        return await check_esri()
+
+    @app.post("/api/secrets/esri/check", dependencies=auth)
+    async def check_esri_key() -> KeyCheck:
+        return await check_esri()
 
     @app.delete("/api/secrets/esri", dependencies=auth)
     async def delete_esri_key() -> dict:

@@ -122,7 +122,8 @@ export const api = {
   checkDsfTool: (path: string) => request<DsfToolStatus>("POST", "/api/dsftool/check", { path }),
   setApiKey: (apiKey: string) =>
     request<{ has_api_key: boolean }>("PUT", "/api/secrets/anthropic", { api_key: apiKey }),
-  setEsriKey: (token: string) => request<unknown>("PUT", "/api/secrets/esri", { token }),
+  setEsriKey: (token: string) => request<S["KeyCheck"]>("PUT", "/api/secrets/esri", { token }),
+  checkEsriKey: () => request<S["KeyCheck"]>("POST", "/api/secrets/esri/check"),
   deleteEsriKey: () => request<unknown>("DELETE", "/api/secrets/esri"),
   setMapillaryToken: (token: string) => request<unknown>("PUT", "/api/secrets/mapillary", { token }),
   deleteMapillaryToken: () => request<unknown>("DELETE", "/api/secrets/mapillary"),

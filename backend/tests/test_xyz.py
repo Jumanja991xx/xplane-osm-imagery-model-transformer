@@ -135,3 +135,29 @@ def test_tile_server_errors_are_readable_and_never_show_the_key(monkeypatch):
         assert "SECRET" not in str(exc) and "token=" not in str(exc)
     else:
         raise AssertionError("expected an error")
+
+
+def test_long_arcgis_key_is_stored_cleaned_and_checked(client, app_ctx, monkeypatch):
+    from xpsb.imagery import wms, xyz
+    from xpsb.imagery.sources import ESRI_ACCOUNT
+
+    long_key = "AAPT" + "x" * 300 + "." + "y" * 300  # new ArcGIS keys are long
+    pasted = long_key[:200] + "\n  " + long_key[200:] + " "  # copied with a line break
+    r = client.put("/api/secrets/esri", json={"token": pasted}, headers=AUTH)
+    assert r.status_code == 200, r.text
+    assert r.json() == {"has_esri_key": True, "ok": True, "detail": None}  # fixture tile
+    assert app_ctx.secrets.get(ESRI_ACCOUNT) == long_key
+    assert long_key not in r.text
+
+    def rejected(source, z, x, y):
+        raise wms.WmsError("tile 3/4/2: [498] Invalid token.")
+
+    monkeypatch.setattr(xyz, "_get_tile", rejected)
+    r = client.post("/api/secrets/esri/check", headers=AUTH).json()
+    assert r["ok"] is False and "Invalid token" in r["detail"]
+    client.delete("/api/secrets/esri", headers=AUTH)
+    assert client.post("/api/secrets/esri/check", headers=AUTH).json() == {
+        "has_esri_key": False,
+        "ok": None,
+        "detail": None,
+    }

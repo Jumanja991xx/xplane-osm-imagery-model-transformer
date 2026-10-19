@@ -308,6 +308,7 @@
     "/api/secrets/esri": {
       "put": {
         "summary": "Set Esri Key",
+        "description": "Stores the key and tries it right away with one tile.",
         "operationId": "set_esri_key_api_secrets_esri_put",
         "requestBody": {
           "content": {
@@ -325,9 +326,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Set Esri Key Api Secrets Esri Put"
+                  "$ref": "#/components/schemas/KeyCheck"
                 }
               }
             }
@@ -356,6 +355,24 @@
                   "additionalProperties": true,
                   "type": "object",
                   "title": "Response Delete Esri Key Api Secrets Esri Delete"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/secrets/esri/check": {
+      "post": {
+        "summary": "Check Esri Key",
+        "operationId": "check_esri_key_api_secrets_esri_check_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeyCheck"
                 }
               }
             }
@@ -3079,6 +3096,41 @@
         "title": "JobView",
         "description": "What the API returns: the job plus the approval currently waiting for the user."
       },
+      "KeyCheck": {
+        "properties": {
+          "has_esri_key": {
+            "type": "boolean",
+            "title": "Has Esri Key"
+          },
+          "ok": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ok"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "has_esri_key"
+        ],
+        "title": "KeyCheck"
+      },
       "LibraryPlacement": {
         "properties": {
           "path": {
@@ -4192,7 +4244,7 @@
         "properties": {
           "token": {
             "type": "string",
-            "maxLength": 500,
+            "maxLength": 1200,
             "minLength": 10,
             "title": "Token"
           }
