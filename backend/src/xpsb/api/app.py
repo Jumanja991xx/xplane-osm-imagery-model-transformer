@@ -21,7 +21,7 @@ from fastapi import (
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
 from xpsb import __version__
@@ -35,6 +35,7 @@ from xpsb.jobs.manager import (
 )
 from xpsb.jobs.models import Brief, GateId, JobState, JobView
 from xpsb.paths import AppPaths
+from xpsb.photos import MAPILLARY_ACCOUNT, SearchResult
 from xpsb.scene import ItemPatch, NewItem
 from xpsb.secrets import ANTHROPIC_ACCOUNT, SecretStore, normalize_api_key
 from xpsb.settings import Settings, SettingsStore
@@ -78,6 +79,7 @@ class SystemStatus(BaseModel):
     xplane: XPlaneCheck | None
     keyring_available: bool
     has_api_key: bool
+    has_mapillary_token: bool = False
 
 
 class ApiKeyStatus(BaseModel):
@@ -110,6 +112,16 @@ class DesignOutcome(BaseModel):
     job: JobView
     summary: str
     cost_usd: float
+
+
+class PhotoUpload(BaseModel):
+    data: str = Field(max_length=40_000_000)  # base64 (optionally as data: URL)
+    # The user confirms they may use the photo for this purpose.
+    rights_confirmed: bool = False
+
+
+class TokenBody(BaseModel):
+    token: str = Field(min_length=10, max_length=500)
 
 
 class AdjustBody(BaseModel):
@@ -187,6 +199,7 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
             xplane=check_xplane_path(s.xplane_path) if s.xplane_path else None,
             keyring_available=ctx.secrets.available(),
             has_api_key=bool(ctx.secrets.get(ANTHROPIC_ACCOUNT)),
+            has_mapillary_token=bool(ctx.secrets.get(MAPILLARY_ACCOUNT)),
         )
 
     @app.get("/api/settings", dependencies=auth)
@@ -224,6 +237,18 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
     async def delete_api_key() -> ApiKeyStatus:
         ctx.secrets.delete(ANTHROPIC_ACCOUNT)
         return ApiKeyStatus(has_api_key=False)
+
+    @app.put("/api/secrets/mapillary", dependencies=auth)
+    async def set_mapillary_token(body: TokenBody) -> dict:
+        if not ctx.secrets.available():
+            raise HTTPException(409, detail={"key": "error.keyring_unavailable"})
+        ctx.secrets.set(MAPILLARY_ACCOUNT, body.token.strip())
+        return {"has_mapillary_token": True}
+
+    @app.delete("/api/secrets/mapillary", dependencies=auth)
+    async def delete_mapillary_token() -> dict:
+        ctx.secrets.delete(MAPILLARY_ACCOUNT)
+        return {"has_mapillary_token": False}
 
     # -- jobs -------------------------------------------------------------------
 
@@ -320,6 +345,46 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
     @app.delete("/api/jobs/{job_id}/design/{item_id:path}", dependencies=auth)
     async def reset_design(job_id: str, item_id: str) -> JobView:
         await asyncio.to_thread(ctx.jobs.reset_design, job_id, item_id)
+        return ctx.jobs.view(job_id)
+
+    @app.post("/api/jobs/{job_id}/photos", dependencies=auth)
+    async def add_photo(job_id: str, item: str, body: PhotoUpload) -> JobView:
+        await asyncio.to_thread(ctx.jobs.add_photo, job_id, item, body.data, body.rights_confirmed)
+        return ctx.jobs.view(job_id)
+
+    @app.get(
+        "/api/jobs/{job_id}/photos/{photo_id}",
+        dependencies=auth,
+        response_class=FileResponse,
+        responses={200: {"content": {"image/jpeg": {}}}},
+    )
+    async def photo_file(job_id: str, photo_id: str):
+        path = ctx.jobs.photo_file(job_id, photo_id)
+        if path is None:
+            raise HTTPException(404, detail={"key": "error.photo_not_found"})
+        return FileResponse(path, media_type="image/jpeg")
+
+    @app.delete("/api/jobs/{job_id}/photos/{photo_id}", dependencies=auth)
+    async def delete_photo(job_id: str, photo_id: str) -> JobView:
+        ctx.jobs.delete_photo(job_id, photo_id)
+        return ctx.jobs.view(job_id)
+
+    @app.get("/api/jobs/{job_id}/photo-search", dependencies=auth)
+    async def search_photos(job_id: str, item: str) -> SearchResult:
+        return await asyncio.to_thread(ctx.jobs.search_photos, job_id, item)
+
+    @app.get(
+        "/api/jobs/{job_id}/photo-search/{candidate_id}/thumb",
+        dependencies=auth,
+        responses={200: {"content": {"image/jpeg": {}}}},
+    )
+    async def candidate_thumb(job_id: str, candidate_id: str) -> Response:
+        data = await asyncio.to_thread(ctx.jobs.candidate_thumb, job_id, candidate_id)
+        return Response(content=data, media_type="image/jpeg")
+
+    @app.post("/api/jobs/{job_id}/photo-search/{candidate_id}/import", dependencies=auth)
+    async def import_photo(job_id: str, candidate_id: str) -> JobView:
+        await asyncio.to_thread(ctx.jobs.import_photo, job_id, candidate_id)
         return ctx.jobs.view(job_id)
 
     @app.post("/api/jobs/{job_id}/gates/{gate}/approve", dependencies=auth)

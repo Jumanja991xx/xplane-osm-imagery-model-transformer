@@ -11,6 +11,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from xpsb.catalog import ObjectCategory, SurfaceType
+from xpsb.photos import Photo
 
 ItemKind = Literal["object", "surface"]
 ItemSource = Literal["osm", "user", "ai", "memory"]
@@ -65,6 +66,8 @@ class SceneItem(BaseModel):
     # Own build script written by the AI architect on the user's request.
     script: str | None = None
     script_request: str | None = None
+    # Photos of the real object (input for the AI architect, never in the package).
+    photos: list[Photo] = Field(default_factory=list)
 
 
 class ItemPatch(BaseModel):

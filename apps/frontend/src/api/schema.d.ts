@@ -125,6 +125,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/secrets/mapillary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Mapillary Token */
+        put: operations["set_mapillary_token_api_secrets_mapillary_put"];
+        post?: never;
+        /** Delete Mapillary Token */
+        delete: operations["delete_mapillary_token_api_secrets_mapillary_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs": {
         parameters: {
             query?: never;
@@ -346,6 +364,92 @@ export interface paths {
         post: operations["redesign_api_jobs__job_id__design__item_id__post"];
         /** Reset Design */
         delete: operations["reset_design_api_jobs__job_id__design__item_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/photos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Photo */
+        post: operations["add_photo_api_jobs__job_id__photos_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/photos/{photo_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Photo File */
+        get: operations["photo_file_api_jobs__job_id__photos__photo_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Photo */
+        delete: operations["delete_photo_api_jobs__job_id__photos__photo_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/photo-search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search Photos */
+        get: operations["search_photos_api_jobs__job_id__photo_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/photo-search/{candidate_id}/thumb": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Candidate Thumb */
+        get: operations["candidate_thumb_api_jobs__job_id__photo_search__candidate_id__thumb_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/photo-search/{candidate_id}/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Photo */
+        post: operations["import_photo_api_jobs__job_id__photo_search__candidate_id__import_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -962,6 +1066,65 @@ export interface components {
             /** Hash */
             hash: string;
         };
+        /**
+         * Photo
+         * @description A photo attached to a scene item (file: photos/<id>.jpg in the job folder).
+         */
+        Photo: {
+            /** Id */
+            id: string;
+            /**
+             * Source
+             * @default user
+             * @enum {string}
+             */
+            source: "user" | "wikimedia" | "panoramax" | "mapillary";
+            /** Title */
+            title?: string | null;
+            /** Author */
+            author?: string | null;
+            /** License */
+            license?: string | null;
+            /** Page Url */
+            page_url?: string | null;
+        };
+        /**
+         * PhotoCandidate
+         * @description A search hit; only its id goes back to the client for thumbnails and import.
+         */
+        PhotoCandidate: {
+            /** Id */
+            id: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "user" | "wikimedia" | "panoramax" | "mapillary";
+            /** Title */
+            title?: string | null;
+            /** Author */
+            author?: string | null;
+            /** License */
+            license?: string | null;
+            /** Page Url */
+            page_url?: string | null;
+            /** Distance M */
+            distance_m?: number | null;
+            /** Thumb Url */
+            thumb_url: string;
+            /** Image Url */
+            image_url: string;
+        };
+        /** PhotoUpload */
+        PhotoUpload: {
+            /** Data */
+            data: string;
+            /**
+             * Rights Confirmed
+             * @default false
+             */
+            rights_confirmed: boolean;
+        };
         /** PlanItem */
         PlanItem: {
             /** Kind */
@@ -1113,6 +1276,17 @@ export interface components {
             script?: string | null;
             /** Script Request */
             script_request?: string | null;
+            /** Photos */
+            photos?: components["schemas"]["Photo"][];
+        };
+        /** SearchResult */
+        SearchResult: {
+            /** Candidates */
+            candidates: components["schemas"]["PhotoCandidate"][];
+            /** Errors */
+            errors: {
+                [key: string]: string;
+            };
         };
         /** Settings */
         Settings: {
@@ -1177,6 +1351,16 @@ export interface components {
             keyring_available: boolean;
             /** Has Api Key */
             has_api_key: boolean;
+            /**
+             * Has Mapillary Token
+             * @default false
+             */
+            has_mapillary_token: boolean;
+        };
+        /** TokenBody */
+        TokenBody: {
+            /** Token */
+            token: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -1440,6 +1624,63 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiKeyStatus"];
+                };
+            };
+        };
+    };
+    set_mapillary_token_api_secrets_mapillary_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TokenBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_mapillary_token_api_secrets_mapillary_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
@@ -2013,6 +2254,205 @@ export interface operations {
             path: {
                 job_id: string;
                 item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_photo_api_jobs__job_id__photos_post: {
+        parameters: {
+            query: {
+                item: string;
+            };
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhotoUpload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    photo_file_api_jobs__job_id__photos__photo_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_photo_api_jobs__job_id__photos__photo_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_photos_api_jobs__job_id__photo_search_get: {
+        parameters: {
+            query: {
+                item: string;
+            };
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    candidate_thumb_api_jobs__job_id__photo_search__candidate_id__thumb_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                    "image/jpeg": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_photo_api_jobs__job_id__photo_search__candidate_id__import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                candidate_id: string;
             };
             cookie?: never;
         };

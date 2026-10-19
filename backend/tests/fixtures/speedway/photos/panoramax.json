@@ -1,0 +1,1 @@
+{"type": "FeatureCollection", "features": [{"id": "abc-123", "geometry": {"type": "Point", "coordinates": [8.566049999999999, 49.32785]}, "properties": {"datetime": "2025-06-01T10:00:00Z", "license": "CC-BY-SA-4.0"}, "providers": [{"name": "panouser"}], "assets": {"thumb": {"href": "https://panoramax.example/thumb.jpg"}, "sd": {"href": "https://panoramax.example/sd.jpg"}}}]}

@@ -25,6 +25,7 @@ export function SettingsDialog() {
   const [candidates, setCandidates] = useState<XPlaneCheck[] | null>(null);
   const [xplaneCheck, setXplaneCheck] = useState<XPlaneCheck | null>(system?.xplane ?? null);
   const [apiKey, setApiKey] = useState("");
+  const [mapillary, setMapillary] = useState("");
   const imagery: ImagerySettings = {
     source: "auto",
     custom_type: "wms",
@@ -79,6 +80,18 @@ export function SettingsDialog() {
       setApiKey("");
       setSystem(await api.system());
       setMessage({ kind: "success", text: t("settings.saved") });
+    });
+  const saveMapillary = () =>
+    run(async () => {
+      await api.setMapillaryToken(mapillary.trim());
+      setMapillary("");
+      setSystem(await api.system());
+      setMessage({ kind: "success", text: t("settings.saved") });
+    });
+  const removeMapillary = () =>
+    run(async () => {
+      await api.deleteMapillaryToken();
+      setSystem(await api.system());
     });
   const removeKey = () =>
     run(async () => {
@@ -198,6 +211,33 @@ export function SettingsDialog() {
               </>
             )}
           </Section>
+
+          {system?.keyring_available && (
+            <Section title={t("settings.mapillary")}>
+              <p className="text-sm">
+                {system.has_mapillary_token ? t("settings.mapillary_set") : t("settings.mapillary_missing")}
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  autoComplete="off"
+                  className={inputClass}
+                  placeholder="MLY|…"
+                  value={mapillary}
+                  onChange={(e) => setMapillary(e.target.value)}
+                />
+                <Button onClick={saveMapillary} disabled={busy || mapillary.trim().length < 10}>
+                  {t("common.save")}
+                </Button>
+                {system.has_mapillary_token && (
+                  <Button variant="ghost" onClick={removeMapillary} disabled={busy}>
+                    {t("common.remove")}
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-zinc-500">{t("settings.mapillary_hint")}</p>
+            </Section>
+          )}
 
           <Section title={t("settings.ai_defaults")}>
             <div className="grid grid-cols-2 gap-2">

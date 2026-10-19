@@ -8,6 +8,7 @@ Every call is reserved against the budget the user confirmed beforehand.
 
 from __future__ import annotations
 
+import base64
 import inspect
 import json
 from collections.abc import Callable
@@ -141,11 +142,26 @@ def _estimate(model: str, script_chars: int, images: int) -> float:
     return cost_usd(model, int(input_est), OUTPUT_TOKENS_EST)
 
 
-def cost_estimate(model: str, script_chars: int) -> tuple[float, float]:
+PHOTO_TOKENS_EST = 1100  # a 1024 px photo
+
+
+def cost_estimate(model: str, script_chars: int, photos: int = 0) -> tuple[float, float]:
     """(typical: write + review, at most: all calls) in USD."""
-    write = _estimate(model, max(script_chars, 4000), 4)
-    review = _estimate(model, 8000, 4)
+    extra = cost_usd(model, photos * PHOTO_TOKENS_EST, 0)
+    write = _estimate(model, max(script_chars, 4000), 4) + extra
+    review = _estimate(model, 8000, 4) + extra
     return write + review, write * (MAX_CALLS - 1) + review
+
+
+def jpeg_block(jpeg: bytes) -> dict:
+    return {
+        "type": "image",
+        "source": {
+            "type": "base64",
+            "media_type": "image/jpeg",
+            "data": base64.b64encode(jpeg).decode("ascii"),
+        },
+    }
 
 
 def _clean(script: str) -> str:
@@ -166,6 +182,7 @@ def design(
     cfg: AiRun,
     object_label: str,
     on_step: Callable[[str, dict], None] = lambda key, params: None,
+    photos: list[tuple[str, bytes]] | None = None,
 ) -> DesignResult:
     result = DesignResult(info=AiRunInfo(model=cfg.model))
     budget = Budget(cfg.budget_usd, result.info, cfg.on_cost)
@@ -224,6 +241,19 @@ def design(
             {"type": "text", "text": "Aerial image (red outline = this object, north up):"},
             png_block(aerial_png),
         ]
+    photo_blocks: list[dict] = []
+    for caption, jpeg in photos or []:
+        photo_blocks += [{"type": "text", "text": caption}, jpeg_block(jpeg)]
+    if photo_blocks:
+        content.append(
+            {
+                "type": "text",
+                "text": "Photos of the real object (from the user or open sources; may show "
+                "it from any side and partly other things - use them for shape, materials, "
+                "colours and details):",
+            }
+        )
+        content += photo_blocks
     current_mesh, _ = try_run(current_script)
     if current_mesh is not None:
         content.append({"type": "text", "text": "How the object looks now:"})
@@ -269,6 +299,7 @@ def design(
                     if aerial_png
                     else []
                 ),
+                *photo_blocks,
                 {"type": "text", "text": "Your result:"},
                 *views_blocks(mesh),
                 {"type": "text", "text": "Your script:\n" + script},

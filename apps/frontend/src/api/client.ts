@@ -122,6 +122,8 @@ export const api = {
   checkDsfTool: (path: string) => request<DsfToolStatus>("POST", "/api/dsftool/check", { path }),
   setApiKey: (apiKey: string) =>
     request<{ has_api_key: boolean }>("PUT", "/api/secrets/anthropic", { api_key: apiKey }),
+  setMapillaryToken: (token: string) => request<unknown>("PUT", "/api/secrets/mapillary", { token }),
+  deleteMapillaryToken: () => request<unknown>("DELETE", "/api/secrets/mapillary"),
   deleteApiKey: () => request<{ has_api_key: boolean }>("DELETE", "/api/secrets/anthropic"),
 
   createJob: (aoi: GeoJsonPolygon) => request<JobView>("POST", "/api/jobs", { aoi }),
@@ -149,6 +151,16 @@ export const api = {
   redesign: (id: string, itemId: string, text: string, maxUsd: number) =>
     request<S["DesignOutcome"]>("POST", `/api/jobs/${id}/design/${itemId}`, { request: text, max_usd: maxUsd }),
   resetDesign: (id: string, itemId: string) => request<JobView>("DELETE", `/api/jobs/${id}/design/${itemId}`),
+  addPhoto: (id: string, itemId: string, data: string) =>
+    request<JobView>("POST", `/api/jobs/${id}/photos?item=${encodeURIComponent(itemId)}`, {
+      data,
+      rights_confirmed: true,
+    }),
+  deletePhoto: (id: string, photoId: string) => request<JobView>("DELETE", `/api/jobs/${id}/photos/${photoId}`),
+  searchPhotos: (id: string, itemId: string) =>
+    request<S["SearchResult"]>("GET", `/api/jobs/${id}/photo-search?item=${encodeURIComponent(itemId)}`),
+  importPhoto: (id: string, candidateId: string) =>
+    request<JobView>("POST", `/api/jobs/${id}/photo-search/${candidateId}/import`),
   adjustObject: (id: string, itemId: string, attrs: Partial<ItemAttrs>) =>
     request<JobView>("PATCH", `/api/jobs/${id}/objects/${itemId}`, { attrs }),
 };
@@ -165,6 +177,14 @@ export async function imageryObjectUrl(jobId: string): Promise<string> {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new ApiError(res.status, "error.no_imagery");
+  return URL.createObjectURL(await res.blob());
+}
+
+/** An image the backend serves behind auth, as a blob URL (photos, search thumbnails). */
+export async function authedImageUrl(path: string): Promise<string> {
+  const { baseUrl, token } = await backend();
+  const res = await fetch(baseUrl + path, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new ApiError(res.status, "error.photo_not_found");
   return URL.createObjectURL(await res.blob());
 }
 

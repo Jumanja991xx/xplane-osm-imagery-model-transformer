@@ -13,6 +13,7 @@ from PIL import Image
 from pydantic import BaseModel
 from shapely.geometry import Polygon
 
+from xpsb import photos
 from xpsb.ai import analyze as ai
 from xpsb.ai import detect
 from xpsb.ai.usage import UsageLedger
@@ -104,6 +105,9 @@ class JobManager:
         self._xplane_running = xplane_running
         self._ai_transport_factory = ai_transport_factory
         self._busy: set[str] = set()
+        # Photo search hits per job (urls stay here; the client only knows ids).
+        self._candidates: dict[str, dict[str, tuple[str, photos.PhotoCandidate]]] = {}
+        self._thumbs: dict[str, dict[str, bytes]] = {}
         self._side_tasks: set[asyncio.Task] = set()
         self.ledger = UsageLedger(paths.root / "ai_usage.json")
         self._jobs: dict[str, Job] = {}
@@ -656,7 +660,9 @@ class JobManager:
 
         job, item = self._design_ready(job_id, item_id)
         assert job.brief is not None
-        typical, most = architect.cost_estimate(job.brief.ai_model, len(self._current_script(item)))
+        typical, most = architect.cost_estimate(
+            job.brief.ai_model, len(self._current_script(item)), len(item.photos)
+        )
         return DesignEstimate(
             model=job.brief.ai_model,
             estimate_usd=round(typical, 3),
@@ -718,6 +724,7 @@ class JobManager:
                 cfg=cfg,
                 object_label=label,
                 on_step=on_step,
+                photos=self._photos_for_ai(job, item),
             )
         finally:
             self._busy.discard(job_id)
@@ -742,6 +749,17 @@ class JobManager:
         self._save(job)
         return job, result.summary, result.info.cost_usd
 
+    def _photos_for_ai(self, job: Job, item: SceneItem) -> list[tuple[str, bytes]]:
+        out = []
+        for p in item.photos:
+            path = self.photo_file(job.id, p.id)
+            if path is None:
+                continue
+            source = "own photo" if p.source == "user" else photos.SOURCE_NAMES[p.source]
+            caption = f"Photo ({source}{', ' + p.title if p.title else ''}):"
+            out.append((caption, photos.for_ai(path)))
+        return out
+
     def reset_design(self, job_id: str, item_id: str) -> Job:
         """Back to the default build script (free)."""
         job = self._planned(job_id)
@@ -750,6 +768,97 @@ class JobManager:
         self.regenerate_object(job, item)
         self._save(job)
         return job
+
+    # ---- photos of real objects (input for the AI architect) ---------------------
+
+    def _photo_job(self, job_id: str) -> Job:
+        job = self.get(job_id)
+        if job.state not in (JobState.ANALYZED, JobState.PLANNED) or job.analysis is None:
+            raise JobConflict("error.wrong_state", state=job.state.value)
+        return job
+
+    def _add_photo(self, job: Job, item: SceneItem, raw: bytes, meta: dict) -> Job:
+        if len(item.photos) >= photos.MAX_PHOTOS_PER_ITEM:
+            raise JobConflict("error.photo_limit", max=photos.MAX_PHOTOS_PER_ITEM)
+        try:
+            photo = photos.store(self.job_dir(job.id) / "photos", raw, meta)
+        except photos.PhotoError as exc:
+            raise JobConflict("error.photo_invalid", detail=str(exc)) from None
+        item.photos.append(photo)
+        self._save(job)
+        return job
+
+    def add_photo(self, job_id: str, item_id: str, data_b64: str, rights_confirmed: bool) -> Job:
+        job = self._photo_job(job_id)
+        item = self._item(job, item_id)
+        if not rights_confirmed:
+            raise JobConflict("error.photo_rights")
+        try:
+            raw = photos.decode_upload(data_b64)
+        except photos.PhotoError as exc:
+            raise JobConflict("error.photo_invalid", detail=str(exc)) from None
+        return self._add_photo(job, item, raw, {"source": "user"})
+
+    def _photo_owner(self, job: Job, photo_id: str) -> tuple[SceneItem, photos.Photo]:
+        assert job.analysis is not None
+        for item in job.analysis.items:
+            for p in item.photos:
+                if p.id == photo_id:
+                    return item, p
+        raise JobConflict("error.photo_not_found")
+
+    def delete_photo(self, job_id: str, photo_id: str) -> Job:
+        job = self._photo_job(job_id)
+        item, photo = self._photo_owner(job, photo_id)
+        item.photos.remove(photo)
+        (self.job_dir(job_id) / "photos" / f"{photo_id}.jpg").unlink(missing_ok=True)
+        self._save(job)
+        return job
+
+    def photo_file(self, job_id: str, photo_id: str) -> Path | None:
+        if not photo_id.isalnum():
+            return None
+        path = self.job_dir(job_id) / "photos" / f"{photo_id}.jpg"
+        return path if path.is_file() else None
+
+    def search_photos(self, job_id: str, item_id: str) -> photos.SearchResult:
+        """Asks the open photo sources for pictures near the object (position only)."""
+        from shapely.geometry import shape
+
+        job = self._photo_job(job_id)
+        item = self._item(job, item_id)
+        p = shape(item.geometry).representative_point()
+        result = photos.search(p.x, p.y, self._secrets.get(photos.MAPILLARY_ACCOUNT))
+        found = self._candidates.setdefault(job_id, {})
+        for c in result.candidates:
+            found[c.id] = (item_id, c)
+        return result
+
+    def candidate_thumb(self, job_id: str, candidate_id: str) -> bytes:
+        entry = self._candidates.get(job_id, {}).get(candidate_id)
+        if entry is None:
+            raise JobConflict("error.photo_not_found")
+        cache = self._thumbs.setdefault(job_id, {})
+        if candidate_id not in cache:
+            try:
+                cache[candidate_id] = photos.http_get(entry[1].thumb_url)
+            except photos.PhotoError as exc:
+                raise JobConflict("error.photo_download", detail=str(exc)) from None
+        return cache[candidate_id]
+
+    def import_photo(self, job_id: str, candidate_id: str) -> Job:
+        job = self._photo_job(job_id)
+        entry = self._candidates.get(job_id, {}).get(candidate_id)
+        if entry is None:
+            raise JobConflict("error.photo_not_found")
+        item_id, c = entry
+        item = self._item(job, item_id)
+        try:
+            raw = photos.http_get(c.image_url)
+        except photos.PhotoError as exc:
+            raise JobConflict("error.photo_download", detail=str(exc)) from None
+        meta = c.model_dump(include={"source", "title", "author", "license", "page_url"})
+        return self._add_photo(job, item, raw, meta)
 
     def preview_file(self, job_id: str, name: str) -> Path | None:
         job = self.get(job_id)

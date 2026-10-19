@@ -452,3 +452,77 @@ def test_architect_never_exceeds_the_confirmed_maximum(client, fake_ai):
     )
     assert r.status_code == 409 and r.json()["detail"]["key"] == "error.ai_budget_exhausted"
     assert not fake_ai.calls
+
+
+# ---- photos of real objects --------------------------------------------------------
+
+
+def test_photos_upload_search_import_and_use(client, fake_ai, app_ctx):
+    import base64
+    import io
+
+    from PIL import Image
+
+    job = planned(client)
+    jid = job["id"]
+    obj = next(o for o in job["plan"]["objects"] if o["category"] == "buildings")
+    item_id = obj["item_id"]
+    est_before = client.get(f"/api/jobs/{jid}/design/{item_id}", headers=AUTH).json()
+
+    # Own photo: only with confirmed rights; stored without EXIF (no GPS of private photos).
+    img = Image.new("RGB", (2400, 1600), (120, 140, 160))
+    exif = Image.Exif()
+    exif[0x010F] = "SecretCam"
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", exif=exif)
+    data = base64.b64encode(buf.getvalue()).decode()
+    url = f"/api/jobs/{jid}/photos?item={item_id}"
+    r = client.post(url, json={"data": data}, headers=AUTH)
+    assert r.status_code == 409 and r.json()["detail"]["key"] == "error.photo_rights"
+    job = client.post(url, json={"data": data, "rights_confirmed": True}, headers=AUTH).json()
+    item = next(i for i in job["analysis"]["items"] if i["id"] == item_id)
+    assert len(item["photos"]) == 1 and item["photos"][0]["source"] == "user"
+    stored = client.get(f"/api/jobs/{jid}/photos/{item['photos'][0]['id']}", headers=AUTH)
+    with Image.open(io.BytesIO(stored.content)) as s:
+        assert max(s.size) == 1600 and not s.getexif()
+    bad = client.post(
+        url, json={"data": "bm90IGFuIGltYWdl", "rights_confirmed": True}, headers=AUTH
+    )
+    assert bad.json()["detail"]["key"] == "error.photo_invalid"
+
+    # Open sources (offline fixtures); Mapillary only with the user's token.
+    found = client.get(f"/api/jobs/{jid}/photo-search?item={item_id}", headers=AUTH).json()
+    assert {c["source"] for c in found["candidates"]} == {"wikimedia", "panoramax"}
+    client.put("/api/secrets/mapillary", json={"token": "MLY|1234567890"}, headers=AUTH)
+    found = client.get(f"/api/jobs/{jid}/photo-search?item={item_id}", headers=AUTH).json()
+    assert {c["source"] for c in found["candidates"]} == {"wikimedia", "panoramax", "mapillary"}
+    dists = [c["distance_m"] for c in found["candidates"]]
+    assert dists == sorted(dists) and not found["errors"]
+    wiki = next(c for c in found["candidates"] if c["source"] == "wikimedia")
+    assert wiki["author"] == "Max Muster" and wiki["license"] == "CC BY-SA 4.0"
+    thumb = client.get(f"/api/jobs/{jid}/photo-search/{wiki['id']}/thumb", headers=AUTH)
+    assert thumb.status_code == 200 and thumb.content[:2] == b"\xff\xd8"
+    job = client.post(f"/api/jobs/{jid}/photo-search/{wiki['id']}/import", headers=AUTH).json()
+    item = next(i for i in job["analysis"]["items"] if i["id"] == item_id)
+    assert [p["source"] for p in item["photos"]] == ["user", "wikimedia"]
+    assert item["photos"][1]["author"] == "Max Muster"
+
+    # The architect gets the photos (and the estimate accounts for them).
+    est = client.get(f"/api/jobs/{jid}/design/{item_id}", headers=AUTH).json()
+    assert est["estimate_usd"] > est_before["estimate_usd"]
+    fake_ai.calls.clear()
+    r = client.post(
+        f"/api/jobs/{jid}/design/{item_id}",
+        json={"request": "so wie auf den Fotos", "max_usd": est["max_usd"]},
+        headers=AUTH,
+    )
+    assert r.status_code == 200, r.text
+    first = fake_ai.calls[0]["content"]
+    jpegs = [b for b in first if b["type"] == "image" and b["source"]["media_type"] == "image/jpeg"]
+    assert len(jpegs) == 2
+    assert "Wikimedia Commons" in "".join(b.get("text", "") for b in first)
+
+    # Removing a photo deletes the file too.
+    pid = item["photos"][0]["id"]
+    job = client.delete(f"/api/jobs/{jid}/photos/{pid}", headers=AUTH).json()
+    assert client.get(f"/api/jobs/{jid}/photos/{pid}", headers=AUTH).status_code == 404

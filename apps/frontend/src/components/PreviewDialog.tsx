@@ -14,6 +14,7 @@ import {
 import { useT } from "../i18n";
 import { CATEGORY_COLORS, categoryLabelKey } from "../scene";
 import { useApp } from "../store";
+import { PhotoPanel } from "./PhotoPanel";
 import { Alert, Button, Checkbox, Spinner } from "./ui";
 
 // Local metres (x east, y north, z up) → three.js (y up, -z north).
@@ -740,6 +741,7 @@ function DesignPanel({
         <p className="text-xs text-zinc-500">{t("design.no_ai")}</p>
       ) : (
         <>
+          <PhotoPanel jobId={jobId} item={item} />
           <textarea
             className="w-full rounded border border-zinc-300 bg-white p-1.5 text-xs dark:border-zinc-600 dark:bg-zinc-800"
             rows={3}

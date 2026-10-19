@@ -200,6 +200,19 @@ with sync_playwright() as p:
     page.screenshot(path=OUT / "09d2-preview-building.png")
     # AI architect (fake AI): own words → cost first → send → rebuilt object.
     page.get_by_test_id("preview-objects").get_by_role("button", name="Clubhaus").click()
+    # Photos for the architect: an own one (rights confirmed) and one from open sources.
+    page.get_by_text("Ich darf diese Fotos dafür verwenden").click()
+    page.get_by_test_id("photo-upload").set_input_files(
+        str(Path(__file__).parents[2] / "backend/tests/fixtures/speedway/photos/sample.jpg")
+    )
+    expect(page.get_by_test_id("photo-list").locator("img")).to_have_count(1, timeout=10000)
+    page.get_by_test_id("photo-search").click()
+    page.get_by_test_id("photo-search-go").click()
+    expect(page.get_by_test_id("photo-candidate").first).to_be_visible(timeout=10000)
+    page.wait_for_timeout(800)
+    page.screenshot(path=OUT / "09e0-photo-search.png")
+    page.get_by_test_id("photo-candidate").first.click()
+    expect(page.get_by_test_id("photo-list").locator("img")).to_have_count(2, timeout=10000)
     page.get_by_test_id("design-text").fill("Mach daraus eine Glashalle mit rundem Turm")
     page.get_by_test_id("design-check").click()
     expect(page.get_by_test_id("design-send")).to_be_visible(timeout=10000)
