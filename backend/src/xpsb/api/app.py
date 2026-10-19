@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 
 from xpsb import __version__
 from xpsb.geo import GeoJsonPolygon
+from xpsb.imagery.sources import ESRI_ACCOUNT
 from xpsb.jobs.manager import (
     DesignEstimate,
     JobConflict,
@@ -80,6 +81,7 @@ class SystemStatus(BaseModel):
     keyring_available: bool
     has_api_key: bool
     has_mapillary_token: bool = False
+    has_esri_key: bool = False
 
 
 class ApiKeyStatus(BaseModel):
@@ -200,6 +202,7 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
             keyring_available=ctx.secrets.available(),
             has_api_key=bool(ctx.secrets.get(ANTHROPIC_ACCOUNT)),
             has_mapillary_token=bool(ctx.secrets.get(MAPILLARY_ACCOUNT)),
+            has_esri_key=bool(ctx.secrets.get(ESRI_ACCOUNT)),
         )
 
     @app.get("/api/settings", dependencies=auth)
@@ -244,6 +247,18 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
             raise HTTPException(409, detail={"key": "error.keyring_unavailable"})
         ctx.secrets.set(MAPILLARY_ACCOUNT, body.token.strip())
         return {"has_mapillary_token": True}
+
+    @app.put("/api/secrets/esri", dependencies=auth)
+    async def set_esri_key(body: TokenBody) -> dict:
+        if not ctx.secrets.available():
+            raise HTTPException(409, detail={"key": "error.keyring_unavailable"})
+        ctx.secrets.set(ESRI_ACCOUNT, body.token.strip())
+        return {"has_esri_key": True}
+
+    @app.delete("/api/secrets/esri", dependencies=auth)
+    async def delete_esri_key() -> dict:
+        ctx.secrets.delete(ESRI_ACCOUNT)
+        return {"has_esri_key": False}
 
     @app.delete("/api/secrets/mapillary", dependencies=auth)
     async def delete_mapillary_token() -> dict:

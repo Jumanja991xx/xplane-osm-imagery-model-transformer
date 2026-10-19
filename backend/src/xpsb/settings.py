@@ -20,7 +20,7 @@ class AiSettings(BaseModel):
     monthly_limit_usd: float = Field(default=20.0, ge=0, le=10000)
 
 
-ImagerySourceChoice = Literal["auto", "bayern_dop40", "nrw_dop", "custom", "none"]
+ImagerySourceChoice = Literal["auto", "bayern_dop40", "nrw_dop", "esri", "custom", "none"]
 
 
 class ImagerySettings(BaseModel):

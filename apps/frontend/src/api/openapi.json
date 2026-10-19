@@ -305,6 +305,64 @@
         }
       }
     },
+    "/api/secrets/esri": {
+      "put": {
+        "summary": "Set Esri Key",
+        "operationId": "set_esri_key_api_secrets_esri_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Set Esri Key Api Secrets Esri Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Esri Key",
+        "operationId": "delete_esri_key_api_secrets_esri_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Delete Esri Key Api Secrets Esri Delete"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobs": {
       "get": {
         "summary": "List Jobs",
@@ -2342,6 +2400,11 @@
             "type": "number",
             "title": "Gsd M"
           },
+          "package_ok": {
+            "type": "boolean",
+            "title": "Package Ok",
+            "default": true
+          },
           "file": {
             "type": "string",
             "title": "File",
@@ -2374,6 +2437,7 @@
               "auto",
               "bayern_dop40",
               "nrw_dop",
+              "esri",
               "custom",
               "none"
             ],
@@ -3884,6 +3948,11 @@
           "has_mapillary_token": {
             "type": "boolean",
             "title": "Has Mapillary Token",
+            "default": false
+          },
+          "has_esri_key": {
+            "type": "boolean",
+            "title": "Has Esri Key",
             "default": false
           }
         },

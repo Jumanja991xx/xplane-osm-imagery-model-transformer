@@ -52,6 +52,7 @@ class ImageryInfo(BaseModel):
     width_px: int
     height_px: int
     gsd_m: float
+    package_ok: bool = True  # may go into the package as ground texture
     file: str = "aoi.jpg"
 
 
@@ -247,6 +248,7 @@ def fetch_area_image(
         width_px=width,
         height_px=height,
         gsd_m=round(gsd, 3),
+        package_ok=source.package_ok,
     )
     (out_dir / "aoi.json").write_text(info.model_dump_json(indent=2), encoding="utf-8")
     return info

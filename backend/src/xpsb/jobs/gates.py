@@ -41,6 +41,7 @@ class GateContext:
     # Objects the AI architect would build at approval B: {id, name, typical, max}
     design: tuple = ()
     design_cut: int = 0  # left out because of the cost limit
+    esri_key: str | None = None  # never shown or stored; only decides the source
 
 
 def content_hash(payload: dict) -> str:
@@ -102,7 +103,7 @@ def _gate_a(job: Job, ctx: GateContext):
         GateItem(kind="action", key="gate.a.osm", params={"area_km2": round(job.aoi_area_km2, 3)}),
     ]
     imagery = ctx.settings.imagery
-    source, reason = resolve_source(imagery, *job.aoi_center)
+    source, reason = resolve_source(imagery, *job.aoi_center, ctx.esri_key)
     if source is not None:
         items.append(
             GateItem(
@@ -115,6 +116,8 @@ def _gate_a(job: Job, ctx: GateContext):
                 },
             )
         )
+        if not source.package_ok:
+            items.append(GateItem(kind="info", key="gate.a.imagery_analysis_only"))
         if not source.builtin and not imagery.custom_rights_confirmed:
             items.append(GateItem(kind="warning", key="gate.a.custom_rights"))
             blocked = True
@@ -313,6 +316,9 @@ def _gate_c(job: Job, ctx: GateContext):
     elif ok and not p.test_scenery:
         # The usual surprise: simHeaven/autogen houses stay inside the new objects.
         items.append(GateItem(kind="warning", key="gate.c.no_exclusions"))
+    b = job.brief
+    if b is not None and b.surface_mode.value == "imagery" and p.surface_mode != "imagery":
+        items.append(GateItem(kind="info", key="gate.c.ortho_not_allowed"))
     if p.surface_mode == "imagery" and p.surfaces:
         items.append(GateItem(kind="info", key="gate.c.ortho_in_package"))
     assert job.analysis is not None

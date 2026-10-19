@@ -143,6 +143,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/secrets/esri": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Esri Key */
+        put: operations["set_esri_key_api_secrets_esri_put"];
+        post?: never;
+        /** Delete Esri Key */
+        delete: operations["delete_esri_key_api_secrets_esri_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs": {
         parameters: {
             query?: never;
@@ -864,6 +882,11 @@ export interface components {
             /** Gsd M */
             gsd_m: number;
             /**
+             * Package Ok
+             * @default true
+             */
+            package_ok: boolean;
+            /**
              * File
              * @default aoi.jpg
              */
@@ -876,7 +899,7 @@ export interface components {
              * @default auto
              * @enum {string}
              */
-            source: "auto" | "bayern_dop40" | "nrw_dop" | "custom" | "none";
+            source: "auto" | "bayern_dop40" | "nrw_dop" | "esri" | "custom" | "none";
             /**
              * Custom Type
              * @default wms
@@ -1421,6 +1444,11 @@ export interface components {
              * @default false
              */
             has_mapillary_token: boolean;
+            /**
+             * Has Esri Key
+             * @default false
+             */
+            has_esri_key: boolean;
         };
         /** TokenBody */
         TokenBody: {
@@ -1729,6 +1757,63 @@ export interface operations {
         };
     };
     delete_mapillary_token_api_secrets_mapillary_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    set_esri_key_api_secrets_esri_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TokenBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_esri_key_api_secrets_esri_delete: {
         parameters: {
             query?: never;
             header?: never;

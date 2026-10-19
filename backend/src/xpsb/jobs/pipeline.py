@@ -62,6 +62,7 @@ class AnalysisDeps:
     memory_items: list = field(default_factory=list)
     memory_edits: dict = field(default_factory=dict)
     mapillary_token: str | None = None
+    esri_key: str | None = None
 
 
 def ai_budget(job: Job, settings: Settings, ledger: UsageLedger) -> float:
@@ -90,7 +91,7 @@ def _osm_stage(job: Job, deps: AnalysisDeps, log: EventLog) -> list:
 
 def _imagery_stage(job: Job, deps: AnalysisDeps, log: EventLog, notes: list[Note]):
     lon, lat = job.aoi_center
-    source, reason = resolve_source(deps.settings.imagery, lon, lat)
+    source, reason = resolve_source(deps.settings.imagery, lon, lat, deps.esri_key)
     if source is None:
         notes.append(Note(key=reason or "imagery.off"))
         return None
@@ -433,7 +434,8 @@ def make_plan(job: Job, job_dir: Path, library: Catalog | None = None) -> BuildP
     ]
     ok = [o for o in objects if o.status == "ok"]
     items += object_items(objects)
-    ortho = job.brief.surface_mode.value == "imagery" and job.analysis.imagery is not None
+    info = job.analysis.imagery
+    ortho = job.brief.surface_mode.value == "imagery" and info is not None and info.package_ok
     items.append(
         PlanItem(
             kind="surfaces",
@@ -453,7 +455,7 @@ def make_plan(job: Job, job_dir: Path, library: Catalog | None = None) -> BuildP
         detail=detail,
         objects=objects,
         surfaces=len(surfaces),
-        surface_mode=job.brief.surface_mode.value,
+        surface_mode="imagery" if ortho else "material",
         exclusions=[k.value for k in job.brief.exclusions],
         exclusion_scope=job.brief.exclusion_scope.value,
         exclusion_rects=len(rects),
@@ -466,7 +468,7 @@ def _ortho(job: Job, job_dir: Path) -> assemble.Ortho | None:
     """The aerial image as ground texture, if the user chose that for surfaces."""
     assert job.brief is not None and job.analysis is not None
     info = job.analysis.imagery
-    if job.brief.surface_mode.value != "imagery" or info is None:
+    if job.brief.surface_mode.value != "imagery" or info is None or not info.package_ok:
         return None
     path = job_dir / "imagery" / info.file
     if not path.exists():

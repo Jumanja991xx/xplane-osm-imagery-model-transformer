@@ -5,7 +5,7 @@ import { useApp } from "../store";
 import { Alert, Button, inputClass, Section, Spinner } from "./ui";
 
 const MODELS = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"] as const;
-const IMAGERY_CHOICES: ImagerySettings["source"][] = ["auto", "bayern_dop40", "nrw_dop", "custom", "none"];
+const IMAGERY_CHOICES: ImagerySettings["source"][] = ["auto", "bayern_dop40", "nrw_dop", "esri", "custom", "none"];
 
 function CheckBadge({ check }: { check: XPlaneCheck }) {
   const { t } = useT();
@@ -26,6 +26,7 @@ export function SettingsDialog() {
   const [xplaneCheck, setXplaneCheck] = useState<XPlaneCheck | null>(system?.xplane ?? null);
   const [apiKey, setApiKey] = useState("");
   const [mapillary, setMapillary] = useState("");
+  const [esriKey, setEsriKey] = useState("");
   const imagery: ImagerySettings = {
     source: "auto",
     custom_type: "wms",
@@ -80,6 +81,18 @@ export function SettingsDialog() {
       setApiKey("");
       setSystem(await api.system());
       setMessage({ kind: "success", text: t("settings.saved") });
+    });
+  const saveEsri = () =>
+    run(async () => {
+      await api.setEsriKey(esriKey.trim());
+      setEsriKey("");
+      setSystem(await api.system());
+      setMessage({ kind: "success", text: t("settings.saved") });
+    });
+  const removeEsri = () =>
+    run(async () => {
+      await api.deleteEsriKey();
+      setSystem(await api.system());
     });
   const saveMapillary = () =>
     run(async () => {
@@ -294,6 +307,31 @@ export function SettingsDialog() {
               ))}
             </select>
             <p className="text-xs text-zinc-500">{t(`imagery.hint.${imagery.source}`)}</p>
+            {(imagery.source === "esri" || imagery.source === "auto") && system?.keyring_available && (
+              <div className="space-y-1.5 rounded-md border border-zinc-200 p-2 dark:border-zinc-700">
+                <p className="text-sm">{system.has_esri_key ? t("settings.esri_set") : t("settings.esri_missing")}</p>
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    autoComplete="off"
+                    className={inputClass}
+                    placeholder={t("settings.esri_placeholder")}
+                    value={esriKey}
+                    onChange={(e) => setEsriKey(e.target.value)}
+                    data-testid="esri-key"
+                  />
+                  <Button onClick={saveEsri} disabled={busy || esriKey.trim().length < 10}>
+                    {t("common.save")}
+                  </Button>
+                  {system.has_esri_key && (
+                    <Button variant="ghost" onClick={removeEsri} disabled={busy}>
+                      {t("common.remove")}
+                    </Button>
+                  )}
+                </div>
+                <p className="text-xs text-zinc-500">{t("settings.esri_hint")}</p>
+              </div>
+            )}
             {imagery.source === "custom" && (
               <div className="space-y-2">
                 <div className="flex gap-2">

@@ -3,6 +3,7 @@ themselves and confirms they hold the rights."""
 
 from __future__ import annotations
 
+import urllib.parse
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -23,6 +24,8 @@ class ImagerySource(BaseModel):
     max_gsd_m: float = Field(default=0.4, gt=0)  # finest ground resolution worth requesting
     builtin: bool = True
     max_zoom: int = Field(default=19, ge=1, le=23)  # XYZ only
+    # May the image go into the package as ground texture? (Esri: recognition only)
+    package_ok: bool = True
 
 
 BAYERN_DOP40 = ImagerySource(
@@ -49,6 +52,28 @@ NRW_DOP = ImagerySource(
 
 BUILTIN_SOURCES = [BAYERN_DOP40, NRW_DOP]
 
+# Worldwide, with the user's own ArcGIS key (ArcGIS Location Platform, Esri's terms).
+# Used for recognition and the AI only - not as ground texture in the package.
+ESRI_ACCOUNT = "arcgis_api_key"
+ESRI_TILES = (
+    "https://ibasemaps-api.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/"
+    "{z}/{y}/{x}?token="
+)
+
+
+def esri_source(key: str) -> ImagerySource:
+    return ImagerySource(
+        id="esri",
+        name="Esri World Imagery (weltweit, dein ArcGIS-Konto)",
+        kind="xyz",
+        url=ESRI_TILES + urllib.parse.quote(key, safe=""),
+        attribution="Esri, Maxar, Earthstar Geographics, and the GIS User Community",
+        license="Esri-Nutzungsbedingungen (nur zur Erkennung, nicht im Paket)",
+        max_zoom=19,
+        max_gsd_m=0.3,
+        package_ok=False,
+    )
+
 
 def custom_source(
     url: str, layer: str | None, attribution: str, kind: str = "wms", max_zoom: int = 19
@@ -74,11 +99,16 @@ def covers(source: ImagerySource, lon: float, lat: float) -> bool:
     return w <= lon <= e and s <= lat <= n
 
 
-def resolve_source(settings, lon: float, lat: float) -> tuple[ImagerySource | None, str | None]:
-    """The source a job will use, or (None, reason i18n key)."""
+def resolve_source(
+    settings, lon: float, lat: float, esri_key: str | None = None
+) -> tuple[ImagerySource | None, str | None]:
+    """The source a job will use, or (None, reason i18n key). "auto" takes an open
+    source that covers the area and falls back to Esri if the user has a key."""
     choice = settings.source
     if choice == "none":
         return None, "imagery.off"
+    if choice == "esri":
+        return (esri_source(esri_key), None) if esri_key else (None, "imagery.esri_no_key")
     if choice == "custom":
         url = settings.custom_url
         if not url.startswith(("https://", "http://")):
@@ -98,4 +128,6 @@ def resolve_source(settings, lon: float, lat: float) -> tuple[ImagerySource | No
     for source in candidates:
         if covers(source, lon, lat):
             return source, None
+    if choice == "auto" and esri_key:
+        return esri_source(esri_key), None
     return None, "imagery.not_covered"

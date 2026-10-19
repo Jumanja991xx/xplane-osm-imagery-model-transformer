@@ -18,6 +18,7 @@ from xpsb.ai import analyze as ai
 from xpsb.ai import detect
 from xpsb.ai.usage import UsageLedger
 from xpsb.geo import MAX_AOI_AREA_KM2, GeoJsonPolygon, ring_area_m2, ring_centroid
+from xpsb.imagery.sources import ESRI_ACCOUNT
 from xpsb.jobs import pipeline
 from xpsb.jobs.events import EventLog
 from xpsb.jobs.gates import GateContext, compute_gate, install_target
@@ -204,6 +205,7 @@ class JobManager:
             xplane_running=self._xplane_running() if job.state is JobState.BUILT else None,
             job_dir=self.job_dir(job.id),
             has_mapillary=bool(self._secrets.get(photos.MAPILLARY_ACCOUNT)),
+            esri_key=self._secrets.get(ESRI_ACCOUNT),
             **self._design_choice(job),
         )
 
@@ -1102,6 +1104,7 @@ class JobManager:
             memory_items=memory_items,
             memory_edits=memory_edits,
             mapillary_token=self._secrets.get(photos.MAPILLARY_ACCOUNT),
+            esri_key=self._secrets.get(ESRI_ACCOUNT),
         )
         analysis = await pipeline.run_analysis(job, deps, self.events(job.id))
         if job.state is JobState.ANALYZING:  # not cancelled meanwhile

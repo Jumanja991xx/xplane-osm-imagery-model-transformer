@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from conftest import AUTH
+from conftest import AUTH, HOCKENHEIM_AOI
 from fake_ai import speedway
 from PIL import Image
 from test_analysis import ALL, CUSTOM_IMAGERY, analyze, setup
@@ -63,3 +63,40 @@ def test_xyz_needs_placeholders_and_rights(client):
     assert job["analysis"]["imagery"]["layer"] == "xyz"
     assert job["analysis"]["imagery"]["source_name"] == "Eigene XYZ-Quelle"
     assert client.get(f"/api/jobs/{job['id']}/imagery", headers=AUTH).status_code == 200
+
+
+def test_esri_worldwide_with_own_key_for_recognition_only(client, app_ctx):
+    from xpsb.imagery.sources import ESRI_ACCOUNT, esri_source, resolve_source
+    from xpsb.settings import ImagerySettings
+
+    budapest = (19.0995, 47.5031)
+    auto = ImagerySettings(source="auto")
+    assert resolve_source(auto, *budapest) == (None, "imagery.not_covered")
+    src, _ = resolve_source(auto, *budapest, esri_key="KEY/1+2")
+    assert src.id == "esri" and not src.package_ok and src.url.endswith("token=KEY%2F1%2B2")
+    # Bavaria keeps its open source even with a key.
+    assert resolve_source(auto, 11.6, 48.2, esri_key="k")[0].id == "bayern_dop40"
+    assert resolve_source(ImagerySettings(source="esri"), *budapest) == (
+        None,
+        "imagery.esri_no_key",
+    )
+    assert "{z}/{y}/{x}" in esri_source("k").url
+
+    # Through the API: key in the credential store, never shown; gate A tells the limits.
+    client.put("/api/secrets/esri", json={"token": "AAPK-test-key-123"}, headers=AUTH)
+    assert client.get("/api/system", headers=AUTH).json()["has_esri_key"] is True
+    assert app_ctx.secrets.get(ESRI_ACCOUNT) == "AAPK-test-key-123"
+    settings = client.get("/api/settings", headers=AUTH).json()
+    client.put("/api/settings", json={**settings, "imagery": {"source": "esri"}}, headers=AUTH)
+    job = client.post("/api/jobs", json={"aoi": HOCKENHEIM_AOI}, headers=AUTH).json()
+    brief = {
+        "object_categories": ["buildings"],
+        "surface_types": ["grass"],
+        "use_ai": False,
+        "package_name": "XPSB Esri",
+    }
+    job = client.put(f"/api/jobs/{job['id']}/brief", json=brief, headers=AUTH).json()
+    items = {i["key"]: i for i in job["pending_gate"]["items"]}
+    assert items["gate.a.imagery"]["params"]["source"].startswith("Esri World Imagery")
+    assert "gate.a.imagery_analysis_only" in items
+    assert "AAPK" not in str(job)
