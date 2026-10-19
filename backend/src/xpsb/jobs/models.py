@@ -74,6 +74,8 @@ class Brief(BaseModel):
     ai_cost_limit_usd: float = Field(default=5.0, ge=0, le=1000)
     # Search the aerial image for objects OSM does not know (proposals for the user).
     ai_detect: bool = True
+    # Look up facts and photos of important objects (Wikidata, Wikipedia, Commons, ...).
+    research: bool = True
     detail: DetailLevel = DetailLevel.MEDIUM
     package_name: str = Field(pattern=PACKAGE_NAME_PATTERN)
     notes: str = Field(default="", max_length=2000)

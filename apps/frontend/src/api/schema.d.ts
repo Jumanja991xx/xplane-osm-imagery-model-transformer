@@ -660,6 +660,11 @@ export interface components {
              * @default true
              */
             ai_detect: boolean;
+            /**
+             * Research
+             * @default true
+             */
+            research: boolean;
             /** @default medium */
             detail: components["schemas"]["DetailLevel"];
             /** Package Name */
@@ -1013,6 +1018,32 @@ export interface components {
             error?: components["schemas"]["JobError"] | null;
             pending_gate?: components["schemas"]["PendingGate"] | null;
         };
+        /**
+         * LibraryPlacement
+         * @description An object of the X-Plane library placed by a build script.
+         */
+        LibraryPlacement: {
+            /** Path */
+            path: string;
+            /** X */
+            x: number;
+            /** Y */
+            y: number;
+            /** Heading */
+            heading: number;
+            /** Size */
+            size?: number[];
+            /**
+             * Pack
+             * @default
+             */
+            pack: string;
+            /**
+             * Default
+             * @default true
+             */
+            default: boolean;
+        };
         /** NewItem */
         NewItem: {
             /**
@@ -1171,6 +1202,13 @@ export interface components {
              * @default 0
              */
             triangles: number;
+            /**
+             * Has Mesh
+             * @default true
+             */
+            has_mesh: boolean;
+            /** Library */
+            library?: components["schemas"]["LibraryPlacement"][];
         };
         /**
          * Question
@@ -1216,6 +1254,21 @@ export interface components {
              * @enum {string}
              */
             to: "analyzed" | "clarified";
+        };
+        /**
+         * Research
+         * @description What the research found out about an object (free sources, no AI).
+         */
+        Research: {
+            /**
+             * Facts
+             * @default
+             */
+            facts: string;
+            /** Wikidata */
+            wikidata?: string | null;
+            /** Sources */
+            sources?: string[];
         };
         /** SceneItem */
         SceneItem: {
@@ -1278,6 +1331,7 @@ export interface components {
             script_request?: string | null;
             /** Photos */
             photos?: components["schemas"]["Photo"][];
+            research?: components["schemas"]["Research"] | null;
         };
         /** SearchResult */
         SearchResult: {

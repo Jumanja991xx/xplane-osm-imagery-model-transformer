@@ -23,6 +23,14 @@ class AiAssessment(BaseModel):
     confidence: float = Field(ge=0, le=1)
 
 
+class Research(BaseModel):
+    """What the research found out about an object (free sources, no AI)."""
+
+    facts: str = ""  # compact text for the AI architect and the user
+    wikidata: str | None = None
+    sources: list[str] = Field(default_factory=list)
+
+
 WallMaterial = Literal["windows", "plaster", "brick", "glass", "metal_sheet", "concrete", "wood"]
 
 
@@ -68,6 +76,7 @@ class SceneItem(BaseModel):
     script_request: str | None = None
     # Photos of the real object (input for the AI architect, never in the package).
     photos: list[Photo] = Field(default_factory=list)
+    research: Research | None = None
 
 
 class ItemPatch(BaseModel):

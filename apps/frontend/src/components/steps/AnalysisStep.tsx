@@ -594,6 +594,11 @@ function ItemRow({
           {item.kind === "object" && height != null && (
             <span className="shrink-0 text-xs text-zinc-500">{height} m</span>
           )}
+          {item.research && (
+            <span className="shrink-0 text-xs" title={t("analysis.researched")} data-testid="researched">
+              🔎{(item.photos?.length ?? 0) > 0 ? ` 📷${item.photos?.length}` : ""}
+            </span>
+          )}
           <span className="ml-auto shrink-0 text-[10px] uppercase text-zinc-400">
             {item.edited
               ? t("analysis.badge_edited")
@@ -650,6 +655,19 @@ function ItemEditor({
           🤖 {item.ai.summary}{" "}
           <span className="text-zinc-400">({t("analysis.confidence", { value: Math.round(item.ai.confidence * 100) })})</span>
         </p>
+      )}
+      {item.research?.facts && (
+        <details className="text-xs" data-testid="research-facts">
+          <summary className="cursor-pointer text-zinc-600 dark:text-zinc-300">
+            🔎 {t("analysis.research_title", { photos: item.photos?.length ?? 0 })}
+          </summary>
+          <pre className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap text-zinc-500">{item.research.facts}</pre>
+          {(item.research.sources ?? []).map((s) => (
+            <div key={s} className="truncate text-zinc-400">
+              {s}
+            </div>
+          ))}
+        </details>
       )}
       <div className="grid grid-cols-2 gap-2">
         <label className="space-y-0.5">

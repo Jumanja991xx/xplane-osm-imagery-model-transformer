@@ -198,7 +198,7 @@ export interface PreviewObject {
   triangles: number;
   offset: [number, number];
   has_mesh?: boolean;
-  library?: { path: string; x: number; y: number; heading: number; size: number[] }[];
+  library?: { path: string; x: number; y: number; heading: number; size?: number[] }[];
 }
 
 export interface PreviewData {

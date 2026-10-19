@@ -134,8 +134,16 @@ def http_get(url: str, timeout: float = 30) -> bytes:
     fx = _fixtures()
     if fx is not None:
         host = urllib.parse.urlparse(url).hostname or ""
-        name = next((k for k in ("wikimedia", "panoramax", "mapillary") if k in host), None)
-        if url.endswith((".jpg", ".jpeg", ".png")) or name is None:
+        name = next(
+            (
+                k
+                for k in ("wikidata", "wikipedia", "wikimedia", "panoramax", "mapillary")
+                if k in host
+            ),
+            None,
+        )
+        path = urllib.parse.urlparse(url).path.lower()
+        if path.endswith((".jpg", ".jpeg", ".png")) or name is None:
             return (fx / "sample.jpg").read_bytes()
         return (fx / f"{name}.json").read_bytes()
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
@@ -177,6 +185,25 @@ def search_wikimedia(lon: float, lat: float, radius: float) -> list[PhotoCandida
         "iiurlwidth": "320",
     }
     data = json.loads(http_get(WIKIMEDIA_API + "?" + urllib.parse.urlencode(params)))
+    return commons_candidates(data, lon, lat)
+
+
+COMMONS_IMAGEINFO = {
+    "action": "query",
+    "format": "json",
+    "prop": "imageinfo|coordinates",
+    "iiprop": "url|extmetadata|mime",
+    "iiurlwidth": "320",
+}
+
+
+def commons_query(params: dict[str, str], lon: float, lat: float) -> list[PhotoCandidate]:
+    """Any Commons file query (titles, category members, geosearch) as candidates."""
+    url = WIKIMEDIA_API + "?" + urllib.parse.urlencode({**COMMONS_IMAGEINFO, **params})
+    return commons_candidates(json.loads(http_get(url)), lon, lat)
+
+
+def commons_candidates(data: dict, lon: float, lat: float) -> list[PhotoCandidate]:
     out = []
     for page in (data.get("query") or {}).get("pages", {}).values():
         info = (page.get("imageinfo") or [{}])[0]
@@ -271,17 +298,17 @@ class SearchResult(BaseModel):
     errors: dict[str, str]  # source -> message (the others still deliver)
 
 
-def search(lon: float, lat: float, mapillary_token: str | None) -> SearchResult:
+def search(
+    lon: float, lat: float, mapillary_token: str | None, radius: float = SEARCH_RADIUS_M
+) -> SearchResult:
     candidates: list[PhotoCandidate] = []
     errors: dict[str, str] = {}
     sources = [
-        ("wikimedia", lambda: search_wikimedia(lon, lat, SEARCH_RADIUS_M)),
-        ("panoramax", lambda: search_panoramax(lon, lat, SEARCH_RADIUS_M)),
+        ("wikimedia", lambda: search_wikimedia(lon, lat, radius)),
+        ("panoramax", lambda: search_panoramax(lon, lat, radius)),
     ]
     if mapillary_token:
-        sources.append(
-            ("mapillary", lambda: search_mapillary(lon, lat, SEARCH_RADIUS_M, mapillary_token))
-        )
+        sources.append(("mapillary", lambda: search_mapillary(lon, lat, radius, mapillary_token)))
     for name, fn in sources:
         try:
             candidates += fn()

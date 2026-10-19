@@ -20,7 +20,8 @@ from pathlib import Path
 from PIL import Image
 from shapely.geometry import Polygon, shape
 
-from xpsb import APP_NAME, __version__
+from xpsb import APP_NAME, __version__, research
+from xpsb import photos as photos_mod
 from xpsb.ai import analyze as ai
 from xpsb.ai import detect
 from xpsb.ai.usage import UsageLedger
@@ -60,6 +61,7 @@ class AnalysisDeps:
     ledger: UsageLedger
     memory_items: list = field(default_factory=list)
     memory_edits: dict = field(default_factory=dict)
+    mapillary_token: str | None = None
 
 
 def ai_budget(job: Job, settings: Settings, ledger: UsageLedger) -> float:
@@ -235,8 +237,53 @@ def analyze_sync(job: Job, deps: AnalysisDeps, log: EventLog) -> AnalysisResult:
             analyzed=result.ai.analyzed,
             cost_usd=round(result.ai.cost_usd, 4),
         )
+    if job.brief.research:
+        _research_stage(job, result, deps, log, notes)
     result.notes = notes  # pydantic copied the list on construction
     return result
+
+
+def _research_stage(
+    job: Job, result: AnalysisResult, deps: AnalysisDeps, log: EventLog, notes: list[Note]
+) -> None:
+    """Facts and photos from free sources for the important objects (no AI, no costs)."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    todo = research.important(result.items)
+    if not todo:
+        return
+    _progress(log, "research", 0.0, "stage.research", count=len(todo))
+    done = failed = photos_added = 0
+
+    def one(item):
+        return item, research.research_item(item, deps.settings.language, deps.mapillary_token)
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        futures = [pool.submit(one, it) for it in todo]
+        for fut in futures:
+            if job.state is JobState.CANCELLED:
+                break
+            try:
+                item, found = fut.result()
+            except (photos_mod.PhotoError, ValueError, KeyError, TypeError, AttributeError):
+                failed += 1
+            else:
+                item.research = found.research
+                if found.height_m and item.attrs.height_m is None and found.height_m < 400:
+                    item.attrs.height_m = round(found.height_m, 1)
+                photos_added += research.attach_photos(item, found, deps.job_dir / "photos")
+            done += 1
+            _progress(log, "research", done / len(todo), "stage.research", count=len(todo))
+    _progress(
+        log,
+        "research",
+        1.0,
+        "stage.research_done",
+        count=done - failed,
+        photos=photos_added,
+    )
+    if failed:
+        notes.append(Note(key="analysis.research_failed", params={"count": failed}))
 
 
 async def run_analysis(job: Job, deps: AnalysisDeps, log: EventLog) -> AnalysisResult:

@@ -132,7 +132,7 @@ export function PreviewDialog({
       }
       // X-Plane library objects: X-Plane draws them; here orange stand-ins of their size.
       for (const p of o.library ?? []) {
-        const [w, d, h] = p.size.length >= 3 ? p.size : [1, 1, 2];
+        const [w, d, h] = p.size && p.size.length >= 3 ? p.size : [1, 1, 2];
         const box = new THREE.Mesh(
           new THREE.BoxGeometry(Math.max(w, 0.2), Math.max(h, 0.2), Math.max(d, 0.2)),
           new THREE.MeshStandardMaterial({ color: 0xeb8c28, roughness: 0.7, transparent: true, opacity: 0.85 }),

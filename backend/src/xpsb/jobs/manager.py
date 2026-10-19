@@ -59,7 +59,15 @@ class JobNotFound(Exception):
 
 
 # Brief fields the analysis depends on; changing others keeps the analysis.
-ANALYSIS_FIELDS = ("object_categories", "surface_types", "use_ai", "ai_model", "ai_detect", "notes")
+ANALYSIS_FIELDS = (
+    "object_categories",
+    "surface_types",
+    "use_ai",
+    "ai_model",
+    "ai_detect",
+    "research",
+    "notes",
+)
 
 
 class SimilarEstimate(BaseModel):
@@ -183,6 +191,7 @@ class JobManager:
             dsftool=dsftool.locate(settings.dsftool_path, self._resources_dir),
             xplane_running=self._xplane_running() if job.state is JobState.BUILT else None,
             job_dir=self.job_dir(job.id),
+            has_mapillary=bool(self._secrets.get(photos.MAPILLARY_ACCOUNT)),
         )
 
     def view(self, job_id: str) -> JobView:
@@ -965,6 +974,7 @@ class JobManager:
             ledger=self.ledger,
             memory_items=memory_items,
             memory_edits=memory_edits,
+            mapillary_token=self._secrets.get(photos.MAPILLARY_ACCOUNT),
         )
         analysis = await pipeline.run_analysis(job, deps, self.events(job.id))
         if job.state is JobState.ANALYZING:  # not cancelled meanwhile

@@ -366,8 +366,8 @@ def test_rating_knows_the_area(client, fake_ai):
 # ---- AI architect ------------------------------------------------------------------
 
 
-def planned(client) -> dict:
-    job = analyze(client, setup(client))
+def planned(client, brief=ALL) -> dict:
+    job = analyze(client, setup(client, brief=brief))
     # Open questions block approval B: answer them.
     answers = {q["id"]: "9" for q in job["analysis"]["questions"] if not q.get("answer")}
     if answers:
@@ -463,7 +463,7 @@ def test_photos_upload_search_import_and_use(client, fake_ai, app_ctx):
 
     from PIL import Image
 
-    job = planned(client)
+    job = planned(client, brief={**ALL, "research": False})
     jid = job["id"]
     obj = next(o for o in job["plan"]["objects"] if o["category"] == "buildings")
     item_id = obj["item_id"]
@@ -526,3 +526,34 @@ def test_photos_upload_search_import_and_use(client, fake_ai, app_ctx):
     pid = item["photos"][0]["id"]
     job = client.delete(f"/api/jobs/{jid}/photos/{pid}", headers=AUTH).json()
     assert client.get(f"/api/jobs/{jid}/photos/{pid}", headers=AUTH).status_code == 404
+
+
+# ---- research ----------------------------------------------------------------------
+
+
+def test_research_collects_facts_and_photos(client, fake_ai):
+    job = setup(client)
+    assert "gate.a.research" in keys(job["pending_gate"]["items"])
+    job = analyze(client, job)
+    researched = [i for i in job["analysis"]["items"] if i.get("research")]
+    assert researched, "named/important objects get researched"
+    stand = next(i for i in researched if i["name"] == "Haupttribüne")
+    facts = stand["research"]["facts"]
+    for text in (
+        "Wikidata Q999001",
+        "Type: Stadion",
+        "Capacity: 5000 people",
+        "Opened/built: 1965",
+        "Architect: Max Baumeister",
+        "Wikipedia: Der Speedway Testring",
+        "OSM tags:",
+    ):
+        assert text in facts, text
+    assert stand["photos"] and stand["photos"][0]["source"] == "wikimedia"
+
+
+def test_research_can_be_switched_off(client, fake_ai):
+    job = setup(client, brief={**ALL, "research": False})
+    assert "gate.a.research" not in keys(job["pending_gate"]["items"])
+    job = analyze(client, job)
+    assert not any(i.get("research") for i in job["analysis"]["items"])

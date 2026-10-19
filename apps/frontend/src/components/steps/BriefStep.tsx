@@ -51,6 +51,7 @@ export function BriefStep({ onSubmitted }: { onSubmitted: () => void }) {
         ai_model: settings?.ai?.model ?? "claude-opus-5-5",
         ai_cost_limit_usd: settings?.ai?.job_limit_usd ?? 5,
         ai_detect: true,
+        research: true,
         detail: "medium",
         package_name: defaultPackageName(),
         notes: "",
@@ -225,6 +226,15 @@ export function BriefStep({ onSubmitted }: { onSubmitted: () => void }) {
             </div>
           </div>
         )}
+      </Section>
+
+      <Section title={t("brief.research")}>
+        <Checkbox
+          label={t("brief.research_on")}
+          checked={brief.research ?? true}
+          onChange={(on) => update({ research: on })}
+        />
+        <p className="pl-6 text-xs text-zinc-500">{t("brief.research_hint")}</p>
       </Section>
 
       <Section title={t("brief.detail")}>

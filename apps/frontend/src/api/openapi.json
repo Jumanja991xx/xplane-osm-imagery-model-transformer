@@ -1861,6 +1861,11 @@
             "title": "Ai Detect",
             "default": true
           },
+          "research": {
+            "type": "boolean",
+            "title": "Research",
+            "default": true
+          },
           "detail": {
             "$ref": "#/components/schemas/DetailLevel",
             "default": "medium"
@@ -2838,6 +2843,52 @@
         "title": "JobView",
         "description": "What the API returns: the job plus the approval currently waiting for the user."
       },
+      "LibraryPlacement": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "x": {
+            "type": "number",
+            "title": "X"
+          },
+          "y": {
+            "type": "number",
+            "title": "Y"
+          },
+          "heading": {
+            "type": "number",
+            "title": "Heading"
+          },
+          "size": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Size"
+          },
+          "pack": {
+            "type": "string",
+            "title": "Pack",
+            "default": ""
+          },
+          "default": {
+            "type": "boolean",
+            "title": "Default",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "x",
+          "y",
+          "heading"
+        ],
+        "title": "LibraryPlacement",
+        "description": "An object of the X-Plane library placed by a build script."
+      },
       "NewItem": {
         "properties": {
           "kind": {
@@ -3261,6 +3312,18 @@
             "type": "integer",
             "title": "Triangles",
             "default": 0
+          },
+          "has_mesh": {
+            "type": "boolean",
+            "title": "Has Mesh",
+            "default": true
+          },
+          "library": {
+            "items": {
+              "$ref": "#/components/schemas/LibraryPlacement"
+            },
+            "type": "array",
+            "title": "Library"
           }
         },
         "type": "object",
@@ -3443,6 +3506,36 @@
         ],
         "title": "ReopenBody"
       },
+      "Research": {
+        "properties": {
+          "facts": {
+            "type": "string",
+            "title": "Facts",
+            "default": ""
+          },
+          "wikidata": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wikidata"
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sources"
+          }
+        },
+        "type": "object",
+        "title": "Research",
+        "description": "What the research found out about an object (free sources, no AI)."
+      },
       "SceneItem": {
         "properties": {
           "id": {
@@ -3578,6 +3671,16 @@
             },
             "type": "array",
             "title": "Photos"
+          },
+          "research": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Research"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",

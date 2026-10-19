@@ -12,6 +12,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from xpsb import research
 from xpsb.ai import detect
 from xpsb.geo import METERS_PER_DEG_LAT, meters_per_deg_lon
 from xpsb.imagery.sources import resolve_source
@@ -36,6 +37,7 @@ class GateContext:
     xplane_running: bool | None
     job_dir: Path
     ai_month_spent: float = 0.0
+    has_mapillary: bool = False
 
 
 def content_hash(payload: dict) -> str:
@@ -166,6 +168,18 @@ def _gate_a(job: Job, ctx: GateContext):
             items.append(GateItem(kind="warning", key="gate.a.ai_month_exhausted"))
     else:
         items.append(GateItem(kind="cost", key="gate.a.no_ai"))
+    if b.research:
+        sources = "Wikidata, Wikipedia, Wikimedia Commons, Panoramax"
+        items.append(
+            GateItem(
+                kind="action",
+                key="gate.a.research",
+                params={
+                    "max": research.MAX_OBJECTS,
+                    "sources": sources + (", Mapillary" if ctx.has_mapillary else ""),
+                },
+            )
+        )
     items.append(GateItem(kind="write", key="gate.a.workdir", params={"path": str(ctx.job_dir)}))
     payload = {
         "aoi": job.aoi.model_dump(),
