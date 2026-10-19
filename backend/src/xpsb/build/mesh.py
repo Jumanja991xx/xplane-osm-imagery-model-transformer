@@ -64,9 +64,23 @@ class Patch:
 
 
 @dataclass
+class Placement:
+    """An object of the X-Plane library placed by the script (not part of the mesh)."""
+
+    path: str  # virtual library path
+    x: float
+    y: float
+    heading: float  # degrees from north, clockwise
+
+
+MAX_PLACEMENTS = 300
+
+
+@dataclass
 class Mesh:
     max_triangles: int
     patches: list[Patch] = field(default_factory=list)
+    placements: list[Placement] = field(default_factory=list)
 
     @property
     def triangle_count(self) -> int:

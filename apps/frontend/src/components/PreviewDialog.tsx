@@ -86,45 +86,65 @@ export function PreviewDialog({
     };
 
     highlightRef.current = (stem) => {
-      for (const child of objects.children) {
-        const mat = (child as THREE.Mesh).material as THREE.MeshStandardMaterial;
-        mat.emissive.setHex(child.name === stem ? 0x2a4a7a : 0x000000);
+      for (const group of objects.children) {
+        group.traverse((child) => {
+          if (child instanceof THREE.Mesh && !child.userData.library) {
+            (child.material as THREE.MeshStandardMaterial).emissive.setHex(group.name === stem ? 0x2a4a7a : 0x000000);
+          }
+        });
       }
     };
 
     /** (Re)loads one object; replaces an older version with the same name. */
-    const loadObject = async (o: PreviewObject): Promise<THREE.Mesh | null> => {
-      const old = objects.getObjectByName(o.stem) as THREE.Mesh | undefined;
+    const loadObject = async (o: PreviewObject): Promise<THREE.Object3D | null> => {
+      const old = objects.getObjectByName(o.stem);
       if (old) {
         objects.remove(old);
-        disposeMesh(old);
+        old.traverse((c) => c instanceof THREE.Mesh && disposeMesh(c));
       }
       if (o.status !== "ok") return null;
-      const [m, texUrl] = await Promise.all([preview.mesh(jobId, o.stem), preview.textureUrl(jobId, o.stem)]);
-      if (disposed) return null;
-      urls.push(texUrl);
-      const pos: number[] = [];
-      const nrm: number[] = [];
-      for (let i = 0; i < m.positions.length; i += 3) {
-        pos.push(m.positions[i], m.positions[i + 2], -m.positions[i + 1]);
-        nrm.push(m.normals[i], m.normals[i + 2], -m.normals[i + 1]);
+      const group = new THREE.Group();
+      group.name = o.stem;
+      group.position.copy(toThree(o.offset[0], o.offset[1], 0));
+      if (o.has_mesh !== false) {
+        const [m, texUrl] = await Promise.all([preview.mesh(jobId, o.stem), preview.textureUrl(jobId, o.stem)]);
+        if (disposed) return null;
+        urls.push(texUrl);
+        const pos: number[] = [];
+        const nrm: number[] = [];
+        for (let i = 0; i < m.positions.length; i += 3) {
+          pos.push(m.positions[i], m.positions[i + 2], -m.positions[i + 1]);
+          nrm.push(m.normals[i], m.normals[i + 2], -m.normals[i + 1]);
+        }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+        geo.setAttribute("normal", new THREE.Float32BufferAttribute(nrm, 3));
+        geo.setAttribute("uv", new THREE.Float32BufferAttribute(m.uvs, 2));
+        geo.setIndex(m.index);
+        const tex = await loader.loadAsync(texUrl);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = 8;
+        // FrontSide on purpose: a face turned the wrong way would also be missing in X-Plane.
+        const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85 }));
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        group.add(mesh);
       }
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
-      geo.setAttribute("normal", new THREE.Float32BufferAttribute(nrm, 3));
-      geo.setAttribute("uv", new THREE.Float32BufferAttribute(m.uvs, 2));
-      geo.setIndex(m.index);
-      const tex = await loader.loadAsync(texUrl);
-      tex.colorSpace = THREE.SRGBColorSpace;
-      tex.anisotropy = 8;
-      // FrontSide on purpose: a face turned the wrong way would also be missing in X-Plane.
-      const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85 }));
-      mesh.position.copy(toThree(o.offset[0], o.offset[1], 0));
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      mesh.name = o.stem;
-      objects.add(mesh);
-      return mesh;
+      // X-Plane library objects: X-Plane draws them; here orange stand-ins of their size.
+      for (const p of o.library ?? []) {
+        const [w, d, h] = p.size.length >= 3 ? p.size : [1, 1, 2];
+        const box = new THREE.Mesh(
+          new THREE.BoxGeometry(Math.max(w, 0.2), Math.max(h, 0.2), Math.max(d, 0.2)),
+          new THREE.MeshStandardMaterial({ color: 0xeb8c28, roughness: 0.7, transparent: true, opacity: 0.85 }),
+        );
+        box.userData.library = p.path;
+        box.position.copy(toThree(p.x, p.y, Math.max(h, 0.2) / 2));
+        box.rotation.y = -(p.heading * Math.PI) / 180;
+        box.castShadow = true;
+        group.add(box);
+      }
+      objects.add(group);
+      return group;
     };
     reloadRef.current = async (o) => {
       await loadObject(o);
@@ -142,8 +162,10 @@ export function PreviewDialog({
         -((e.clientY - rect.top) / rect.height) * 2 + 1,
       );
       raycaster.setFromCamera(pointer, camera);
-      const hit = raycaster.intersectObjects(objects.children, false)[0];
-      setSelected(hit ? hit.object.name : null);
+      const hit = raycaster.intersectObjects(objects.children, true)[0];
+      let target: THREE.Object3D | null = hit ? hit.object : null;
+      while (target && target.parent !== objects) target = target.parent;
+      setSelected(target ? target.name : null);
     };
     renderer.domElement.addEventListener("pointerdown", onDown);
     renderer.domElement.addEventListener("pointerup", onUp);
@@ -289,6 +311,9 @@ export function PreviewDialog({
             {error && <Alert kind="error">{error}</Alert>}
             {data?.imagery && data.surface_mode === "imagery" && (
               <p className="text-xs text-zinc-500">{t("preview.ortho_legend")}</p>
+            )}
+            {data?.objects.some((o) => (o.library ?? []).length > 0) && (
+              <p className="text-xs text-zinc-500">{t("preview.library_legend")}</p>
             )}
             {current && editable && (
               <ObjectControls key={current.stem} jobId={jobId} object={current} onAdjusted={onAdjusted} />

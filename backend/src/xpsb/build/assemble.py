@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import math
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -26,6 +26,7 @@ from xpsb.build.scripts import DEFAULT_SCRIPTS
 from xpsb.geo import METERS_PER_DEG_LAT, meters_per_deg_lon
 from xpsb.scene import SceneItem
 from xpsb.xplane.dsf_text import DsfText, Tile
+from xpsb.xplane.library import Catalog
 from xpsb.xplane.pol import DrapedPolygonDef
 
 DETAIL = {
@@ -73,6 +74,9 @@ class ItemResult:
     status: str  # "ok" | "error" | "skipped"
     message: str = ""
     triangles: int = 0
+    has_mesh: bool = True  # False: only X-Plane library objects
+    # X-Plane library objects: path, x/y in metres from the anchor, heading, size
+    library: list[dict] = field(default_factory=list)
 
 
 # ---- local frames ----------------------------------------------------------------
@@ -167,8 +171,8 @@ def buildable(item: SceneItem) -> bool:
     return item.kind == "object" and item.included and not item.proposal
 
 
-def generate(item: SceneItem, items: list[SceneItem], detail: str):
-    """Runs the item's build script. Returns (mesh, baked) or raises ScriptError."""
+def generate(item: SceneItem, items: list[SceneItem], detail: str, library: Catalog | None = None):
+    """Runs the item's build script. Returns (mesh, baked or None) or raises ScriptError."""
     script = item.script or DEFAULT_SCRIPTS.get(str(item.category))
     if script is None:
         raise LookupError("no generator yet")
@@ -177,8 +181,9 @@ def generate(item: SceneItem, items: list[SceneItem], detail: str):
     if inputs.footprint is None and str(item.category) != "masts":
         raise LookupError("needs an area outline")
     name = f"{item.id}.star" if item.script else f"{item.category}.star"
-    mesh = run_script(script, inputs, budget, name=name)
-    return mesh, bake(mesh, atlas, max_ppm)
+    lib = frozenset(library.objects) if library else None
+    mesh = run_script(script, inputs, budget, name=name, library=lib)
+    return mesh, bake(mesh, atlas, max_ppm) if mesh.patches else None
 
 
 def _lod(mesh) -> float:
@@ -188,19 +193,40 @@ def _lod(mesh) -> float:
 
 
 def generate_one(
-    item: SceneItem, items: list[SceneItem], detail: str, out_dir: Path, stem: str, preview: bool
+    item: SceneItem,
+    items: list[SceneItem],
+    detail: str,
+    out_dir: Path,
+    stem: str,
+    preview: bool,
+    library: Catalog | None = None,
 ) -> ItemResult:
     res = ItemResult(item.id, stem, str(item.category), item.name, _anchor(item), "ok")
     for ext in ("png", "json", "obj"):
         (out_dir / f"{stem}.{ext}").unlink(missing_ok=True)
     try:
-        mesh, baked = generate(item, items, detail)
+        mesh, baked = generate(item, items, detail, library)
     except LookupError as exc:
         res.status, res.message = "skipped", str(exc)
     except (ScriptError, ValueError) as exc:
         res.status, res.message = "error", str(exc)[:2000]
     else:
         res.triangles = mesh.triangle_count
+        res.library = [
+            {
+                "path": p.path,
+                "x": round(p.x, 2),
+                "y": round(p.y, 2),
+                "heading": round(p.heading, 1),
+                "size": list(library.objects[p.path].size or ()) if library else [],
+                "pack": library.objects[p.path].pack if library else "",
+                "default": library.objects[p.path].default if library else True,
+            }
+            for p in mesh.placements
+        ]
+        if baked is None:
+            res.has_mesh = False
+            return res
         baked.image.save(out_dir / f"{stem}.png", optimize=False)
         if preview:
             data = to_preview(mesh, baked)
@@ -218,13 +244,16 @@ def generate_all(
     out_dir: Path,
     preview: bool,
     progress: Callable[[float], None] | None = None,
+    library: Catalog | None = None,
 ) -> list[ItemResult]:
     """Writes OBJ8 + PNG (package) or preview JSON + PNG (job folder) per object."""
     out_dir.mkdir(parents=True, exist_ok=True)
     todo = [it for it in items if buildable(it)]
     results: list[ItemResult] = []
     for n, item in enumerate(todo, start=1):
-        results.append(generate_one(item, items, detail, out_dir, f"xpsb_obj_{n:03d}", preview))
+        results.append(
+            generate_one(item, items, detail, out_dir, f"xpsb_obj_{n:03d}", preview, library)
+        )
         if progress:
             progress(n / max(1, len(todo)))
     return results
@@ -376,19 +405,33 @@ def write_package(
     exclusions: list[tuple[str, tuple[float, float, float, float]]],
     ortho: Ortho | None = None,
     progress: Callable[[float], None] | None = None,
+    library: Catalog | None = None,
 ) -> PackageResult:
     objects_dir = package / "objects"
     polygons_dir = package / "polygons"
-    results = generate_all(items, detail, objects_dir, preview=False, progress=progress)
+    results = generate_all(items, detail, objects_dir, False, progress, library)
 
     dsf = DsfText(tile=tile)
     for kind, bounds in exclusions:
         dsf.add_exclusion(kind, *bounds)
+    lib_defs: dict[str, int] = {}
     for res in results:
         if res.status != "ok":
             continue
-        idx = dsf.add_object_def(f"objects/{res.stem}.obj")
-        dsf.add_object(idx, res.anchor[0], res.anchor[1], 0.0)
+        if res.has_mesh:
+            idx = dsf.add_object_def(f"objects/{res.stem}.obj")
+            dsf.add_object(idx, res.anchor[0], res.anchor[1], 0.0)
+        # Library objects: only referenced by their virtual path (X-Plane has them).
+        lon0, lat0 = res.anchor
+        for p in res.library:
+            if p["path"] not in lib_defs:
+                lib_defs[p["path"]] = dsf.add_object_def(p["path"])
+            dsf.add_object(
+                lib_defs[p["path"]],
+                lon0 + p["x"] / meters_per_deg_lon(lat0),
+                lat0 + p["y"] / METERS_PER_DEG_LAT,
+                p["heading"],
+            )
 
     surface_defs: dict[str, int] = {}
     surfaces = 0

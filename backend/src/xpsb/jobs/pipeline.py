@@ -46,6 +46,7 @@ from xpsb.osm import classify, overpass
 from xpsb.settings import Settings
 from xpsb.xplane import dsftool
 from xpsb.xplane.dsf_text import Tile
+from xpsb.xplane.library import Catalog
 from xpsb.xplane.testscene import files_for
 
 
@@ -309,7 +310,35 @@ def _exclusions(job: Job) -> list[tuple[str, Bounds]]:
     return out
 
 
-def make_plan(job: Job, job_dir: Path) -> BuildPlan:
+def library_packs(objects: list[PlanObject]) -> list[str]:
+    """Add-on library packs the plan needs (X-Plane's own library is always there)."""
+    return sorted({p.pack for o in objects for p in o.library if not p.default and p.pack})
+
+
+OBJECT_ITEM_KINDS = ("objects", "library", "library_packs")
+
+
+def object_items(objects: list[PlanObject]) -> list[PlanItem]:
+    """Plan lines about the 3D objects (recomputed when single objects change)."""
+    ok = [o for o in objects if o.status == "ok"]
+    items = [PlanItem(kind="objects", label_key="plan.objects", count=sum(o.has_mesh for o in ok))]
+    placed = sum(len(o.library) for o in ok)
+    if placed:
+        items.append(PlanItem(kind="library", label_key="plan.library", count=placed))
+    packs = library_packs(objects)
+    if packs:
+        items.append(
+            PlanItem(
+                kind="library_packs",
+                label_key="plan.library_packs",
+                count=len(packs),
+                params={"packs": ", ".join(packs)},
+            )
+        )
+    return items
+
+
+def make_plan(job: Job, job_dir: Path, library: Catalog | None = None) -> BuildPlan:
     """Plan from the confirmed list: generates every object once for the 3D preview
     (job folder only) so the user sees what will be built before approving it."""
     assert job.brief is not None and job.analysis is not None
@@ -342,7 +371,7 @@ def make_plan(job: Job, job_dir: Path) -> BuildPlan:
     preview_dir = job_dir / "preview"
     if preview_dir.exists():
         shutil.rmtree(preview_dir)
-    results = assemble.generate_all(job.analysis.items, detail, preview_dir, preview=True)
+    results = assemble.generate_all(job.analysis.items, detail, preview_dir, True, None, library)
     objects = [PlanObject(**r.__dict__) for r in results]
     surfaces = [
         it for it in job.analysis.items if it.kind == "surface" and it.included and not it.proposal
@@ -353,7 +382,7 @@ def make_plan(job: Job, job_dir: Path) -> BuildPlan:
         for key, count in sorted(included_counts(job).items())
     ]
     ok = [o for o in objects if o.status == "ok"]
-    items.append(PlanItem(kind="objects", label_key="plan.objects", count=len(ok)))
+    items += object_items(objects)
     ortho = job.brief.surface_mode.value == "imagery" and job.analysis.imagery is not None
     items.append(
         PlanItem(
@@ -363,7 +392,7 @@ def make_plan(job: Job, job_dir: Path) -> BuildPlan:
         )
     )
     files = [tile.dsf_relative_path, "README.txt"]
-    files += [f"objects/{o.stem}.{ext}" for o in ok for ext in ("obj", "png")]
+    files += [f"objects/{o.stem}.{ext}" for o in ok if o.has_mesh for ext in ("obj", "png")]
     kinds = ["ortho"] if ortho and surfaces else sorted({str(s.category) for s in surfaces})
     files += [f"polygons/xpsb_{k}.{ext}" for k in kinds for ext in ("pol", "png")]
     rects = _exclusion_rects(job, {o.item_id for o in ok})
@@ -405,10 +434,18 @@ def _readme(plan: BuildPlan, job: Job) -> str:
     info = job.analysis.imagery if job.analysis else None
     if info is not None:
         text += f"Aerial imagery: {info.attribution} ({info.license})\n"
+    packs = library_packs(plan.objects)
+    if packs:
+        text += (
+            "\nRequires these library packs in Custom Scenery (objects are referenced, "
+            "not included): " + ", ".join(packs) + "\n"
+        )
     return text
 
 
-def build_package(job: Job, job_dir: Path, exe: Path, log: EventLog) -> BuildResult:
+def build_package(
+    job: Job, job_dir: Path, exe: Path, log: EventLog, library: Catalog | None = None
+) -> BuildResult:
     """Runs in a worker thread."""
     plan = job.plan
     assert plan is not None
@@ -428,6 +465,7 @@ def build_package(job: Job, job_dir: Path, exe: Path, log: EventLog) -> BuildRes
         plan.detail,
         _exclusions(job),
         ortho=_ortho(job, job_dir),
+        library=library,
         progress=lambda p: log.publish_threadsafe(
             type="progress", stage="write", progress=p, key="stage.write"
         ),

@@ -24,6 +24,7 @@ from xpsb.build.mesh import Mesh
 from xpsb.build.render import views_png
 from xpsb.build.sandbox import GEOMETRY_TOOLS, HELPER_TOOLS, ScriptError, ScriptInputs, run_script
 from xpsb.jobs.models import AiRunInfo
+from xpsb.xplane.library import Catalog
 
 MAX_CALLS = 4  # writing incl. fixes, plus one review
 EFFORT = "medium"
@@ -145,9 +146,11 @@ def _estimate(model: str, script_chars: int, images: int) -> float:
 PHOTO_TOKENS_EST = 1100  # a 1024 px photo
 
 
-def cost_estimate(model: str, script_chars: int, photos: int = 0) -> tuple[float, float]:
+def cost_estimate(
+    model: str, script_chars: int, photos: int = 0, library_lines: int = 0
+) -> tuple[float, float]:
     """(typical: write + review, at most: all calls) in USD."""
-    extra = cost_usd(model, photos * PHOTO_TOKENS_EST, 0)
+    extra = cost_usd(model, photos * PHOTO_TOKENS_EST + library_lines * 18, 0)
     write = _estimate(model, max(script_chars, 4000), 4) + extra
     review = _estimate(model, 8000, 4) + extra
     return write + review, write * (MAX_CALLS - 1) + review
@@ -183,6 +186,7 @@ def design(
     object_label: str,
     on_step: Callable[[str, dict], None] = lambda key, params: None,
     photos: list[tuple[str, bytes]] | None = None,
+    library: Catalog | None = None,
 ) -> DesignResult:
     result = DesignResult(info=AiRunInfo(model=cfg.model))
     budget = Budget(cfg.budget_usd, result.info, cfg.on_cost)
@@ -194,6 +198,24 @@ def design(
         f"path = {json.dumps(inputs.path)}\n"
         f"Triangle budget: {max_triangles}\n"
     )
+    offer = library.offer(request) if library else []
+    lib_set = frozenset(library.objects) if library else None
+    sizes = {o.path: o.size for o in offer if o.size}
+    if offer:
+        facts += (
+            "X-Plane library objects you may place with place(path, x, y, heading) - "
+            "ready-made, textured, free of the triangle budget; prefer them for lamps, "
+            "fences, trees, vehicles, benches, signs, flags and similar furniture "
+            "(size: width x depth x height in m, if known):\n"
+            + "\n".join(
+                f"  {o.path}"
+                + (f"  ({o.size[0]:g} x {o.size[1]:g} x {o.size[2]:g})" if o.size else "")
+                for o in offer
+            )
+            + "\n"
+        )
+    else:
+        facts += "No X-Plane library is available: do not use place().\n"
     if inputs.footprint:
         r = tools.oriented_rect(inputs.footprint)
         facts += (
@@ -203,7 +225,7 @@ def design(
 
     def views_blocks(mesh: Mesh) -> list[dict]:
         blocks: list[dict] = []
-        for name, png in views_png(mesh, inputs.footprint, 448):
+        for name, png in views_png(mesh, inputs.footprint, 448, sizes):
             blocks += [{"type": "text", "text": f"{name} (red line = outline):"}, png_block(png)]
         return blocks
 
@@ -229,7 +251,8 @@ def design(
         if len(script) > MAX_SCRIPT_CHARS:
             return None, f"script longer than {MAX_SCRIPT_CHARS} characters"
         try:
-            return run_script(script, inputs, max_triangles, name="architect.star"), None
+            mesh = run_script(script, inputs, max_triangles, name="architect.star", library=lib_set)
+            return mesh, None
         except ScriptError as exc:
             return None, str(exc)[:1500]
 

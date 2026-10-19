@@ -71,9 +71,13 @@ class FakeAi:
         if output_format is ArchitectScript:
             text = "\n".join(b.get("text", "") for b in content)
             broken = "kaputt" in text and "failed in the sandbox" not in text
+            script = ARCHITECT_SCRIPT
+            lib = re.search(r"^  (lib/\S+\.obj)", text, re.MULTILINE)
+            if lib:  # a lamp at each corner of the outline, from the X-Plane library
+                script += f"for p in footprint:\n    place('{lib.group(1)}', p[0], p[1], 45)\n"
             return AiResponse(
                 parsed=ArchitectScript(
-                    script="extrude(footprint, 0, -1)" if broken else ARCHITECT_SCRIPT,
+                    script="extrude(footprint, 0, -1)" if broken else script,
                     summary="Glashalle mit rundem Turm.",
                 ),
                 model=self.served_model or model,

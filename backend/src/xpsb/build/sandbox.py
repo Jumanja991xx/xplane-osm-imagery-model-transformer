@@ -15,7 +15,7 @@ from xpsb.build import tools
 from xpsb.build.mesh import GeometryError, Mesh
 
 MAX_SOURCE_BYTES = 100_000
-GEOMETRY_TOOLS = ("extrude", "box", "cylinder", "tube", "sweep", "revolve", "quad", "face")
+GEOMETRY_TOOLS = ("extrude", "box", "cylinder", "tube", "sweep", "revolve", "quad", "face", "place")
 HELPER_TOOLS = ("oriented_rect", "offset_polygon", "polygon_area", "polygon_centroid", "resample")
 DEFAULT_TIMEOUT_S = 5.0
 
@@ -44,11 +44,12 @@ def run_script(
     max_triangles: int,
     timeout_s: float = DEFAULT_TIMEOUT_S,
     name: str = "build.star",
+    library: frozenset[str] | None = None,
 ) -> Mesh:
     if len(source.encode("utf-8")) > MAX_SOURCE_BYTES:
         raise ScriptError("script too long")
     mesh = Mesh(max_triangles=max_triangles)
-    t = tools.Tools(mesh)
+    t = tools.Tools(mesh, library)
     module = sl.Module()
     for fname in GEOMETRY_TOOLS:
         module.add_callable(fname, getattr(t, fname))
@@ -78,6 +79,6 @@ def run_script(
         raise ScriptError(str(exc)) from None
     except GeometryError as exc:
         raise ScriptError(str(exc)) from None
-    if not mesh.patches:
+    if not mesh.patches and not mesh.placements:
         raise ScriptError("the script produced no geometry")
     return mesh

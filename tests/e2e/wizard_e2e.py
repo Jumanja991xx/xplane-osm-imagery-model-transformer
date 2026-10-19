@@ -170,6 +170,21 @@ with sync_playwright() as p:
     expect(page.get_by_test_id("plan-confirmed")).to_contain_text("Gerüste")
     expect(page.get_by_test_id("plan-confirmed")).to_contain_text("3 × Tribünen")
     page.screenshot(path=OUT / "09-plan.png")
+    # X-Plane folder with a small library: the architect may place its objects.
+    lib = Path(XPLANE) / "Resources/default scenery/1000 roads"
+    (lib / "objects").mkdir(parents=True, exist_ok=True)
+    (lib / "objects/lamp.obj").write_text(
+        "I\n800\nOBJ\n\nVT -0.4 0 -0.2 0 1 0 0 0\nVT 0.4 8 0.2 0 1 0 0 0\n"
+    )
+    (lib / "library.txt").write_text(
+        "A\n800\nLIBRARY\n\nEXPORT lib/street/lights/street_lamp.obj objects/lamp.obj\n"
+    )
+    page.get_by_test_id("open-settings").click()
+    page.get_by_test_id("xplane-path").fill(XPLANE)
+    page.get_by_test_id("settings-save").click()
+    page.wait_for_timeout(500)
+    page.screenshot(path=OUT / "12-settings.png")
+    page.get_by_role("button", name="Schließen", exact=True).click()
     page.get_by_test_id("open-preview").click()
     expect(page.get_by_test_id("preview-objects")).to_be_visible(timeout=30000)
     page.wait_for_timeout(2500)
@@ -213,7 +228,7 @@ with sync_playwright() as p:
     page.screenshot(path=OUT / "09e0-photo-search.png")
     page.get_by_test_id("photo-candidate").first.click()
     expect(page.get_by_test_id("photo-list").locator("img")).to_have_count(2, timeout=10000)
-    page.get_by_test_id("design-text").fill("Mach daraus eine Glashalle mit rundem Turm")
+    page.get_by_test_id("design-text").fill("Glashalle mit rundem Turm und Laternen an den Ecken")
     page.get_by_test_id("design-check").click()
     expect(page.get_by_test_id("design-send")).to_be_visible(timeout=10000)
     page.screenshot(path=OUT / "09e-design-estimate.png")
@@ -241,18 +256,6 @@ with sync_playwright() as p:
     page.get_by_test_id("gate-approve").click()
 
     expect(page.get_by_test_id("install-button")).to_be_visible(timeout=60000)
-    page.get_by_test_id("install-button").click()
-    page.screenshot(path=OUT / "13-gate-d-blocked.png")
-    expect(page.get_by_test_id("gate-approve")).to_be_disabled()
-    page.get_by_role("button", name="Abbrechen", exact=True).click()
-
-    page.get_by_test_id("open-settings").click()
-    page.get_by_test_id("xplane-path").fill(XPLANE)
-    page.get_by_test_id("settings-save").click()
-    page.wait_for_timeout(500)
-    page.screenshot(path=OUT / "12-settings.png")
-    page.get_by_role("button", name="Schließen", exact=True).click()
-
     page.get_by_test_id("install-button").click()
     expect(page.get_by_test_id("gate-approve")).to_be_enabled(timeout=10000)
     page.screenshot(path=OUT / "13-gate-d.png")

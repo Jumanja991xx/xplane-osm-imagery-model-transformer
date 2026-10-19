@@ -38,7 +38,8 @@ from xpsb.paths import AppPaths
 from xpsb.scene import ItemAttrs, ItemPatch, NewItem, SceneItem, validate_item
 from xpsb.secrets import ANTHROPIC_ACCOUNT, SecretStore
 from xpsb.settings import SettingsStore
-from xpsb.xplane import dsftool
+from xpsb.xplane import dsftool, library
+from xpsb.xplane.library import Catalog
 from xpsb.xplane_detect import is_xplane_running
 
 log = logging.getLogger(__name__)
@@ -108,6 +109,7 @@ class JobManager:
         # Photo search hits per job (urls stay here; the client only knows ids).
         self._candidates: dict[str, dict[str, tuple[str, photos.PhotoCandidate]]] = {}
         self._thumbs: dict[str, dict[str, bytes]] = {}
+        self._library: tuple[str | None, Catalog] | None = None
         self._side_tasks: set[asyncio.Task] = set()
         self.ledger = UsageLedger(paths.root / "ai_usage.json")
         self._jobs: dict[str, Job] = {}
@@ -614,13 +616,30 @@ class JobManager:
             self.job_dir(job.id) / "preview",
             job.plan.objects[idx].stem,
             preview=True,
+            library=self.library(),
         )
         job.plan.objects[idx] = PlanObject(**res.__dict__)
-        ok = sum(1 for o in job.plan.objects if o.status == "ok")
-        for plan_item in job.plan.items:
-            if plan_item.kind == "objects":
-                plan_item.count = ok
+        items = job.plan.items
+        at = next((i for i, it in enumerate(items) if it.kind in pipeline.OBJECT_ITEM_KINDS), 0)
+        rest = [it for it in items if it.kind not in pipeline.OBJECT_ITEM_KINDS]
+        job.plan.items = rest[:at] + pipeline.object_items(job.plan.objects) + rest[at:]
+        files = [f for f in job.plan.files if not f.startswith("objects/")]
+        files += [
+            f"objects/{o.stem}.{ext}"
+            for o in job.plan.objects
+            if o.status == "ok" and o.has_mesh
+            for ext in ("obj", "png")
+        ]
+        job.plan.files = sorted(files)
         return job.plan.objects[idx]
+
+    def library(self) -> Catalog:
+        """The X-Plane library catalog (empty without an X-Plane folder)."""
+        path = self._settings.load().xplane_path
+        if self._library is None or self._library[0] != path:
+            catalog = library.load(path, self._paths.cache / "library_catalog.json")
+            self._library = (path, catalog)
+        return self._library[1]
 
     def adjust_object(self, job_id: str, item_id: str, attrs: dict) -> Job:
         """Quick controls from the 3D preview: changes parameters of one object and
@@ -661,7 +680,10 @@ class JobManager:
         job, item = self._design_ready(job_id, item_id)
         assert job.brief is not None
         typical, most = architect.cost_estimate(
-            job.brief.ai_model, len(self._current_script(item)), len(item.photos)
+            job.brief.ai_model,
+            len(self._current_script(item)),
+            len(item.photos),
+            len(self.library().offer()),
         )
         return DesignEstimate(
             model=job.brief.ai_model,
@@ -725,6 +747,7 @@ class JobManager:
                 object_label=label,
                 on_step=on_step,
                 photos=self._photos_for_ai(job, item),
+                library=self.library(),
             )
         finally:
             self._busy.discard(job_id)
@@ -895,7 +918,7 @@ class JobManager:
             self._set_state(job, JobState.ANALYZING)
             self._start(job, self._do_analysis(job))
         elif gate == "B":
-            job.plan = pipeline.make_plan(job, self.job_dir(job.id))
+            job.plan = pipeline.make_plan(job, self.job_dir(job.id), self.library())
             self._set_state(job, JobState.PLANNED)
         elif gate == "C":
             assert ctx.dsftool is not None
@@ -950,7 +973,12 @@ class JobManager:
 
     async def _do_build(self, job: Job, exe: Path) -> None:
         job.build = await asyncio.to_thread(
-            pipeline.build_package, job, self.job_dir(job.id), exe, self.events(job.id)
+            pipeline.build_package,
+            job,
+            self.job_dir(job.id),
+            exe,
+            self.events(job.id),
+            self.library(),
         )
         self._set_state(job, JobState.BUILT)
 

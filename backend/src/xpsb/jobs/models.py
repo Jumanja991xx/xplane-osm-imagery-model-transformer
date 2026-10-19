@@ -162,6 +162,18 @@ class PlanItem(BaseModel):
     params: Params = Field(default_factory=dict)
 
 
+class LibraryPlacement(BaseModel):
+    """An object of the X-Plane library placed by a build script."""
+
+    path: str
+    x: float  # metres east of the object's anchor
+    y: float  # metres north
+    heading: float
+    size: list[float] = Field(default_factory=list)  # width, depth, height if known
+    pack: str = ""
+    default: bool = True  # part of X-Plane itself
+
+
 class PlanObject(BaseModel):
     """One 3D object of the plan, as generated for the preview."""
 
@@ -173,6 +185,8 @@ class PlanObject(BaseModel):
     status: Literal["ok", "error", "skipped"]
     message: str = ""
     triangles: int = 0
+    has_mesh: bool = True
+    library: list[LibraryPlacement] = Field(default_factory=list)
 
 
 class BuildPlan(BaseModel):

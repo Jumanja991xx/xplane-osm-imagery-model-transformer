@@ -49,18 +49,53 @@ def _camera(azimuth: float, elevation: float):
     return right, up, forward
 
 
+LIBRARY_COLOR = np.array((235, 140, 40), dtype=np.float32)
+
+
+def _placement_boxes(
+    mesh: Mesh, sizes: dict
+) -> list[tuple[np.ndarray, list[tuple[int, int, int]]]]:
+    """X-Plane library objects as simple boxes (their real look is X-Plane's)."""
+    out = []
+    for p in mesh.placements:
+        w, d, h = (sizes.get(p.path) or (1.0, 1.0, 2.0))[:3]
+        a = math.radians(p.heading)
+        ux, uy = math.sin(a), math.cos(a)  # forward
+        vx, vy = uy, -ux  # right
+        corners = []
+        for z in (0.0, max(h, 0.2)):
+            for s, t in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
+                corners.append(
+                    [
+                        p.x + vx * s * w / 2 + ux * t * d / 2,
+                        p.y + vy * s * w / 2 + uy * t * d / 2,
+                        z,
+                    ]
+                )
+        quads = [(0, 1, 2, 3), (4, 5, 6, 7), (0, 1, 5, 4), (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7)]
+        tris = [t for q in quads for t in ((q[0], q[1], q[2]), (q[0], q[2], q[3]))]
+        out.append((np.array(corners, dtype=np.float64), tris))
+    return out
+
+
 def render(
     mesh: Mesh,
     azimuth: float,
     elevation: float,
     size: int = 512,
     footprint: list[list[float]] | None = None,
+    sizes: dict | None = None,
 ) -> Image.Image:
     right, up, forward = _camera(azimuth, elevation)
     light = np.array([-0.45, -0.35, 0.82])
     light /= np.linalg.norm(light)
 
-    pts = np.array([p for patch in mesh.patches for p in patch.positions], dtype=np.float64)
+    boxes = _placement_boxes(mesh, sizes or {})
+    pts = np.array(
+        [p for patch in mesh.patches for p in patch.positions]
+        + [c for corners, _ in boxes for c in corners.tolist()],
+        dtype=np.float64,
+    )
     extra = np.array([[x, y, 0.0] for x, y in footprint]) if footprint else np.zeros((0, 3))
     allp = np.vstack([pts, extra]) if len(extra) else pts
     sx, sy = allp @ right, allp @ up
@@ -104,6 +139,11 @@ def render(
             shade = 0.38 + 0.62 * max(0.0, float(n @ light))
             _raster(img, depth, p[[a, b, c]], base * shade)
 
+    for corners, tris in boxes:  # two-sided, flat orange: "library object here"
+        q = project(corners)
+        for t in tris:
+            _raster(img, depth, q[list(t)], LIBRARY_COLOR)
+
     out = Image.fromarray(np.clip(img, 0, 255).astype(np.uint8), "RGB")
     if footprint:
         draw = ImageDraw.Draw(out)
@@ -137,12 +177,12 @@ def _raster(img, depth, tri: np.ndarray, color: np.ndarray, bias: float = 0.0) -
 
 
 def views_png(
-    mesh: Mesh, footprint: list[list[float]] | None, size: int = 512
+    mesh: Mesh, footprint: list[list[float]] | None, size: int = 512, sizes: dict | None = None
 ) -> list[tuple[str, bytes]]:
-    """The standard views as PNG bytes with their names."""
+    """The standard views as PNG bytes with their names (library objects: orange boxes)."""
     out = []
     for name, az, el in VIEWS:
         buf = io.BytesIO()
-        render(mesh, az, el, size, footprint).save(buf, format="PNG")
+        render(mesh, az, el, size, footprint, sizes).save(buf, format="PNG")
         out.append((name, buf.getvalue()))
     return out

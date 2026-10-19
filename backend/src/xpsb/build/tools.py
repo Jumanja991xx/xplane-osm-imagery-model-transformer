@@ -15,9 +15,11 @@ from shapely.geometry.polygon import orient
 
 from xpsb.build.materials import MATERIALS, parse_color
 from xpsb.build.mesh import (
+    MAX_PLACEMENTS,
     GeometryError,
     Mesh,
     Patch,
+    Placement,
     Vec2,
     Vec3,
     cross,
@@ -82,8 +84,9 @@ def _segments(value: Any) -> int:
 class Tools:
     """Bound to one mesh; the methods below are exposed to the script."""
 
-    def __init__(self, mesh: Mesh):
+    def __init__(self, mesh: Mesh, library: frozenset[str] | None = None):
         self.mesh = mesh
+        self.library = library or frozenset()
 
     # -- helpers ------------------------------------------------------------------
 
@@ -94,6 +97,20 @@ class Tools:
             return parse_color(color)
         except ValueError as exc:
             raise GeometryError(str(exc)) from None
+
+    # -- X-Plane library ----------------------------------------------------------
+
+    def place(self, path, x, y, heading=0.0):
+        """Places an object of the X-Plane library (virtual path from the list) with
+        its origin at (x, y) on the ground; heading in degrees from north, clockwise.
+        Costs no triangles of the budget; at most 300 per object."""
+        if not isinstance(path, str) or path not in self.library:
+            raise GeometryError(f"place: {path!r} is not in the X-Plane library list")
+        if len(self.mesh.placements) >= MAX_PLACEMENTS:
+            raise GeometryError(f"place: more than {MAX_PLACEMENTS} library objects")
+        self.mesh.placements.append(
+            Placement(path, _num(x, "x"), _num(y, "y"), _num(heading, "heading") % 360.0)
+        )
 
     # -- primitives -------------------------------------------------------------
 
