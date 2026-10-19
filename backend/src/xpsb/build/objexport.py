@@ -14,8 +14,10 @@ def _to_obj_axes(x: float, y: float, z: float) -> tuple[float, float, float]:
     return x, z, -y
 
 
-def to_obj8(mesh: Mesh, baked: BakedMesh, texture: str, lod_m: float) -> Obj8:
-    obj = Obj8(texture=texture)
+def to_obj8(
+    mesh: Mesh, baked: BakedMesh, texture: str, lod_m: float, normal_texture: str | None = None
+) -> Obj8:
+    obj = Obj8(texture=texture, normal_texture=normal_texture)
     indices: list[int] = []
     for patch, uvs in zip(mesh.patches, baked.uvs, strict=True):
         for back in (False, True) if patch.two_sided else (False,):

@@ -155,6 +155,7 @@ def test_full_flow_builds_and_installs_with_backup(
     package = Path(job["build"]["package_dir"])
     assert (package / "Earth nav data/+40+000/+49+008.dsf").is_file()
     assert "README.txt" in job["build"]["files"]
+    assert any(f.endswith("_nml.png") for f in job["build"]["files"])  # normal maps
     assert not any((fake_xplane / "Custom Scenery").iterdir())  # nothing installed yet
 
     # Gate D is blocked until an X-Plane folder is configured.

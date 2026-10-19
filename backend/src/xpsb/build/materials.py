@@ -217,6 +217,45 @@ def rustication(u, v, color):
     return img
 
 
+def glass_pane(u, v, color):
+    """One window pane in its own 2 x 2 texture square (all windows share it): frame,
+    mullion, transom and a little sky reflection."""
+    img = _fill(u, color or (54, 66, 80))
+    img = _shade(img, 0.10 * np.clip(1.2 - v, -1, 1) + 0.08 * _noise(u, v, 0.4, 31))
+    frame = (u < 0.12) | (u > 1.88) | (v < 0.1) | (v > 1.9)
+    bars = (np.abs(u - 1.0) < 0.05) | (np.abs(v - 1.3) < 0.05)
+    img[frame | bars] = (226, 222, 212)
+    return img
+
+
+def moulding(u, v, color):
+    """Smooth light stone for cornices and string courses (no joints)."""
+    img = _fill(u, color or (236, 231, 219))
+    return _shade(img, 0.025 * _noise(u, v, 0.3, 37))
+
+
+def door(u, v, color):
+    """Wooden double door in its own 2 x 2 texture square: panels and a frame."""
+    img = _fill(u, color or (92, 62, 40))
+    img = _shade(img, 0.06 * _noise(u * 4, v, 0.3, 41))
+    frame = (u < 0.1) | (u > 1.9) | (v > 1.9)
+    split = np.abs(u - 1.0) < 0.03
+    panel = ((u % 1.0) > 0.22) & ((u % 1.0) < 0.78) & (((v % 0.9) > 0.15) & ((v % 0.9) < 0.75))
+    img[panel] = _shade(img[panel], np.full(img[panel].shape[0], 0.12, dtype=np.float32))
+    img[frame | split] = (210, 204, 192)
+    return img
+
+
+def balustrade(u, v, color):
+    """Balustrade: small stone columns with gaps, a rail on top and a plinth below."""
+    img = stone(u, v, color or (226, 220, 206))
+    post = (u % 0.32) < 0.17
+    body = (v > 0.18) & (v < 0.82)
+    gap = body & ~post
+    img[gap] = _shade(img[gap], np.full(img[gap].shape[0], -0.45, dtype=np.float32))
+    return img
+
+
 def glass(u, v, color):
     img = _fill(u, color or (96, 124, 146))
     img = _shade(img, 0.12 * np.clip(np.sin(u * 0.7 + v * 0.3), -1, 1))
@@ -312,6 +351,10 @@ MATERIALS: dict[str, Painter] = {
     "stone": stone,
     "rustication": rustication,
     "glass": glass,
+    "glass_pane": glass_pane,
+    "door": door,
+    "moulding": moulding,
+    "balustrade": balustrade,
     "metal_sheet": metal_sheet,
     "roof_metal": roof_metal,
     "roof_flat": roof_flat,
@@ -340,6 +383,10 @@ MATERIAL_HELP = {
     "stone": "ashlar stone blocks, colour = stone colour (towers, plinths, monuments)",
     "rustication": "rusticated base storey of palaces (deep horizontal grooves)",
     "glass": "glass facade with mullions",
+    "glass_pane": "a single window pane (used by facade(); texture square 2 x 2)",
+    "balustrade": "balustrade with small columns (parapets of palaces, terraces)",
+    "door": "a wooden double door (used by facade(); texture square 2 x 2)",
+    "moulding": "smooth light stone for cornices, string courses, window surrounds",
     "metal_sheet": "ribbed cladding (vertical ribs along the face's u)",
     "roof_metal": "ribbed metal roof",
     "roof_flat": "flat roof membrane/gravel",
@@ -353,3 +400,99 @@ MATERIAL_HELP = {
     "lamp": "floodlight head / bright panel",
     "paint": "plain painted surface in the given colour",
 }
+
+
+# ---- relief and gloss (normal map) -------------------------------------------------
+
+
+# Relief, in metres below the surface: mortar joints, grooves, tile rows, ribs.
+def _h_brick(u, v):
+    row = np.floor(v / 0.075)
+    shift = (row % 2) * 0.12
+    joint = ((v % 0.075) < 0.012) | (((u + shift) % 0.24) < 0.012)
+    return np.where(joint, -0.012, 0.0)
+
+
+def _h_stone(u, v):
+    course = np.floor(v / 0.6)
+    shift = (course % 2) * 0.6
+    joint = ((v % 0.6) < 0.02) | (((u + shift) % 1.2) < 0.02)
+    return np.where(joint, -0.015, 0.0) + 0.003 * _noise(u, v, 0.15, 19)
+
+
+def _h_rustication(u, v):
+    course = np.floor(v / 0.5)
+    shift = (course % 2) * 0.9
+    groove = (v % 0.5) < 0.07
+    joint = ((u + shift) % 1.8) < 0.03
+    return np.where(groove, -0.05, np.where(joint, -0.025, 0.0))
+
+
+def _h_tiles(u, v):
+    return 0.025 * ((v % 0.3) / 0.3)  # each row overlaps the next one down
+
+
+def _h_ribs(u, v):
+    return 0.012 * np.cos(u / 0.2 * 2 * np.pi)
+
+
+HEIGHT = {
+    "brick": _h_brick,
+    "stone": _h_stone,
+    "rustication": _h_rustication,
+    "roof_tiles": _h_tiles,
+    "metal_sheet": _h_ribs,
+    "roof_metal": _h_ribs,
+}
+# Where dark really means deep (painted windows, gaps): relief from brightness, in
+# metres for black to white.
+FROM_BRIGHTNESS_M = {
+    "windows": 0.12,
+    "windows_classic": 0.12,
+    "windows_arched": 0.12,
+    "windows_house": 0.1,
+    "balustrade": 0.08,
+    "glass_pane": 0.03,
+    "door": 0.03,
+    "seats": 0.04,
+    "steps": 0.05,
+}
+# Gloss for X-Plane's normal-map alpha (1 = smooth and shiny, 0 = rough).
+GLOSS: dict[str, float] = {
+    "glass": 0.85,
+    "glass_pane": 0.8,
+    "solar": 0.7,
+    "metal_sheet": 0.45,
+    "roof_metal": 0.4,
+    "steel": 0.4,
+    "membrane": 0.3,
+    "paint": 0.3,
+    "lamp": 0.3,
+}
+DEFAULT_GLOSS = 0.08
+
+
+def normal_map(
+    rgb: np.ndarray, material: str, px_per_m: float, u: np.ndarray, v: np.ndarray
+) -> np.ndarray:
+    """Tangent-space normals (+u right, +v up) and gloss of a painted region, RGBA 0..255."""
+    fn = HEIGHT.get(material)
+    if fn is not None:
+        height = fn(u, v).astype(np.float32)
+    elif material in FROM_BRIGHTNESS_M:
+        lum = rgb[..., 0] * 0.3 + rgb[..., 1] * 0.59 + rgb[..., 2] * 0.11
+        height = (lum / 255.0) * FROM_BRIGHTNESS_M[material]
+    else:  # smooth surfaces: plaster, concrete, glass, paint ...
+        height = np.zeros(u.shape, dtype=np.float32)
+    # rows run down the image (v decreases), columns along u
+    d_row, d_col = np.gradient(height)
+    dh_du = d_col * px_per_m
+    dh_dv = -d_row * px_per_m
+    nx, ny, nz = -dh_du, -dh_dv, np.ones_like(height)
+    length = np.sqrt(nx * nx + ny * ny + nz * nz)
+    out = np.empty(height.shape + (4,), dtype=np.float32)
+    out[..., 0] = (nx / length) * 127.5 + 127.5
+    out[..., 1] = (ny / length) * 127.5 + 127.5
+    out[..., 2] = (nz / length) * 127.5 + 127.5
+    out[..., 3] = GLOSS.get(material, DEFAULT_GLOSS) * 255.0
+    return out

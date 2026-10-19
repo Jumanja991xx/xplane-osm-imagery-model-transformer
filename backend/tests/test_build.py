@@ -185,8 +185,13 @@ def test_building_style_follows_the_osm_type():
         DEFAULT_SCRIPTS["buildings"], [[0, 0], [12, 0], [12, 9], [0, 9]], {"building": "house"}
     )
     assert "roof_tiles" in {p.material for p in house.patches}  # pitched by default
-    top = max(p[2] for patch in house.patches for p in patch.positions)
+    top = max(
+        p[2] for patch in house.patches if patch.material == "roof_tiles" for p in patch.positions
+    )
     assert 9 < top < 11  # 6.5 m walls + roof
+    # real windows set into the walls and a chimney through the roof
+    mats = {p.material for p in house.patches}
+    assert {"glass_pane", "brick"} <= mats
 
 
 def test_stadium_bowl():
@@ -235,18 +240,27 @@ def test_historic_buildings_get_fewer_larger_windows():
         [[0, 0], [60, 0], [60, 30], [0, 30]],
         {"building": "palace", "levels": 3},
     )
-    assert "windows_classic" in {p.material for p in palace.patches}
+    # real windows with panes, a rusticated ground storey, mouldings in stone
+    assert {"glass_pane", "rustication", "stone"} <= {p.material for p in palace.patches}
+    # not enough triangles left: the same facade, painted
+    flat = run(
+        DEFAULT_SCRIPTS["buildings"],
+        [[0, 0], [60, 0], [60, 30], [0, 30]],
+        {"building": "palace", "levels": 3},
+        budget=600,
+    )
+    assert "windows_classic" in {p.material for p in flat.patches}
     # an old public building tagged as heritage, mapped as plain "yes"
     listed = run(
         DEFAULT_SCRIPTS["buildings"],
         [[0, 0], [40, 0], [40, 25], [0, 25]],
         {"building": "yes", "tags": {"heritage": "2"}},
     )
-    assert "windows_classic" in {p.material for p in listed.patches}
+    assert "rustication" in {p.material for p in listed.patches}
     house = run(
         DEFAULT_SCRIPTS["buildings"], [[0, 0], [12, 0], [12, 9], [0, 9]], {"building": "house"}
     )
-    assert "windows_house" in {p.material for p in house.patches}
+    assert "glass_pane" in {p.material for p in house.patches}
 
 
 def test_window_spacing_of_the_facades():
@@ -262,3 +276,77 @@ def test_window_spacing_of_the_facades():
 
     assert window_columns("windows") >= 15  # dense modern grid
     assert 8 <= window_columns("windows_classic") <= 11  # one every 4.2 m
+
+
+def test_courtyards_stay_open_and_their_walls_face_into_them():
+    from shapely.geometry import Point, Polygon
+
+    outer = [[-30, -20], [30, -20], [30, 20], [-30, 20]]
+    court = [[-15, -8], [-15, 8], [15, 8], [15, -8]]  # clockwise
+    src = (
+        "extrude(footprint, 0, 12, mat='plaster', holes=courtyards)\n"
+        "mansard(footprint, 12, holes=courtyards)\n"
+    )
+    mesh = run_script(
+        src, ScriptInputs(footprint=outer, path=None, params={}, courtyards=[court]), 50_000
+    )
+    hole = Polygon(court)
+    for patch in mesh.patches:
+        for a, b, c in patch.tris:
+            pts = [patch.positions[i] for i in (a, b, c)]
+            centre = Point(sum(p[0] for p in pts) / 3, sum(p[1] for p in pts) / 3)
+            if patch.normals[a][2] > 0.99:  # flat tops: never over the courtyard
+                assert not hole.contains(centre)
+    # a wall on the courtyard's west edge (x = -15) looks east, into the courtyard
+    inner = [
+        p
+        for p in mesh.patches
+        if p.material == "plaster" and all(abs(q[0] + 15) < 1e-6 for q in p.positions)
+    ]
+    assert inner and inner[0].normals[0][0] > 0.99
+
+
+def test_facade_parts_and_roof_details():
+    outer = [[-20, -10], [20, -10], [20, 10], [-20, 10]]
+    src = (
+        "r = facade(footprint, 0, 15, style='classic', storeys=3)\n"
+        "parapet(footprint, 15, height=1.0, mat='balustrade', statues=8)\n"
+        "n = chimneys(footprint, 15, 18, count=4)\n"
+        "if r != 'detailed' or n != 4:\n"
+        "    fail('unexpected %s %s' % (r, n))\n"
+    )
+    mesh = run_script(src, ScriptInputs(footprint=outer, path=None, params={}), 50_000)
+    mats = {p.material for p in mesh.patches}
+    assert {"glass_pane", "rustication", "balustrade", "brick"} <= mats
+    # windows sit back in the wall: panes lie inside the outline
+    panes = next(p for p in mesh.patches if p.material == "glass_pane")
+    assert all(-20 < x < 20 and -10 < y < 10 for x, y, _ in panes.positions)
+    (_, _, _), (_, _, top) = mesh.bounds()
+    assert top >= 18  # chimneys
+    with pytest.raises(ScriptError, match="style must be one of"):
+        run_script(
+            "facade(footprint, 0, 10, style='gothic')",
+            ScriptInputs(footprint=outer, path=None, params={}),
+            50_000,
+        )
+
+
+def test_normal_map_gives_joints_relief_and_glass_gloss():
+    import numpy as np
+
+    from xpsb.build.objexport import to_obj8
+
+    mesh = run(
+        "extrude(footprint, 0, 6, mat='brick', top='glass')", [[0, 0], [8, 0], [8, 8], [0, 8]]
+    )
+    baked = bake(mesh, 512, 24.0)
+    assert baked.normal is not None and baked.normal.mode == "RGBA"
+    assert baked.normal.size == baked.image.size
+    nml = np.asarray(baked.normal).astype(float)
+    assert nml[..., 2].mean() > 200  # mostly facing out of the surface
+    assert nml[..., 0].std() > 2  # mortar joints tilt the normals
+    gloss = sorted(set(nml[..., 3].ravel().tolist()))
+    assert min(gloss) < 40 and max(gloss) > 200  # matt brick, shiny glass
+    obj = to_obj8(mesh, baked, "x.png", 2000, "x_nml.png").to_text()
+    assert "TEXTURE x.png\nTEXTURE_NORMAL x_nml.png\n" in obj
+    assert "NORMAL_METALNESS" not in obj

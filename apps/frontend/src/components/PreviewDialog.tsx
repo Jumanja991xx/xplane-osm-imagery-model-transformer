@@ -82,6 +82,7 @@ export function PreviewDialog({
       mesh.geometry.dispose();
       const mat = mesh.material as THREE.MeshStandardMaterial;
       mat.map?.dispose();
+      mat.normalMap?.dispose();
       mat.dispose();
     };
 
@@ -107,7 +108,11 @@ export function PreviewDialog({
       group.name = o.stem;
       group.position.copy(toThree(o.offset[0], o.offset[1], 0));
       if (o.has_mesh !== false) {
-        const [m, texUrl] = await Promise.all([preview.mesh(jobId, o.stem), preview.textureUrl(jobId, o.stem)]);
+        const [m, texUrl, nmlUrl] = await Promise.all([
+          preview.mesh(jobId, o.stem),
+          preview.textureUrl(jobId, o.stem),
+          preview.normalUrl(jobId, o.stem),
+        ]);
         if (disposed) return null;
         urls.push(texUrl);
         const pos: number[] = [];
@@ -125,7 +130,16 @@ export function PreviewDialog({
         tex.colorSpace = THREE.SRGBColorSpace;
         tex.anisotropy = 8;
         // FrontSide on purpose: a face turned the wrong way would also be missing in X-Plane.
-        const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85 }));
+        // Normal map: joints, grooves and frames catch the light as in X-Plane 12.
+        let normalMap: THREE.Texture | null = null;
+        if (nmlUrl) {
+          urls.push(nmlUrl);
+          normalMap = await loader.loadAsync(nmlUrl).catch(() => null);
+        }
+        const mesh = new THREE.Mesh(
+          geo,
+          new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85, ...(normalMap ? { normalMap } : {}) }),
+        );
         mesh.castShadow = true;
         mesh.receiveShadow = true;
         group.add(mesh);

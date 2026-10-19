@@ -242,4 +242,12 @@ export const preview = {
     authedFetch(`/api/jobs/${jobId}/preview/${stem}.json`).then((r) => r.json() as Promise<PreviewMesh>),
   textureUrl: async (jobId: string, stem: string) =>
     URL.createObjectURL(await (await authedFetch(`/api/jobs/${jobId}/preview/${stem}.png`)).blob()),
+  /** Normal map of the object, if it has one (objects built before it existed do not). */
+  normalUrl: async (jobId: string, stem: string): Promise<string | null> => {
+    try {
+      return URL.createObjectURL(await (await authedFetch(`/api/jobs/${jobId}/preview/${stem}_nml.png`)).blob());
+    } catch {
+      return null;
+    }
+  },
 };

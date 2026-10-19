@@ -28,6 +28,9 @@ class Obj8:
     # Emitted before the TRIS command, e.g. "ATTR_LOD 0 4000" or "ATTR_no_blend 0.5".
     attributes: list[str] = field(default_factory=list)
     comment: str = "xpsb"
+    # Normal map (RGB normals, alpha = gloss); X-Plane ignores its blue channel
+    # unless NORMAL_METALNESS is set, which we do not.
+    normal_texture: str | None = None
 
     def add_quad(
         self,
@@ -54,6 +57,7 @@ class Obj8:
             "OBJ",
             "",
             f"TEXTURE {self.texture}",
+            *([f"TEXTURE_NORMAL {self.normal_texture}"] if self.normal_texture else []),
             f"POINT_COUNTS {len(self.vertices)} 0 0 {len(self.indices)}",
         ]
         for v in self.vertices:

@@ -13,6 +13,7 @@ from typing import Any
 from shapely.geometry import Polygon
 from shapely.geometry.polygon import orient
 
+from xpsb.build import details
 from xpsb.build.materials import MATERIALS, parse_color
 from xpsb.build.mesh import (
     MAX_PLACEMENTS,
@@ -124,39 +125,146 @@ class Tools:
         color=None,
         top_color=None,
         bottom=False,
+        holes=None,
     ):
-        """Vertical walls along `polygon` from z0 to z1 with a flat top (top=None: open)."""
+        """Vertical walls along `polygon` from z0 to z1 with a flat top (top=None: open).
+        `holes`: courtyards (list of polygons) get inward-facing walls and stay open."""
         pts = _pts2(polygon, "polygon")
         z0, z1 = _num(z0, "z0"), _num(z1, "z1")
         if z1 <= z0:
             raise GeometryError("extrude: z1 must be above z0")
-        shape = Polygon(pts)
-        if not shape.is_valid or shape.area <= 1e-6:
-            raise GeometryError("extrude: polygon is self-intersecting or has no area")
-        ring = list(orient(shape, 1.0).exterior.coords)[:-1]  # counter-clockwise
+        rings = details.rings_of(pts, _holes(holes))
         wall_mat, col = _material(mat), self._color(color)
         # One patch per wall keeps texture patterns straight on every side.
-        for (ax, ay), (bx, by) in zip(ring, ring[1:] + ring[:1], strict=True):
-            if math.hypot(bx - ax, by - ay) < 1e-6:
-                continue
-            self.mesh.add(
-                quad_face([(ax, ay, z0), (bx, by, z0), (bx, by, z1), (ax, ay, z1)], wall_mat, col)
-            )
-        if top is not None:
-            self.mesh.add(
-                planar_face(
-                    [(x, y, z1) for x, y in ring],
-                    _material(top),
-                    self._color(top_color),
-                    normal=(0.0, 0.0, 1.0),
+        for ring in rings:
+            for (ax, ay), (bx, by) in zip(ring, ring[1:] + ring[:1], strict=True):
+                if math.hypot(bx - ax, by - ay) < 1e-6:
+                    continue
+                self.mesh.add(
+                    quad_face(
+                        [(ax, ay, z0), (bx, by, z0), (bx, by, z1), (ax, ay, z1)], wall_mat, col
+                    )
                 )
-            )
+        if top is not None:
+            details.flat_top(self.mesh, rings, z1, _material(top), self._color(top_color))
         if bottom:
             self.mesh.add(
                 planar_face(
-                    [(x, y, z0) for x, y in reversed(ring)], wall_mat, col, normal=(0.0, 0.0, -1.0)
+                    [(x, y, z0) for x, y in reversed(rings[0])],
+                    wall_mat,
+                    col,
+                    normal=(0.0, 0.0, -1.0),
+                    holes=[[(x, y, z0) for x, y in reversed(h)] for h in rings[1:]],
                 )
             )
+
+    # -- building parts with real depth (details.py) -----------------------------
+
+    def facade(
+        self,
+        polygon,
+        z0,
+        z1,
+        style="classic",
+        storeys=None,
+        bay=None,
+        mat=None,
+        color=None,
+        trim_color=None,
+        holes=None,
+        top="roof_flat",
+        top_color=None,
+        entrance=True,
+    ):
+        """Walls with REAL windows from z0 to z1 along `polygon` (and its courtyard
+        `holes`): windows set back into the wall with reveals and panes, a door in
+        the middle of the longest side (entrance), and per style pilasters,
+        string courses, a main cornice and a rusticated ground storey.
+        style: "modern" (window every 2.7 m, 3.1 m storeys), "house" (3.6 m, 2.8 m),
+        "classic" (tall windows, 4.2 m, 4.8 m), "arched" (round-arched, 4.6 m, 5.4 m).
+        storeys/bay override the style (count the window axes on photos!); mat/color
+        the wall, trim_color mouldings and pilasters; top a flat roof (None: open).
+        Falls back to painted windows by itself when the triangle budget is short.
+        Returns "detailed" or "flat"."""
+        pts = _pts2(polygon, "polygon")
+        n = None if storeys is None else int(_num(storeys, "storeys"))
+        return details.facade(
+            self.mesh,
+            pts,
+            _holes(holes),
+            _num(z0, "z0"),
+            _num(z1, "z1"),
+            style,
+            n,
+            None if bay is None else _num(bay, "bay"),
+            None if mat is None else _material(mat),
+            self._color(color),
+            self._color(trim_color),
+            None if top is None else _material(top),
+            self._color(top_color),
+            bool(entrance),
+        )
+
+    def parapet(self, polygon, z, height=1.0, mat="stone", color=None, holes=None, statues=0):
+        """Low wall along the roof edge at height z (mat="balustrade" for a
+        balustrade), along the courtyards too; `statues` simple figures on top,
+        evenly spread along the outline."""
+        h = _num(height, "height")
+        if not 0.2 <= h <= 4:
+            raise GeometryError("parapet: height must be between 0.2 and 4 m")
+        count = int(_num(statues, "statues"))
+        if not 0 <= count <= 80:
+            raise GeometryError("parapet: statues must be between 0 and 80")
+        rings = details.rings_of(_pts2(polygon, "polygon"), _holes(holes))
+        details.parapet(
+            self.mesh, rings, _num(z, "z"), h, _material(mat), self._color(color), count
+        )
+
+    def chimneys(self, polygon, z0, z1, count=None, size=0.9, mat="brick", color=None, holes=None):
+        """Chimney stacks from z0 (below the roof surface) to z1, spread evenly over
+        the roof area of `polygon`, away from its edges; count defaults to one per
+        ~250 m2 (at most 12). Returns how many were placed."""
+        rings = details.rings_of(_pts2(polygon, "polygon"), _holes(holes))
+        area = Polygon(rings[0], rings[1:]).area
+        n = int(_num(count, "count")) if count is not None else max(1, min(12, round(area / 250)))
+        if not 0 <= n <= 40:
+            raise GeometryError("chimneys: count must be between 0 and 40")
+        z0, z1 = _num(z0, "z0"), _num(z1, "z1")
+        if z1 <= z0:
+            raise GeometryError("chimneys: z1 must be above z0")
+        return details.chimneys(
+            self.mesh, rings, z0, z1, n, _num(size, "size"), _material(mat), self._color(color)
+        )
+
+    def mansard(
+        self,
+        polygon,
+        z,
+        rise=3.0,
+        depth=3.5,
+        mat="roof_metal",
+        color=None,
+        holes=None,
+        top="roof_flat",
+        top_color=None,
+    ):
+        """Roof of a big block or palace wing: slopes rising `rise` m over `depth` m
+        inwards from the outline (and outwards from courtyards), flat on top."""
+        rings = details.rings_of(_pts2(polygon, "polygon"), _holes(holes))
+        rise_, depth_ = _num(rise, "rise"), _num(depth, "depth")
+        if rise_ <= 0 or depth_ <= 0:
+            raise GeometryError("mansard: rise and depth must be positive")
+        details.mansard(
+            self.mesh,
+            rings,
+            _num(z, "z"),
+            rise_,
+            depth_,
+            _material(mat),
+            self._color(color),
+            None if top is None else _material(top),
+            self._color(top_color),
+        )
 
     def box(
         self,
@@ -412,6 +520,15 @@ class Tools:
 
 
 # ---- geometry helpers for scripts (pure functions) ------------------------------
+
+
+def _holes(value) -> list[list[Vec2]]:
+    """Courtyards: None or a list of polygons."""
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise GeometryError("holes must be a list of polygons")
+    return [_pts2(h, "holes") for h in value]
 
 
 def _dir(heading_deg) -> tuple[float, float]:

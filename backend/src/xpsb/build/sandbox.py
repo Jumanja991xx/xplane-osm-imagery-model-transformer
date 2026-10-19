@@ -6,7 +6,7 @@ add geometry through the tools; on top come a time limit and a triangle budget.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import starlark as sl
@@ -15,7 +15,21 @@ from xpsb.build import tools
 from xpsb.build.mesh import GeometryError, Mesh
 
 MAX_SOURCE_BYTES = 100_000
-GEOMETRY_TOOLS = ("extrude", "box", "cylinder", "tube", "sweep", "revolve", "quad", "face", "place")
+GEOMETRY_TOOLS = (
+    "extrude",
+    "facade",
+    "parapet",
+    "chimneys",
+    "mansard",
+    "box",
+    "cylinder",
+    "tube",
+    "sweep",
+    "revolve",
+    "quad",
+    "face",
+    "place",
+)
 HELPER_TOOLS = ("oriented_rect", "offset_polygon", "polygon_area", "polygon_centroid", "resample")
 DEFAULT_TIMEOUT_S = 5.0
 
@@ -29,6 +43,7 @@ class ScriptInputs:
     footprint: list[list[float]] | None  # polygon in local metres, counter-clockwise
     path: list[list[float]] | None  # for line objects (fences, walls)
     params: dict[str, Any]
+    courtyards: list[list[list[float]]] = field(default_factory=list)  # holes, clockwise
 
 
 def _dialect() -> sl.Dialect:
@@ -60,6 +75,7 @@ def run_script(
     module["PI"] = 3.141592653589793
     module["footprint"] = inputs.footprint
     module["path"] = inputs.path
+    module["courtyards"] = inputs.courtyards
     module["params"] = inputs.params
 
     try:

@@ -122,15 +122,21 @@ def plane_basis(normal: Vec3) -> tuple[Vec3, Vec3]:
     return u, v
 
 
-def _triangulate_2d(pts: list[Vec2]) -> list[tuple[int, int, int]]:
-    """Constrained triangulation of a simple polygon; triangles counter-clockwise."""
+def _triangulate_2d(
+    pts: list[Vec2], holes: list[list[Vec2]] | None = None
+) -> list[tuple[int, int, int]]:
+    """Constrained triangulation of a simple polygon (optionally with holes; their
+    points follow the outline's in the index); triangles counter-clockwise."""
     from shapely import constrained_delaunay_triangles
     from shapely.geometry import Polygon
 
-    poly = Polygon(pts)
+    holes = holes or []
+    poly = Polygon(pts, holes)
     if not poly.is_valid or poly.area <= 1e-9:
         raise GeometryError("face polygon is self-intersecting or has no area")
-    index = {(round(x, 6), round(y, 6)): i for i, (x, y) in enumerate(pts)}
+    every = list(pts) + [p for h in holes for p in h]
+    index = {(round(x, 6), round(y, 6)): i for i, (x, y) in enumerate(every)}
+    pts = every
     tris = []
     for tri in constrained_delaunay_triangles(poly).geoms:
         coords = list(tri.exterior.coords)[:3]
@@ -147,11 +153,18 @@ def _triangulate_2d(pts: list[Vec2]) -> list[tuple[int, int, int]]:
 
 
 def planar_face(
-    points: list[Vec3], material: str, color, normal: Vec3 | None = None, two_sided: bool = False
+    points: list[Vec3],
+    material: str,
+    color,
+    normal: Vec3 | None = None,
+    two_sided: bool = False,
+    holes: list[list[Vec3]] | None = None,
 ) -> Patch:
-    """Polygon face. Without `normal` the winding of `points` decides the front."""
+    """Polygon face (optionally with holes, e.g. courtyards). Without `normal` the
+    winding of `points` decides the front."""
     if len(points) >= 2 and points[0] == points[-1]:
         points = points[:-1]
+    holes = [h[:-1] if len(h) >= 2 and h[0] == h[-1] else h for h in holes or []]
     if len(points) < 3:
         raise GeometryError("a face needs at least 3 points")
     if normal is None:
@@ -165,11 +178,18 @@ def planar_face(
     n = norm(normal)
     u_ax, v_ax = plane_basis(n)
     o = points[0]
-    pts2 = [(dot(sub(p, o), u_ax), dot(sub(p, o), v_ax)) for p in points]
+
+    def flat(ring: list[Vec3]) -> list[Vec2]:
+        return [(dot(sub(p, o), u_ax), dot(sub(p, o), v_ax)) for p in ring]
+
+    pts2 = flat(points)
+    holes2 = [flat(h) for h in holes]
     patch = Patch(material, color, two_sided=two_sided)
-    for p, uv in zip(points, pts2, strict=True):
+    for p, uv in zip(
+        points + [q for h in holes for q in h], pts2 + [q for h in holes2 for q in h], strict=True
+    ):
         patch.add_vertex(p, n, uv)
-    patch.tris = _triangulate_2d(pts2)
+    patch.tris = _triangulate_2d(pts2, holes2)
     return patch
 
 

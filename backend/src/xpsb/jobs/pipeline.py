@@ -452,7 +452,12 @@ def make_plan(job: Job, job_dir: Path, library: Catalog | None = None) -> BuildP
         )
     )
     files = [tile.dsf_relative_path, "README.txt"]
-    files += [f"objects/{o.stem}.{ext}" for o in ok if o.has_mesh for ext in ("obj", "png")]
+    files += [
+        f"objects/{o.stem}{suffix}"
+        for o in ok
+        if o.has_mesh
+        for suffix in (".obj", ".png", "_nml.png")
+    ]
     kinds = ["ortho"] if ortho and surfaces else sorted({str(s.category) for s in surfaces})
     files += [f"polygons/xpsb_{k}.{ext}" for k in kinds for ext in ("pol", "png")]
     rects = _exclusion_rects(job, {o.item_id for o in ok})

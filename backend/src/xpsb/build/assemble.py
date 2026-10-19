@@ -15,7 +15,7 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageEnhance
-from shapely.geometry import shape
+from shapely.geometry import Polygon, shape
 from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
 
@@ -137,12 +137,24 @@ def _script_inputs(item: SceneItem, items: list[SceneItem], detail: str) -> Scri
     footprint = path = None
     if geom.geom_type == "MultiPolygon":
         geom = max(geom.geoms, key=lambda g: g.area)
+    courtyards: list = []
     if geom.geom_type == "Polygon":
-        ring = list(orient(geom, 1.0).exterior.coords)[:-1]
+        shaped = orient(geom, 1.0)
+        ring = list(shaped.exterior.coords)[:-1]
         footprint = [local(x, y) for x, y in ring]
+        courtyards = [
+            [local(x, y) for x, y in list(h.coords)[:-1]]
+            for h in shaped.interiors
+            if Polygon(h).area * meters_per_deg_lon(lat0) * METERS_PER_DEG_LAT > 20  # m2
+        ]
     elif geom.geom_type == "LineString":
         path = [local(x, y) for x, y in geom.coords]
-    return ScriptInputs(footprint=footprint, path=path, params=_params(item, items, local, detail))
+    return ScriptInputs(
+        footprint=footprint,
+        path=path,
+        params=_params(item, items, local, detail),
+        courtyards=courtyards,
+    )
 
 
 def _params(item: SceneItem, items: list[SceneItem], local, detail: str) -> dict:
@@ -284,8 +296,8 @@ def generate_one(
 ) -> ItemResult:
     res = ItemResult(item.id, stem, str(item.category), item.name, _anchor(item), "ok")
     res.designed = bool(item.script)
-    for ext in ("png", "json", "obj"):
-        (out_dir / f"{stem}.{ext}").unlink(missing_ok=True)
+    for name in (f"{stem}.png", f"{stem}.json", f"{stem}.obj", f"{stem}_nml.png"):
+        (out_dir / name).unlink(missing_ok=True)
     try:
         mesh, baked = generate(item, items, detail, library)
     except LookupError as exc:
@@ -310,11 +322,15 @@ def generate_one(
             res.has_mesh = False
             return res
         baked.image.save(out_dir / f"{stem}.png", optimize=False)
+        normal = None
+        if baked.normal is not None:
+            normal = f"{stem}_nml.png"
+            baked.normal.save(out_dir / normal, optimize=False)
         if preview:
             data = to_preview(mesh, baked)
             (out_dir / f"{stem}.json").write_text(json.dumps(data), encoding="utf-8")
         else:
-            obj = to_obj8(mesh, baked, f"{stem}.png", _lod(mesh))
+            obj = to_obj8(mesh, baked, f"{stem}.png", _lod(mesh), normal)
             obj.comment = f"xpsb {item.category} {item.id}"
             (out_dir / f"{stem}.obj").write_text(obj.to_text(), encoding="ascii", newline="\n")
     return res

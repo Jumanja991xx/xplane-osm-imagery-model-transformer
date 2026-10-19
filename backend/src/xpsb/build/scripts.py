@@ -239,20 +239,38 @@ def stadium():
           colors=[g("roof_color", None), None, g("roof_color", None), None],
           closed_path=True, caps=True)
 
-def block(fp, z0, H, shape, look, flip):
+# Facades with real windows (facade() tool) per wall material, and which plain
+# materials still get windows cut into them.
+FACADE_OF = {"windows": "modern", "windows_house": "house", "windows_classic": "classic",
+             "windows_arched": "arched"}
+WINDOWED = ["plaster", "brick", "stone", "concrete", "wood"]
+STYLE_FACADE = {"house": "house", "historic": "classic", "apartments": "modern",
+                "office": "modern", "generic": "modern"}
+
+def walls(fp, z0, H, look, fstyle, top, top_color, holes, levels):
+    wall, wall_mat = look[0], look[1]
+    raised = z0 > 0.3
+    if fstyle != None and not raised and H - z0 >= 2.4:
+        facade(fp, z0, H, style=fstyle, storeys=levels, color=wall, holes=holes, top=top,
+               top_color=top_color, mat=(None if wall_mat in FACADE_OF else wall_mat))
+    else:
+        extrude(fp, z0, H, mat=wall_mat, top=top, color=wall, top_color=top_color,
+                bottom=raised, holes=holes)
+
+def block(fp, z0, H, shape, look, flip, fstyle=None, holes=None, levels=None, chimney=False):
     # One building block: walls from z0 to H and a roof (gabled/hipped/pyramidal/flat).
     wall, wall_mat, gable_mat, roof_color, pitched, flat, rise_k, rise_max = look
     if H <= z0 + 0.2:
         return
-    raised = z0 > 0.3
+    holes = holes or []
     r = oriented_rect(fp)
     if flip:
         # ridge across instead of along the long side
         r = {"x": r["x"], "y": r["y"], "length": r["width"], "width": r["length"],
              "ux": r["vx"], "uy": r["vy"], "vx": -r["vy"], "vy": r["vx"]}
-    rect_like = polygon_area(fp) > 0.85 * r["length"] * r["width"]
+    rect_like = polygon_area(fp) > 0.85 * r["length"] * r["width"] and not holes
     if shape in ("gabled", "hipped") and rect_like:
-        extrude(fp, z0, H, mat=wall_mat, top=None, color=wall, bottom=raised)
+        walls(fp, z0, H, look, fstyle, None, None, holes, levels)
         P = frame(r)
         L2 = r["length"] / 2
         W2 = r["width"] / 2
@@ -273,9 +291,12 @@ def block(fp, z0, H, shape, look, flip):
             face([C, B, R2], mat=gable_mat, color=wall)
         quad(A, B, R2, R1, mat=pitched, color=roof_color)
         quad(C, D, R1, R2, mat=pitched, color=roof_color)
-    elif shape in ("pyramidal", "dome", "onion", "cone") and len(fp) <= 40:
+        if chimney and r["width"] > 5:
+            chimneys(fp, H, H + rise + 1.0, count=max(1, min(6, int(r["length"] / 12) + 1)),
+                     size=0.7 if r["width"] < 14 else 1.0)
+    elif shape in ("pyramidal", "dome", "onion", "cone") and len(fp) <= 40 and not holes:
         # towers and domes: a pointed roof over the centre
-        extrude(fp, z0, H, mat=wall_mat, top=None, color=wall, bottom=raised)
+        walls(fp, z0, H, look, fstyle, None, None, holes, levels)
         c = polygon_centroid(fp)
         rise = min(min(r["width"], r["length"]) * (0.9 if shape == "cone" else 0.6), 25)
         apex = [c[0], c[1], H + rise]
@@ -284,9 +305,16 @@ def block(fp, z0, H, shape, look, flip):
             a = fp[i]
             b = fp[(i + 1) % n]
             face([[a[0], a[1], H], [b[0], b[1], H], apex], mat=pitched, color=roof_color)
+    elif shape in ("gabled", "hipped", "mansard") and r["width"] > 9:
+        # big or irregular blocks (wings around courtyards): slopes all round
+        walls(fp, z0, H, look, fstyle, None, None, holes, levels)
+        rise = min(r["width"] * rise_k * 0.5, rise_max, 4.5)
+        mansard(fp, H, rise=rise, depth=min(5.0, r["width"] * 0.25), mat=pitched,
+                color=roof_color, holes=holes, top=flat, top_color=roof_color)
+        if chimney:
+            chimneys(fp, H, H + rise + 1.0, holes=holes)
     else:
-        extrude(fp, z0, H, mat=wall_mat, top=flat, color=wall, top_color=roof_color,
-                bottom=raised)
+        walls(fp, z0, H, look, fstyle, flat, roof_color, holes, levels)
 
 def main():
     st = style()
@@ -295,18 +323,24 @@ def main():
         return
     H0, storey, wall_def, wall_col, shape_def, pitched_def, flat_def, rise_k, rise_max = STYLES[st]
     H = params.get("height")
+    levels = params.get("levels")
     if H == None:
-        lv = params.get("levels")
-        H = lv * storey if lv else H0
+        H = levels * storey if levels else H0
     wall = g("wall_color", wall_col)
     wall_mat = g("wall_material", wall_def)
     gable_mat = "plaster" if wall_mat in ("windows", "glass", "metal_sheet") else wall_mat
+    if wall_mat in FACADE_OF:
+        gable_mat = "plaster"
     if st == "hall":
         gable_mat = wall_mat
+    fstyle = FACADE_OF.get(wall_mat)
+    if fstyle == None and wall_mat in WINDOWED:
+        fstyle = STYLE_FACADE.get(st)
     roof_color = g("roof_color", None)
     roof_mat = params.get("roof_material")
     look = (wall, wall_mat, gable_mat, roof_color, roof_mat or pitched_def, roof_mat or flat_def,
             rise_k, rise_max)
+    chimney = st in ("house", "historic") and roof_mat != "solar"
     parts = params.get("parts") or []
     if parts:
         # OSM building parts (towers, wings, raised roofs): each its own block
@@ -315,11 +349,13 @@ def main():
             pz = part.get("min_height") or 0
             plook = (part.get("wall_color") or wall, wall_mat, gable_mat,
                      part.get("roof_color") or roof_color, look[4], look[5], rise_k, rise_max)
-            block(part["footprint"], pz, ph, part.get("roof_shape") or "flat", plook, False)
+            block(part["footprint"], pz, ph, part.get("roof_shape") or "flat", plook, False,
+                  fstyle)
         if g("parts_cover", 1.0) >= 0.8:
             return  # the parts are the whole building
     shape = g("roof_shape", shape_def)
-    block(footprint, g("min_height", 0), H, shape, look, g("flip", False))
+    block(footprint, g("min_height", 0), H, shape, look, g("flip", False), fstyle, courtyards,
+          levels, chimney)
 
 main()
 """

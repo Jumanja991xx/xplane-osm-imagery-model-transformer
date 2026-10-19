@@ -107,8 +107,9 @@ range(). Functions with def are fine. Top-level code runs.
 
 COORDINATES: metres; x east, y north, z up; z=0 is the ground. The object's local
 origin is the centre of its outline. `footprint` is the outline polygon as
-[[x, y], ...] counter-clockwise (or None for points/lines), `path` the polyline of line
-objects, `params` a dict with: {
+[[x, y], ...] counter-clockwise (or None for points/lines), `courtyards` the inner
+courtyards of the outline (list of polygons, clockwise; pass them as holes=courtyards so
+they stay open), `path` the polyline of line objects, `params` a dict with: {
         ", ".join(
             sorted(
                 [
@@ -152,6 +153,16 @@ RULES:
 - Write the COMPLETE script every time (it replaces the old one).
 - The summary is for the user, in {LANG_NAMES.get(language, "English")}, short, no code.
 
+BUILDING KIT - use it for every building with windows: it builds the details with real
+depth (windows set into the wall with reveals and panes, pilasters, string courses, main
+cornice, rusticated ground storey, doors), keeps your script short (cheaper) and looks
+consistent. facade() for the walls (style "classic"/"arched"/"house"/"modern"; set
+storeys and bay = side length / window axes from the photos), mansard() for the roofs
+of big blocks and wings around courtyards, parapet(mat="balustrade", statues=n) for
+palaces with balustrades and figures, chimneys() for houses and old buildings. Build
+towers, domes, porticos, pediments, quadrigas and special shapes with the basic tools
+on top. If facade() returns "flat", the triangle budget was too small for real windows.
+
 HOW TO BUILD COMMON THINGS (adapt to the facts and photos):
 - Stadium/arena: a bowl of stands along the outline (sweep along the closed outline,
   closed_path=True, a stepped profile going inwards = rows of seats), an outer facade,
@@ -159,21 +170,19 @@ HOW TO BUILD COMMON THINGS (adapt to the facts and photos):
   ground, not your job. Big stadiums: 2 tiers, 25-45 m high.
 - Hall/warehouse/sports hall: walls (metal_sheet or the photo's facade), flat or low
   pitched roof (roof_metal), gates and doors as paint panels, skylights, gutters.
-- House: walls (windows or plaster), pitched roof (roof_tiles), chimney; apartment
-  blocks: storeys of ~3 m, balconies as thin boxes.
+- House: facade(style="house", top=None), pitched roof (roof_tiles) with faces/quads,
+  chimneys(); apartment blocks: facade(style="modern"), balconies as thin boxes.
 - Church: nave with steep roof, tower with spire (box + pyramid faces or cylinder with
   radius_top), apse.
-- Palace, town hall, court, museum, station (historic, monumental): NOT the dense
-  "windows" grid. Count the window axes and storeys on the photos and choose the facade
-  that matches: windows_classic (tall windows, 4.8 m storeys, one every 4.2 m) or
-  windows_arched (round-arched, 5.5 m storeys, one every 4.6 m); rustication on the
-  ground storey, stone for towers and plinths; cornices and parapets as sweeps, a
-  portico of cylinders with a triangular pediment (face), corner pavilions and towers as
-  separate higher blocks with their own roofs, statues or quadrigas as simple shapes.
-  Storey heights follow the facade material (e.g. 3 storeys of 5.5 m = 16.5 m), so the
-  window rows sit where they are on the photos.
-- Facade materials: windows (modern offices/apartments), windows_house (houses),
-  windows_classic / windows_arched (historic), glass, plaster, stone, brick.
+- Palace, town hall, court, museum, station (historic, monumental): facade(style=
+  "classic" or "arched", storeys and bay counted on the photos, holes=courtyards),
+  mansard() or hipped roofs, parapet(mat="balustrade", statues=...) if the photos show
+  one; a portico of cylinders with a triangular pediment (face), corner pavilions and
+  towers as separate higher blocks with their own facade() and roofs, a quadriga or
+  statues as simple shapes, a dome with revolve().
+- Painted facade materials (only where real windows are not wanted): windows (modern),
+  windows_house, windows_classic, windows_arched; plain walls: plaster, stone, brick,
+  glass, metal_sheet, concrete.
 - Grandstand: rows of seats (sweep a stepped profile along the front), roof on columns.
 - Use offset_polygon for setbacks and upper storeys, sweep for cornices, roof edges and
   canopies, the X-Plane library (if listed) for lamps, fences, trees, vehicles, flags -
