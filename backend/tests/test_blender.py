@@ -6,9 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 import numpy as np
+import pytest
 from PIL import Image
 
 from xpsb import blender
