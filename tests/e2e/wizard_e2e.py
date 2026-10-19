@@ -166,7 +166,10 @@ with sync_playwright() as p:
     )
     page.get_by_test_id("gate-approve").click()
 
-    expect(page.get_by_test_id("plan-build")).to_be_visible(timeout=10000)
+    # The AI architect rebuilds the important objects first (live progress).
+    page.wait_for_timeout(1500)
+    page.screenshot(path=OUT / "08b-planning.png")
+    expect(page.get_by_test_id("plan-build")).to_be_visible(timeout=120000)
     expect(page.get_by_test_id("plan-confirmed")).to_contain_text("Gerüste")
     expect(page.get_by_test_id("plan-confirmed")).to_contain_text("3 × Tribünen")
     page.screenshot(path=OUT / "09-plan.png")
@@ -195,6 +198,10 @@ with sync_playwright() as p:
     # Quick controls: turn the main stand around and give it 6 rows; only it is rebuilt.
     page.get_by_test_id("preview-objects").get_by_role("button", name="Haupttribüne").click()
     expect(page.get_by_test_id("object-controls")).to_be_visible()
+    page.screenshot(path=OUT / "09c2-designed-object.png")
+    # Built automatically by the AI architect: back to the default script (free).
+    expect(page.get_by_test_id("design-reset")).to_be_visible()
+    page.get_by_test_id("design-reset").click()
     page.get_by_test_id("adjust-flip").click()
     expect(page.get_by_test_id("adjust-flip")).to_be_enabled(timeout=15000)
     page.get_by_test_id("adjust-rows").fill("6")
@@ -204,6 +211,8 @@ with sync_playwright() as p:
     page.screenshot(path=OUT / "09d-preview-adjusted.png")
     # The same for a building: roof shape, facade, ridge direction.
     page.get_by_test_id("preview-objects").get_by_role("button", name="Fahrerlager-Halle").click()
+    if page.get_by_test_id("design-reset").is_visible():
+        page.get_by_test_id("design-reset").click()
     expect(page.get_by_test_id("adjust-rows")).to_have_count(0)  # only for stands
     page.get_by_test_id("adjust-roof-shape").select_option("gabled")
     expect(page.get_by_test_id("adjust-wall")).to_be_enabled(timeout=15000)

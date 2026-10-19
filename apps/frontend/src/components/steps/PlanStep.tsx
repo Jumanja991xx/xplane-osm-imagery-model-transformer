@@ -13,6 +13,15 @@ export function PlanStep({ onBuild }: { onBuild: () => void }) {
   const backToList = async () => job && setJob(await api.reopen(job.id, "analyzed"));
   const [previewOpen, setPreviewOpen] = useState(false);
   const plan = job?.plan;
+  if (job?.state === "planning") {
+    return (
+      <div className="space-y-3">
+        <p className="text-sm font-medium">{t("plan.designing")}</p>
+        <p className="text-xs text-zinc-500">{t("plan.designing_hint")}</p>
+        <ProgressList runningState="planning" />
+      </div>
+    );
+  }
   if (!job || !plan) return null;
   const confirmed = plan.items.filter((i) => i.kind === "confirmed");
   const built = plan.items.filter((i) => i.kind !== "confirmed");

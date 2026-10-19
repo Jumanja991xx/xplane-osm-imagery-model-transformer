@@ -102,6 +102,7 @@ class ItemResult:
     message: str = ""
     triangles: int = 0
     has_mesh: bool = True  # False: only X-Plane library objects
+    designed: bool = False  # built from an own script of the AI architect
     # X-Plane library objects: path, x/y in metres from the anchor, heading, size
     library: list[dict] = field(default_factory=list)
 
@@ -234,6 +235,7 @@ def generate_one(
     library: Catalog | None = None,
 ) -> ItemResult:
     res = ItemResult(item.id, stem, str(item.category), item.name, _anchor(item), "ok")
+    res.designed = bool(item.script)
     for ext in ("png", "json", "obj"):
         (out_dir / f"{stem}.{ext}").unlink(missing_ok=True)
     try:

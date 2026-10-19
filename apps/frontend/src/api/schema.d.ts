@@ -665,6 +665,12 @@ export interface components {
              * @default true
              */
             research: boolean;
+            /**
+             * Ai Design
+             * @default important
+             * @enum {string}
+             */
+            ai_design: "important" | "all" | "off";
             /** @default medium */
             detail: components["schemas"]["DetailLevel"];
             /** Package Name */
@@ -976,7 +982,7 @@ export interface components {
          * JobState
          * @enum {string}
          */
-        JobState: "draft" | "clarified" | "analyzing" | "analyzed" | "planned" | "building" | "built" | "installing" | "installed" | "failed" | "cancelled";
+        JobState: "draft" | "clarified" | "analyzing" | "analyzed" | "planning" | "planned" | "building" | "built" | "installing" | "installed" | "failed" | "cancelled";
         /**
          * JobView
          * @description What the API returns: the job plus the approval currently waiting for the user.
@@ -1207,6 +1213,11 @@ export interface components {
              * @default true
              */
             has_mesh: boolean;
+            /**
+             * Designed
+             * @default false
+             */
+            designed: boolean;
             /** Library */
             library?: components["schemas"]["LibraryPlacement"][];
         };

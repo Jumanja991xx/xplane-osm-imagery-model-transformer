@@ -1866,6 +1866,16 @@
             "title": "Research",
             "default": true
           },
+          "ai_design": {
+            "type": "string",
+            "enum": [
+              "important",
+              "all",
+              "off"
+            ],
+            "title": "Ai Design",
+            "default": "important"
+          },
           "detail": {
             "$ref": "#/components/schemas/DetailLevel",
             "default": "medium"
@@ -2697,6 +2707,7 @@
           "clarified",
           "analyzing",
           "analyzed",
+          "planning",
           "planned",
           "building",
           "built",
@@ -3317,6 +3328,11 @@
             "type": "boolean",
             "title": "Has Mesh",
             "default": true
+          },
+          "designed": {
+            "type": "boolean",
+            "title": "Designed",
+            "default": false
           },
           "library": {
             "items": {

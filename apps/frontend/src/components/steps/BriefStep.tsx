@@ -52,6 +52,7 @@ export function BriefStep({ onSubmitted }: { onSubmitted: () => void }) {
         ai_cost_limit_usd: settings?.ai?.job_limit_usd ?? 5,
         ai_detect: true,
         research: true,
+        ai_design: "important",
         detail: "medium",
         package_name: defaultPackageName(),
         notes: "",
@@ -223,6 +224,22 @@ export function BriefStep({ onSubmitted }: { onSubmitted: () => void }) {
                 onChange={(on) => update({ ai_detect: on })}
               />
               <p className="pl-6 text-xs text-zinc-500">{t("brief.ai_detect_hint")}</p>
+            </div>
+            <div className="col-span-2 space-y-1">
+              <div className="text-xs font-semibold text-zinc-500 uppercase">{t("brief.ai_design")}</div>
+              {(["important", "all", "off"] as const).map((mode) => (
+                <label key={mode} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="ai_design"
+                    checked={(brief.ai_design ?? "important") === mode}
+                    onChange={() => update({ ai_design: mode })}
+                    data-testid={`ai-design-${mode}`}
+                  />
+                  {t(`brief.ai_design.${mode}`)}
+                </label>
+              ))}
+              <p className="text-xs text-zinc-500">{t("brief.ai_design_hint")}</p>
             </div>
           </div>
         )}

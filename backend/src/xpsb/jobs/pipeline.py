@@ -362,13 +362,16 @@ def library_packs(objects: list[PlanObject]) -> list[str]:
     return sorted({p.pack for o in objects for p in o.library if not p.default and p.pack})
 
 
-OBJECT_ITEM_KINDS = ("objects", "library", "library_packs")
+OBJECT_ITEM_KINDS = ("objects", "designed", "library", "library_packs")
 
 
 def object_items(objects: list[PlanObject]) -> list[PlanItem]:
     """Plan lines about the 3D objects (recomputed when single objects change)."""
     ok = [o for o in objects if o.status == "ok"]
     items = [PlanItem(kind="objects", label_key="plan.objects", count=sum(o.has_mesh for o in ok))]
+    designed = sum(o.designed for o in ok)
+    if designed:
+        items.append(PlanItem(kind="designed", label_key="plan.designed", count=designed))
     placed = sum(len(o.library) for o in ok)
     if placed:
         items.append(PlanItem(kind="library", label_key="plan.library", count=placed))

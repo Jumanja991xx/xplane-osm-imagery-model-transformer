@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from conftest import AUTH
+from conftest import AUTH, wait_for_state
 from fake_ai import speedway
 from PIL import Image
 from shapely.geometry import Polygon, shape
@@ -115,6 +115,7 @@ def test_search_finds_unmapped_grandstand_as_proposal(client, fake_ai):
         json={"hash": job["pending_gate"]["hash"]},
         headers=AUTH,
     ).json()
+    job = wait_for_state(client, job["id"], {"planned"})  # after the automatic design
     confirmed = {
         i["label_key"]: i["count"] for i in job["plan"]["items"] if i["kind"] == "confirmed"
     }

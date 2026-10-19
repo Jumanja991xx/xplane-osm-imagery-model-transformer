@@ -24,6 +24,7 @@ class JobState(StrEnum):
     CLARIFIED = "clarified"
     ANALYZING = "analyzing"
     ANALYZED = "analyzed"
+    PLANNING = "planning"  # the AI architect designs the important objects
     PLANNED = "planned"
     BUILDING = "building"
     BUILT = "built"
@@ -33,7 +34,12 @@ class JobState(StrEnum):
     CANCELLED = "cancelled"
 
 
-RUNNING_STATES = {JobState.ANALYZING, JobState.BUILDING, JobState.INSTALLING}
+RUNNING_STATES = {
+    JobState.ANALYZING,
+    JobState.PLANNING,
+    JobState.BUILDING,
+    JobState.INSTALLING,
+}
 
 GateId = Literal["A", "B", "C", "D"]
 
@@ -76,6 +82,8 @@ class Brief(BaseModel):
     ai_detect: bool = True
     # Look up facts and photos of important objects (Wikidata, Wikipedia, Commons, ...).
     research: bool = True
+    # Which objects the AI architect builds individually when the plan is made.
+    ai_design: Literal["important", "all", "off"] = "important"
     detail: DetailLevel = DetailLevel.MEDIUM
     package_name: str = Field(pattern=PACKAGE_NAME_PATTERN)
     notes: str = Field(default="", max_length=2000)
@@ -188,6 +196,7 @@ class PlanObject(BaseModel):
     message: str = ""
     triangles: int = 0
     has_mesh: bool = True
+    designed: bool = False  # own build script by the AI architect
     library: list[LibraryPlacement] = Field(default_factory=list)
 
 

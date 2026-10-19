@@ -13,7 +13,7 @@ from PIL import Image
 from pydantic import BaseModel
 from shapely.geometry import Polygon
 
-from xpsb import photos
+from xpsb import photos, research
 from xpsb.ai import analyze as ai
 from xpsb.ai import detect
 from xpsb.ai.usage import UsageLedger
@@ -88,10 +88,22 @@ class DesignEstimate(BaseModel):
     budget_usd: float  # what is left of the job and monthly limits
 
 
+AUTO_DESIGN_REQUEST = (
+    "Build this object so that it looks like the real one. Use everything you are given: "
+    "the research facts, the photos, the aerial image and the OSM data. It must be "
+    "recognisable from the air and from the ground: right shape and proportions, height, "
+    "roof form, facade materials and colours, and the characteristic details."
+)
+DESIGN_PARALLEL = 3
+MAX_AUTO_DESIGN = 40
+IMPORTANT_DESIGN = 12
+
+
 # On failure a job falls back to the last stable state so the user can fix the
 # cause (e.g. set the DSFTool path) and approve again.
 ROLLBACK = {
     JobState.ANALYZING: JobState.CLARIFIED,
+    JobState.PLANNING: JobState.ANALYZED,
     JobState.BUILDING: JobState.PLANNED,
     JobState.INSTALLING: JobState.BUILT,
 }
@@ -192,6 +204,7 @@ class JobManager:
             xplane_running=self._xplane_running() if job.state is JobState.BUILT else None,
             job_dir=self.job_dir(job.id),
             has_mapillary=bool(self._secrets.get(photos.MAPILLARY_ACCOUNT)),
+            **self._design_choice(job),
         )
 
     def view(self, job_id: str) -> JobView:
@@ -706,9 +719,6 @@ class JobManager:
     ) -> tuple[Job, str, float]:
         """Runs only after the user confirmed the estimate (max_usd is what they saw).
         Returns the job, the architect's summary and what it cost."""
-        from xpsb.ai import architect
-        from xpsb.build import assemble
-
         job, item = self._design_ready(job_id, item_id)
         if job_id in self._busy:
             raise JobConflict("error.job_running")
@@ -716,8 +726,46 @@ class JobManager:
         budget = min(max_usd, self._similar_budget(job))
         if budget <= 0:
             raise JobConflict("error.ai_budget_exhausted")
+        log = self.events(job_id)
+
+        def on_step(key: str, params: dict) -> None:
+            log.publish_threadsafe(
+                type="progress", stage="design", key=key, params={**params, "item": item.id}
+            )
+
+        self._busy.add(job_id)
+        try:
+            result = await asyncio.to_thread(
+                self._design_call, job, item, request, budget, job.plan.detail, on_step
+            )
+        finally:
+            self._busy.discard(job_id)
+
+        self._add_design_cost(job, result)
+        if result.script is None:
+            self._save(job)
+            raise JobConflict(
+                result.error_key or "error.architect_failed", detail=result.error_detail or ""
+            )
+        item.script = result.script
+        item.script_request = (
+            f"{item.script_request} | {request}" if item.script_request else request
+        )[-2000:]
+        item.edited = True
+        self.regenerate_object(job, item)
+        self._save(job)
+        return job, result.summary, result.info.cost_usd
+
+    def _design_call(
+        self, job: Job, item: SceneItem, request: str, budget: float, detail: str, on_step
+    ):
+        """One run of the AI architect for one object (worker thread)."""
+        from xpsb.ai import architect
+        from xpsb.build import assemble
+
+        assert job.brief is not None and job.analysis is not None
         aerial = None
-        image_path = self.imagery_file(job_id)
+        image_path = self.imagery_file(job.id)
         if image_path is not None and job.analysis.imagery is not None:
             with Image.open(image_path) as img:
                 try:
@@ -732,54 +780,129 @@ class JobManager:
             transport=self._ai_transport_factory(self._secrets.get(ANTHROPIC_ACCOUNT)),
             on_cost=self.ledger.add,
         )
-        detail = job.plan.detail
         inputs = assemble._script_inputs(item, job.analysis.items, detail)
         max_tris = assemble.DETAIL.get(detail, assemble.DETAIL["medium"])[0]
         label = f"{item.name or ''} ({item.category})".strip()
-        log = self.events(job_id)
+        return architect.design(
+            request=request,
+            current_script=self._current_script(item),
+            inputs=inputs,
+            max_triangles=max_tris,
+            aerial_png=aerial,
+            cfg=cfg,
+            object_label=label,
+            on_step=on_step,
+            photos=self._photos_for_ai(job, item),
+            library=self.library(),
+            research=item.research.facts if item.research else None,
+        )
 
-        def on_step(key: str, params: dict) -> None:
+    def _design_choice(self, job: Job) -> dict:
+        """Which objects the AI architect builds at approval B, within the cost limit."""
+        from xpsb.ai import architect
+
+        b = job.brief
+        if (
+            job.state is not JobState.ANALYZED
+            or job.analysis is None
+            or b is None
+            or not b.use_ai
+            or b.ai_design == "off"
+            or not self._secrets.get(ANTHROPIC_ACCOUNT)
+        ):
+            return {}
+        items = job.analysis.items
+        buildable = [
+            it
+            for it in items
+            if it.kind == "object"
+            and it.included
+            and not it.proposal
+            and not it.script  # the user's own design stays
+            and str(it.category) != "barriers"
+        ]
+        if b.ai_design == "important":
+            wanted = {it.id for it in research.important(items, limit=IMPORTANT_DESIGN)}
+            candidates = [it for it in buildable if it.id in wanted]
+            candidates.sort(key=research.score, reverse=True)
+        else:
+            candidates = sorted(buildable, key=research.score, reverse=True)[:MAX_AUTO_DESIGN]
+        budget = self._similar_budget(job)
+        library_lines = len(self.library().offer())
+        chosen, total, cut = [], 0.0, 0
+        for it in candidates:
+            typical, most = architect.cost_estimate(
+                b.ai_model, len(self._current_script(it)), len(it.photos), library_lines
+            )
+            if total + most > budget:
+                cut += 1
+                continue
+            total += most
+            name = it.name or str(it.category)
+            chosen.append({"id": it.id, "name": name, "typical": typical, "max": most})
+        return {"design": tuple(chosen), "design_cut": cut}
+
+    def _design_many(self, job: Job, targets: tuple) -> None:
+        """Worker thread: the AI architect builds the chosen objects, a few at a time."""
+        from concurrent.futures import ThreadPoolExecutor
+
+        assert job.brief is not None
+        log = self.events(job.id)
+        notes = job.brief.notes
+        request = AUTO_DESIGN_REQUEST + (
+            f"\nNotes from the user for the whole area: {notes}" if notes else ""
+        )
+        detail = job.brief.detail.value
+        total = len(targets)
+        done = designed = 0
+        spent = 0.0
+
+        def progress(key: str, value: float, **params) -> None:
             log.publish_threadsafe(
-                type="progress", stage="design", key=key, params={**params, "item": item.id}
+                type="progress", stage="design", progress=value, key=key, params=params
             )
 
-        self._busy.add(job_id)
-        try:
-            result = await asyncio.to_thread(
-                architect.design,
-                request=request,
-                current_script=self._current_script(item),
-                inputs=inputs,
-                max_triangles=max_tris,
-                aerial_png=aerial,
-                cfg=cfg,
-                object_label=label,
-                on_step=on_step,
-                photos=self._photos_for_ai(job, item),
-                library=self.library(),
-            )
-        finally:
-            self._busy.discard(job_id)
+        def one(t: dict):
+            if job.state is not JobState.PLANNING:  # cancelled meanwhile
+                return None
+            item = self._item(job, t["id"])
+            return item, self._design_call(job, item, request, t["max"], detail, lambda k, p: None)
 
+        progress("stage.design", 0.0, done=0, total=total, name="")
+        with ThreadPoolExecutor(max_workers=DESIGN_PARALLEL) as pool:
+            futures = [(pool.submit(one, t), t) for t in targets]
+            for fut, t in futures:
+                out = fut.result()
+                done += 1
+                if out is not None:
+                    item, result = out
+                    self._add_design_cost(job, result)
+                    spent += result.info.cost_usd
+                    if result.script is not None:
+                        item.script = result.script
+                        item.script_request = "auto"
+                        designed += 1
+                progress("stage.design", done / total, done=done, total=total, name=t["name"])
+        progress("stage.design_done", 1.0, designed=designed, total=total, cost_usd=round(spent, 3))
+
+    async def _do_plan(self, job: Job, targets: tuple) -> None:
+        await asyncio.to_thread(self._design_many, job, targets)
+        if job.state is not JobState.PLANNING:
+            return
+        self.events(job.id).publish(type="progress", stage="plan", progress=0.0, key="stage.plan")
+        job.plan = await asyncio.to_thread(
+            pipeline.make_plan, job, self.job_dir(job.id), self.library()
+        )
+        self._set_state(job, JobState.PLANNED)
+
+    def _add_design_cost(self, job: Job, result) -> None:
+        assert job.brief is not None and job.analysis is not None
         run = job.analysis.ai or AiRunInfo(model=job.brief.ai_model)
         run.cost_usd = round(run.cost_usd + result.info.cost_usd, 6)
         for m in result.info.models_used:
             if m not in run.models_used:
                 run.models_used.append(m)
         job.analysis.ai = run
-        if result.script is None:
-            self._save(job)
-            raise JobConflict(
-                result.error_key or "error.architect_failed", detail=result.error_detail or ""
-            )
-        item.script = result.script
-        item.script_request = (
-            f"{item.script_request} | {request}" if item.script_request else request
-        )[-2000:]
-        item.edited = True
-        self.regenerate_object(job, item)
-        self._save(job)
-        return job, result.summary, result.info.cost_usd
 
     def _photos_for_ai(self, job: Job, item: SceneItem) -> list[tuple[str, bytes]]:
         out = []
@@ -927,8 +1050,12 @@ class JobManager:
             self._set_state(job, JobState.ANALYZING)
             self._start(job, self._do_analysis(job))
         elif gate == "B":
-            job.plan = pipeline.make_plan(job, self.job_dir(job.id), self.library())
-            self._set_state(job, JobState.PLANNED)
+            if ctx.design:
+                self._set_state(job, JobState.PLANNING)
+                self._start(job, self._do_plan(job, ctx.design))
+            else:
+                job.plan = pipeline.make_plan(job, self.job_dir(job.id), self.library())
+                self._set_state(job, JobState.PLANNED)
         elif gate == "C":
             assert ctx.dsftool is not None
             self._set_state(job, JobState.BUILDING)

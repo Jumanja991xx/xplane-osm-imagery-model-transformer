@@ -18,6 +18,7 @@ const STEP_FOR_STATE: Record<JobState, number> = {
   clarified: 1,
   analyzing: 2,
   analyzed: 2,
+  planning: 3,
   planned: 3,
   building: 3,
   built: 4,
@@ -27,7 +28,7 @@ const STEP_FOR_STATE: Record<JobState, number> = {
   cancelled: 4,
 };
 
-const RUNNING: JobState[] = ["analyzing", "building", "installing"];
+const RUNNING: JobState[] = ["analyzing", "planning", "building", "installing"];
 
 export function Wizard() {
   const { t } = useT();
@@ -119,7 +120,16 @@ export function Wizard() {
             </div>
           </div>
         )}
-        {step === 2 && <AnalysisStep onConfirm={openGate} />}
+        {step === 2 && (
+          <AnalysisStep
+            onConfirm={openGate}
+            onReanalyze={async () => {
+              if (!job) return;
+              setJob(await api.reopen(job.id, "clarified"));
+              setGateOpen(true);
+            }}
+          />
+        )}
         {step === 3 && <PlanStep onBuild={openGate} />}
         {step === 4 && <InstallStep onInstall={openGate} />}
       </div>

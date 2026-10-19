@@ -51,7 +51,13 @@ function questionText(t: Translate, q: Question): string {
   return q.text ?? t(q.text_key ?? "", q.params);
 }
 
-export function AnalysisStep({ onConfirm }: { onConfirm: () => void }) {
+export function AnalysisStep({
+  onConfirm,
+  onReanalyze,
+}: {
+  onConfirm: () => void;
+  onReanalyze: () => Promise<void>;
+}) {
   const { t } = useT();
   const { job, setJob } = useApp();
   const [error, setError] = useState<string | null>(null);
@@ -145,6 +151,14 @@ export function AnalysisStep({ onConfirm }: { onConfirm: () => void }) {
       {error && <Alert kind="error">{error}</Alert>}
       {editable && (
         <div className="sticky -bottom-4 z-10 -mx-4 flex justify-end gap-2 border-t border-zinc-200 bg-zinc-50/95 px-4 py-2 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95">
+          <Button
+            variant="ghost"
+            onClick={() => onReanalyze().catch((e) => setError(e instanceof ApiError ? t(e.key, e.params) : String(e)))}
+            data-testid="reanalyze"
+            title={t("analysis.reanalyze_hint")}
+          >
+            🔄 {t("analysis.reanalyze")}
+          </Button>
           <Button variant="primary" onClick={onConfirm} data-testid="analysis-confirm">
             {t("analysis.confirm")}
           </Button>

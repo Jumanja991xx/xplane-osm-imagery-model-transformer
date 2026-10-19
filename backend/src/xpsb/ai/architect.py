@@ -133,6 +133,21 @@ RULES:
 - Write the COMPLETE script every time (it replaces the old one).
 - The summary is for the user, in {LANG_NAMES.get(language, "English")}, short, no code.
 
+HOW TO BUILD COMMON THINGS (adapt to the facts and photos):
+- Stadium/arena: a bowl of stands along the outline (sweep along the closed outline,
+  closed_path=True, a stepped profile going inwards = rows of seats), an outer facade,
+  the roof as a ring over the stands or a full roof as on the photos. The pitch itself is
+  ground, not your job. Big stadiums: 2 tiers, 25-45 m high.
+- Hall/warehouse/sports hall: walls (metal_sheet or the photo's facade), flat or low
+  pitched roof (roof_metal), gates and doors as paint panels, skylights, gutters.
+- House: walls (windows or plaster), pitched roof (roof_tiles), chimney; apartment
+  blocks: storeys of ~3 m, balconies as thin boxes.
+- Church: nave with steep roof, tower with spire (box + pyramid faces or cylinder with
+  radius_top), apse.
+- Grandstand: rows of seats (sweep a stepped profile along the front), roof on columns.
+- Use offset_polygon for setbacks and upper storeys, sweep for cornices, roof edges and
+  canopies, the X-Plane library (if listed) for lamps, fences, trees, vehicles, flags.
+
 TOOLS:
 {tool_reference()}
 """
@@ -187,6 +202,7 @@ def design(
     on_step: Callable[[str, dict], None] = lambda key, params: None,
     photos: list[tuple[str, bytes]] | None = None,
     library: Catalog | None = None,
+    research: str | None = None,
 ) -> DesignResult:
     result = DesignResult(info=AiRunInfo(model=cfg.model))
     budget = Budget(cfg.budget_usd, result.info, cfg.on_cost)
@@ -198,7 +214,14 @@ def design(
         f"path = {json.dumps(inputs.path)}\n"
         f"Triangle budget: {max_triangles}\n"
     )
-    offer = library.offer(request) if library else []
+    if research:
+        facts += (
+            "What is known about the real object (Wikidata, Wikipedia, OSM; may be "
+            "incomplete - photos and aerial image win where they disagree):\n"
+            + research.strip()
+            + "\n"
+        )
+    offer = library.offer(request + " " + (research or "")) if library else []
     lib_set = frozenset(library.objects) if library else None
     sizes = {o.path: o.size for o in offer if o.size}
     if offer:

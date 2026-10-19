@@ -294,7 +294,9 @@ def test_analysis_with_ai_questions_and_editor(client, fake_ai, app_ctx):
     job = client.post(
         f"/api/jobs/{jid}/gates/B/approve", json={"hash": job["pending_gate"]["hash"]}, headers=AUTH
     ).json()
-    assert job["state"] == "planned"
+    assert job["state"] == "planning"  # the AI architect builds the important objects first
+    job = wait_for_state(client, jid, {"planned", "analyzed"})
+    assert job["state"] == "planned", job["error"]
     confirmed = {
         i["label_key"]: i["count"] for i in job["plan"]["items"] if i["kind"] == "confirmed"
     }
@@ -366,7 +368,9 @@ def test_rating_knows_the_area(client, fake_ai):
 # ---- AI architect ------------------------------------------------------------------
 
 
-def planned(client, brief=ALL) -> dict:
+def planned(client, brief=None) -> dict:
+    # The automatic design has its own test; here the plan is made right away.
+    brief = {**ALL, "ai_design": "off", **(brief or {})}
     job = analyze(client, setup(client, brief=brief))
     # Open questions block approval B: answer them.
     answers = {q["id"]: "9" for q in job["analysis"]["questions"] if not q.get("answer")}
@@ -463,7 +467,7 @@ def test_photos_upload_search_import_and_use(client, fake_ai, app_ctx):
 
     from PIL import Image
 
-    job = planned(client, brief={**ALL, "research": False})
+    job = planned(client, brief={"research": False})
     jid = job["id"]
     obj = next(o for o in job["plan"]["objects"] if o["category"] == "buildings")
     item_id = obj["item_id"]
@@ -557,3 +561,50 @@ def test_research_can_be_switched_off(client, fake_ai):
     assert "gate.a.research" not in keys(job["pending_gate"]["items"])
     job = analyze(client, job)
     assert not any(i.get("research") for i in job["analysis"]["items"])
+
+
+# ---- automatic design when the plan is made ----------------------------------------
+
+
+def test_architect_builds_the_important_objects_automatically(client, fake_ai):
+    job = analyze(client, setup(client))  # ai_design defaults to "important"
+    gate = client.get(f"/api/jobs/{job['id']}", headers=AUTH).json()["pending_gate"]
+    answers = {q["id"]: "9" for q in job["analysis"]["questions"]}
+    if answers:
+        client.post(f"/api/jobs/{job['id']}/answers", json=answers, headers=AUTH)
+        gate = client.get(f"/api/jobs/{job['id']}", headers=AUTH).json()["pending_gate"]
+    by_key = {i["key"]: i for i in gate["items"]}
+    design = by_key["gate.b.design"]["params"]
+    assert design["count"] >= 2 and "Haupttribüne" in design["names"]
+    cost = by_key["gate.b.design_cost"]["params"]
+    assert 0 < cost["estimate_usd"] <= cost["max_usd"]
+
+    fake_ai.calls.clear()
+    r = client.post(
+        f"/api/jobs/{job['id']}/gates/B/approve", json={"hash": gate["hash"]}, headers=AUTH
+    )
+    assert r.status_code == 200 and r.json()["state"] == "planning"
+    job = wait_for_state(client, job["id"], {"planned", "analyzed"})
+    assert job["state"] == "planned", job["error"]
+    designed = [i for i in job["analysis"]["items"] if i.get("script")]
+    assert len(designed) == design["count"]
+    assert all(i["script_request"] == "auto" for i in designed)
+    # the research facts and the photos went to the architect
+    first = "".join(b.get("text", "") for b in fake_ai.calls[0]["content"])
+    assert "What is known about the real object" in first
+    assert "plan.designed" in {i["label_key"] for i in job["plan"]["items"]}
+    assert sum(o["designed"] for o in job["plan"]["objects"]) == design["count"]
+
+
+def test_no_automatic_design_without_budget_or_when_off(client, fake_ai):
+    job = analyze(client, setup(client, brief={**ALL, "ai_cost_limit_usd": 0.05}))
+    answers = {q["id"]: "9" for q in job["analysis"]["questions"]}
+    if answers:
+        client.post(f"/api/jobs/{job['id']}/answers", json=answers, headers=AUTH)
+    gate = client.get(f"/api/jobs/{job['id']}", headers=AUTH).json()["pending_gate"]
+    keys_ = keys(gate["items"])
+    assert "gate.b.design" not in keys_ and "gate.b.design_cut" in keys_
+    r = client.post(
+        f"/api/jobs/{job['id']}/gates/B/approve", json={"hash": gate["hash"]}, headers=AUTH
+    )
+    assert r.json()["state"] == "planned"

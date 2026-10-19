@@ -38,6 +38,9 @@ class GateContext:
     job_dir: Path
     ai_month_spent: float = 0.0
     has_mapillary: bool = False
+    # Objects the AI architect would build at approval B: {id, name, typical, max}
+    design: tuple = ()
+    design_cut: int = 0  # left out because of the cost limit
 
 
 def content_hash(payload: dict) -> str:
@@ -234,6 +237,38 @@ def _gate_b(job: Job, ctx: GateContext):
         )
     if not included:
         items.append(GateItem(kind="warning", key="gate.b.nothing_included"))
+    if ctx.design:
+        b = job.brief
+        assert b is not None
+        names = [d["name"] for d in ctx.design]
+        items.append(
+            GateItem(
+                kind="action",
+                key="gate.b.design",
+                params={
+                    "count": len(ctx.design),
+                    "names": ", ".join(names[:10]) + (" …" if len(names) > 10 else ""),
+                },
+            )
+        )
+        items.append(
+            GateItem(kind="action", key="gate.b.design_upload", params={"model": b.ai_model})
+        )
+        items.append(
+            GateItem(
+                kind="cost",
+                key="gate.b.design_cost",
+                params={
+                    "estimate_usd": round(sum(d["typical"] for d in ctx.design), 2),
+                    "max_usd": round(sum(d["max"] for d in ctx.design), 2),
+                    "model": b.ai_model,
+                },
+            )
+        )
+    if ctx.design_cut:
+        items.append(
+            GateItem(kind="warning", key="gate.b.design_cut", params={"count": ctx.design_cut})
+        )
     items.append(GateItem(kind="action", key="gate.b.make_plan"))
     items.append(
         GateItem(
@@ -242,7 +277,11 @@ def _gate_b(job: Job, ctx: GateContext):
             params={"path": str(ctx.job_dir / "scene.geojson")},
         )
     )
-    payload = {"analysis": a.model_dump(mode="json"), "answers": job.answers}
+    payload = {
+        "analysis": a.model_dump(mode="json"),
+        "answers": job.answers,
+        "design": [(d["id"], round(d["max"], 4)) for d in ctx.design],
+    }
     return items, bool(open_questions) or not included, payload
 
 
