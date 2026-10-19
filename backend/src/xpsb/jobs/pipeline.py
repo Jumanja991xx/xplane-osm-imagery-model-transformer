@@ -618,17 +618,23 @@ def build_package(
     text_file = result.dsf_text
     meshes = [o for o in result.objects if o.status == "ok" and o.has_mesh]
     shaded = sum(o.shaded for o in meshes)
+    detailed = sum(o.detailed for o in meshes)
     # The 3D view of the result shows the finished textures (same atlas layout as
     # the preview, now with Blender's shading).
     preview_dir = job_dir / "preview"
     for o in meshes:
         if o.shaded and (preview_dir / f"{o.stem}.png").is_file():
-            shutil.copyfile(package / "objects" / f"{o.stem}.png", preview_dir / f"{o.stem}.png")
+            for suffix in (".png", "_nml.png"):
+                src = package / "objects" / f"{o.stem}{suffix}"
+                if src.is_file():
+                    shutil.copyfile(src, preview_dir / f"{o.stem}{suffix}")
     readme = _readme(plan, job)
     if shaded:
         readme += (
             f"\nSoft shading (ambient occlusion) of {shaded} of {len(meshes)} objects "
-            f"baked with Blender {blender_version or ''}.\n"
+            f"baked with Blender {blender_version or ''}"
+            + (f"; fine facade detail baked into {detailed} of them" if detailed else "")
+            + ".\n"
         )
     (package / "README.txt").write_text(readme, encoding="utf-8")
 
@@ -649,6 +655,7 @@ def build_package(
         dsftool_version=version,
         blender=blender_version if blender_exe else None,
         shaded=shaded,
+        detailed=detailed,
         shaded_stems=[o.stem for o in meshes if o.shaded],
         meshes=len(meshes),
     )

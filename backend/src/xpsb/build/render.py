@@ -95,7 +95,7 @@ def render(
 
     boxes = _placement_boxes(mesh, sizes or {})
     pts = np.array(
-        [p for patch in mesh.patches for p in patch.positions]
+        [p for patch in mesh.patches if patch.lod != "bake" for p in patch.positions]
         + [c for corners, _ in boxes for c in corners.tolist()],
         dtype=np.float64,
     )

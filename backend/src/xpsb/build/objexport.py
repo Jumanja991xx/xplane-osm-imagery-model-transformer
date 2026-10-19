@@ -67,6 +67,8 @@ def to_obj8(
     # (lod, anim index or -1, frame) -> indices
     parts: dict[tuple[str, int, int], list[int]] = {}
     for patch, uvs in zip(mesh.patches, baked.uvs, strict=True):
+        if patch.lod == "bake":  # only the source of Blender's detail bake
+            continue
         lod = patch.lod if patch.lod in ("near", "far") else "all"
         a, f = patch.anim if patch.anim is not None else (-1, 0)
         indices = parts.setdefault((lod, a, f), [])
@@ -128,7 +130,7 @@ def to_preview(mesh: Mesh, baked: BakedMesh) -> dict:
     uvs: list[float] = []
     index: list[int] = []
     for patch, puv in zip(mesh.patches, baked.uvs, strict=True):
-        if patch.lod == "far":  # the preview shows the close-up version
+        if patch.lod in ("far", "bake"):  # the preview shows the close-up version
             continue
         if patch.anim is not None and patch.anim[1] != 0:  # first frame of animations
             continue

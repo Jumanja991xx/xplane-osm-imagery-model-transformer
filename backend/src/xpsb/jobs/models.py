@@ -201,6 +201,7 @@ class PlanObject(BaseModel):
     lights: int = 0  # X-Plane lights (floodlights, street lamps)
     photo_textures: list[str] = Field(default_factory=list)  # photos painted onto it
     shaded: bool = False  # soft shading baked in by Blender (package build only)
+    detailed: bool = False  # fine detail baked into the normal map by Blender
     library: list[LibraryPlacement] = Field(default_factory=list)
 
 
@@ -227,6 +228,7 @@ class BuildResult(BaseModel):
     dsftool_version: str
     blender: str | None = None  # Blender version used for the soft shading
     shaded: int = 0  # objects Blender shaded
+    detailed: int = 0  # of them with fine facade detail baked into the normal map
     shaded_stems: list[str] = Field(default_factory=list)  # their file names (xpsb_obj_003)
     meshes: int = 0  # objects with an own 3D model
 

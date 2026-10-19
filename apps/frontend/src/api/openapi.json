@@ -2275,6 +2275,11 @@
             "title": "Shaded",
             "default": 0
           },
+          "detailed": {
+            "type": "integer",
+            "title": "Detailed",
+            "default": 0
+          },
           "shaded_stems": {
             "items": {
               "type": "string"
@@ -3890,6 +3895,11 @@
           "shaded": {
             "type": "boolean",
             "title": "Shaded",
+            "default": false
+          },
+          "detailed": {
+            "type": "boolean",
+            "title": "Detailed",
             "default": false
           },
           "library": {

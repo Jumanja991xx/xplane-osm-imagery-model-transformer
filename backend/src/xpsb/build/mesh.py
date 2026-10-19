@@ -46,8 +46,10 @@ class Patch:
     uv_m: list[Vec2] = field(default_factory=list)
     tris: list[tuple[int, int, int]] = field(default_factory=list)
     two_sided: bool = False
-    # Detail level: "all", "near" (only close up: real windows, small parts) or
-    # "far" (the cheap stand-in shown from further away instead of the near parts).
+    # Detail level: "all", "near" (only close up: real windows, small parts),
+    # "far" (the cheap stand-in shown from further away instead of the near parts)
+    # or "bake": fine detail never exported - Blender bakes its relief and shading
+    # into the textures of the parts around it (high-to-low).
     lod: str = "all"
     # Night: "window" lights the glass of this patch (a lit room behind it),
     # "lamp" makes the whole patch shine; None: decided by the material.
@@ -86,6 +88,7 @@ class Placement:
 
 MAX_PLACEMENTS = 300
 MAX_LIGHTS = 2000
+MAX_BAKE_TRIANGLES = 400_000  # fine detail only for baking (not part of the budget)
 
 
 @dataclass
@@ -130,7 +133,12 @@ class Mesh:
 
     @property
     def triangle_count(self) -> int:
-        return sum(p.triangle_count for p in self.patches)
+        """Triangles X-Plane draws (fine detail for baking does not count)."""
+        return sum(p.triangle_count for p in self.patches if p.lod != "bake")
+
+    @property
+    def bake_triangle_count(self) -> int:
+        return sum(p.triangle_count for p in self.patches if p.lod == "bake")
 
     def add(self, patch: Patch) -> None:
         if not patch.tris:
@@ -138,6 +146,10 @@ class Mesh:
         for p in patch.positions:
             if not all(math.isfinite(c) for c in p):
                 raise GeometryError("geometry contains NaN/inf coordinates")
+        if patch.lod == "bake":
+            if self.bake_triangle_count + patch.triangle_count <= MAX_BAKE_TRIANGLES:
+                self.patches.append(patch)
+            return  # beyond the limit fine detail is simply left out
         if self.triangle_count + patch.triangle_count > self.max_triangles:
             raise GeometryError(
                 f"triangle budget exceeded ({self.max_triangles}); use fewer segments or parts"
@@ -145,7 +157,7 @@ class Mesh:
         self.patches.append(patch)
 
     def bounds(self) -> tuple[Vec3, Vec3]:
-        pts = [p for patch in self.patches for p in patch.positions]
+        pts = [p for patch in self.patches if patch.lod != "bake" for p in patch.positions]
         if not pts:
             raise GeometryError("the script produced no geometry")
         return (

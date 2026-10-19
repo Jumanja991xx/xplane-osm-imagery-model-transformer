@@ -837,6 +837,11 @@ export interface components {
              * @default 0
              */
             shaded: number;
+            /**
+             * Detailed
+             * @default 0
+             */
+            detailed: number;
             /** Shaded Stems */
             shaded_stems?: string[];
             /**
@@ -1431,6 +1436,11 @@ export interface components {
              * @default false
              */
             shaded: boolean;
+            /**
+             * Detailed
+             * @default false
+             */
+            detailed: boolean;
             /** Library */
             library?: components["schemas"]["LibraryPlacement"][];
         };

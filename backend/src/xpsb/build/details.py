@@ -18,6 +18,7 @@ from shapely import constrained_delaunay_triangles
 from shapely.geometry import Point, Polygon
 from shapely.geometry.polygon import orient
 
+from xpsb.build import ornaments
 from xpsb.build.materials import lit_window
 from xpsb.build.mesh import (
     GeometryError,
@@ -147,6 +148,8 @@ class Facade:
         self.trim_sides = Patch("stone", trim_color, lod="near")
         for p in (self.reveals, self.panes, self.panes_lit, self.doors, self.trim, self.trim_sides):
             p.shared_uv = True
+        # Fine detail for Blender to bake into the walls (never drawn itself).
+        self.ornaments = Patch("stone", trim_color, lod="bake")
 
     def wall_band(self, origin, d, n, length, zb, zt, holes, mat, u_off):
         """Wall from zb to zt along one edge, with window holes (s, z outlines)."""
@@ -174,8 +177,20 @@ class Facade:
             patch.tris.append((ids[0], ids[1], ids[2]) if area2 > 0 else (ids[0], ids[2], ids[1]))
         self.mesh.add(patch)
 
-    def opening(self, origin, d, n, outline: list[Vec2], depth: float, door: bool = False):
-        """Reveals into the wall and the pane (or door) at the back of one opening."""
+    def opening(
+        self,
+        origin,
+        d,
+        n,
+        outline: list[Vec2],
+        depth: float,
+        door: bool = False,
+        ornament: str | None = None,
+    ):
+        """Reveals into the wall and the pane (or door) at the back of one opening;
+        `ornament` adds fine surround detail for the bake (see ornaments.window)."""
+        if ornament and not door:
+            ornaments.window(self.ornaments, origin, d, n, outline, ornament)
 
         def at(s: float, z: float, back: float) -> Vec3:
             return (origin[0] + d[0] * s - n[0] * back, origin[1] + d[1] * s - n[1] * back, z)
@@ -259,6 +274,7 @@ class Facade:
             self.doors,
             self.trim,
             self.trim_sides,
+            self.ornaments,
         ):
             self.mesh.add(patch)
 
@@ -451,7 +467,7 @@ def facade(
                         else:
                             out = _outline(sc - ww / 2, zf + sill, ww, win_h, st.arched)
                         (lower if zf < base_top - 1e-6 else upper).append(out)
-                        f.opening(origin, d, n, out, st.depth, is_door)
+                        f.opening(origin, d, n, out, st.depth, is_door, _ornament(st, k, n_st))
             if base_top > z0:
                 f.wall_band(origin, d, n, length, z0, base_top, lower, st.base, u_off)
                 f.wall_band(origin, d, n, length, base_top, z1, upper, wall, u_off)
@@ -461,6 +477,10 @@ def facade(
                 for j in range(1, nb):
                     f.pilaster(origin, d, n, j * bw, base_top, z1 - (0.65 if st.cornices else 0))
             u_off += length
+    if st.cornices:  # dentils under the main cornice (fine detail for the bake)
+        for ring in rings:
+            for origin, d, n, length in _edges(ring):
+                ornaments.dentils(f.ornaments, origin, d, n, length, z1 - 0.65)
     f.finish()
     if st.cornices:
         for ring in rings:
@@ -481,6 +501,16 @@ PAINTED_GRID = {
     "windows_arched": (4.6, 5.5),
     "windows_house": (3.6, 2.8),
 }
+
+
+def _ornament(st: FacadeStyle, storey: int, storeys: int) -> str:
+    """Which window surround a style shows on which storey (piano nobile = the
+    first floor above a rusticated base gets pediments in classic facades)."""
+    if not st.cornices:
+        return "frame" if st.depth >= 0.15 else "plain"
+    if storey == 1 and storeys >= 3 and not st.arched:
+        return "pediment"
+    return "keystone"
 
 
 def _painted_walls(mesh: Mesh, rings, z0: float, z1: float, mat: str, color, lod: str) -> None:

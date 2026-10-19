@@ -567,7 +567,7 @@ export const de = {
   "gate.c.no_blender": "Tipp: Mit Blender (kostenlos, blender.org) bekämen die Objekte weiche Schatten in Ecken und unter Gesimsen. Optional – geht auch ohne.",
   "stage.write_blender": "Blender backt weiche Schatten ein: Objekt {done} von {total} ({name}) …",
   "progress.hint.write_blender": "Pro Objekt meist 5–60 Sekunden, große Stadien länger; nach 3 Minuten wird ein Objekt ohne Schatten übernommen.",
-  "install.blender_done": "🎨 Blender {version}: {shaded} von {total} Objekten mit weichen Schatten veredelt (steht auch in der README des Pakets).",
+  "install.blender_done": "🎨 Blender {version}: {shaded} von {total} Objekten mit weichen Schatten veredelt (steht auch in der README des Pakets). Davon {detailed} mit eingebackenen Fassadendetails (Fensterrahmen, Verdachungen, Zahnschnitt).",
   "install.blender_failed": "Blender {version} war eingeschaltet, hat aber kein Objekt schattiert – die Objekte sind trotzdem fertig, nur ohne weiche Schatten.",
   "install.blender_none": "Ohne Blender gebaut (keine weichen Schatten eingebacken – optional, siehe Einstellungen).",
   "preview.blender_shaded": "Mit Blender veredelt (weiche Schatten eingebacken) – so steht es im fertigen Paket.",

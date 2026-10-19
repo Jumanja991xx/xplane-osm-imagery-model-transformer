@@ -30,6 +30,8 @@ OBJECT_TIMEOUT_S = 240  # no object finished for this long: Blender is stopped
 SAMPLES = 16
 DISTANCE_M = 4.0
 MAX_BAKE_PX = 1024  # shading is soft: a smaller bake is enough and much faster
+MAX_DETAIL_PX = 2048  # fine relief needs the texture's own resolution
+DETAIL_STRENGTH = 0.75  # how strongly the baked relief tilts the surface
 STRENGTH = 0.7  # how dark a fully occluded spot gets (1 = black)
 
 
@@ -97,7 +99,13 @@ def prepare(mesh: Mesh, baked: BakedMesh, path: Path) -> bool:
     w, h = baked.image.size
     scale = min(1.0, MAX_BAKE_PX / max(w, h))
     positions, uvs, rec, occ = [], [], [], []
+    high_pos, high_tris = [], []
     for patch, puv, receive in zip(mesh.patches, baked.uvs, _receivers(mesh), strict=True):
+        if patch.lod == "bake":  # fine detail: baked onto the walls, never drawn
+            base = len(high_pos)
+            high_pos += patch.positions
+            high_tris += [(base + a, base + b, base + c) for a, b, c in patch.tris]
+            continue
         if patch.anim is not None or patch.lod == "far":  # far stand-ins overlap the walls
             continue
         base = len(positions)
@@ -108,13 +116,26 @@ def prepare(mesh: Mesh, baked: BakedMesh, path: Path) -> bool:
     if not rec:
         return False
     path.parent.mkdir(parents=True, exist_ok=True)
+    extra = {}
+    if high_tris:
+        extra = {
+            "high_positions": np.array(high_pos, dtype=np.float32),
+            "high_tris": np.array(high_tris, dtype=np.int32),
+        }
     np.savez(
         path,
+        **extra,
         positions=np.array(positions, dtype=np.float32),
         uvs=np.array(uvs, dtype=np.float32),
         receivers=np.array(rec, dtype=np.int32),
         occluders=np.array(occ, dtype=np.int32).reshape(-1, 3),
         size=np.array([max(64, int(w * scale)), max(64, int(h * scale))]),
+        detail_size=np.array(
+            [
+                max(64, int(w * min(1.0, MAX_DETAIL_PX / max(w, h)))),
+                max(64, int(h * min(1.0, MAX_DETAIL_PX / max(w, h)))),
+            ]
+        ),
         atlas=np.array([w, h]),
         samples=np.array(SAMPLES),
         distance=np.array(DISTANCE_M),
@@ -124,17 +145,17 @@ def prepare(mesh: Mesh, baked: BakedMesh, path: Path) -> bool:
 
 def bake_batch(
     exe: str,
-    jobs: list[tuple[Path, Path]],
+    jobs: list[tuple[Path, Path, Path]],
     on_progress: Callable[[int, int, str, float | None], None] = lambda *a: None,
     popen=subprocess.Popen,
 ) -> set[int]:
-    """One Blender run for all objects: (input .npz, output .png) per object.
+    """One Blender run for all objects: (input .npz, AO .png, normal .png) per object.
     Returns the indices that were baked. Stops Blender if it hangs. on_progress gets
     (done, total, device, seconds left or None) - estimated from the objects so far."""
     if not jobs:
         return set()
     list_file = jobs[0][0].parent / "jobs.txt"
-    list_file.write_text("".join(f"{a}\t{b}\n" for a, b in jobs), encoding="utf-8")
+    list_file.write_text("".join("\t".join(map(str, job)) + "\n" for job in jobs), encoding="utf-8")
     cmd = [
         exe,
         "--background",
@@ -230,3 +251,32 @@ def shade_texture(texture: Path, ao: np.ndarray) -> None:
     shade = 1.0 - STRENGTH * (1.0 - np.clip(ao, 0.25, 1.0))
     rgb[..., :3] *= shade[..., None]
     Image.fromarray(np.clip(rgb, 0, 255).astype(np.uint8), mode).save(texture)
+
+
+def detail_normals(npz: Path, png: Path, normal_texture: Path) -> bool:
+    """Blends the baked relief of the fine detail into the object's normal map (only
+    where detail was hit; the gloss in the alpha channel stays). False if none."""
+    if not png.is_file():
+        return False
+    with np.load(npz) as d:
+        w, h = (int(v) for v in d["atlas"])
+    with Image.open(png) as img:
+        baked = np.asarray(img.convert("RGB").resize((w, h), Image.Resampling.BILINEAR))
+    baked = baked.astype(np.float32) / 127.5 - 1.0
+    baked[..., :2] *= DETAIL_STRENGTH
+    hit = (np.abs(baked[..., 0]) > 0.04) | (np.abs(baked[..., 1]) > 0.04)
+    if not hit.any():
+        return False
+    with Image.open(normal_texture) as img:
+        img.load()
+        nml = np.asarray(img.convert("RGBA")).astype(np.float32)
+    base = nml[..., :3] / 127.5 - 1.0
+    # "whiteout" blend: the detail's tilt added to the material's own relief
+    mixed = np.stack(
+        [base[..., 0] + baked[..., 0], base[..., 1] + baked[..., 1], base[..., 2] * baked[..., 2]],
+        axis=-1,
+    )
+    mixed /= np.linalg.norm(mixed, axis=-1, keepdims=True).clip(1e-6)
+    nml[hit, :3] = (mixed[hit] + 1.0) * 127.5
+    Image.fromarray(np.clip(nml, 0, 255).astype(np.uint8), "RGBA").save(normal_texture)
+    return True

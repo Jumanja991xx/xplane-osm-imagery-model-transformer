@@ -66,7 +66,9 @@ def bake(
 ) -> BakedMesh:
     """`photos`: the object's rectified photo textures (materials "photo:<name>")."""
     photos = photos or {}
-    bounds = [p.uv_bounds() for p in mesh.patches]
+    # Fine detail for Blender's high-to-low bake has no texture of its own.
+    textured = [p for p in mesh.patches if p.lod != "bake"]
+    bounds = [p.uv_bounds() for p in textured]
     extents = [(max(0.05, u1 - u0), max(0.05, v1 - v0)) for u0, v0, u1, v1 in bounds]
     area = sum(w * h for w, h in extents)
     longest = max(max(w, h) for w, h in extents)
@@ -94,9 +96,9 @@ def bake(
     normals[...] = (127.5, 127.5, 255.0, DEFAULT_GLOSS * 255.0)
     lit = np.zeros((ah, aw, 3), dtype=np.float32)
     alpha = np.full((ah, aw), 255.0, dtype=np.float32)
-    uvs: list[list[tuple[float, float]]] = []
+    uv_of: dict[int, list[tuple[float, float]]] = {}
     for patch, (u0, _v0, _u1, v1), (x, y), (w, h) in zip(
-        mesh.patches, bounds, positions, sizes, strict=True
+        textured, bounds, positions, sizes, strict=True
     ):
         photo = photos.get(patch.material[6:]) if patch.material.startswith("photo:") else None
         # Paint the whole padded rectangle so texture filtering never bleeds in grey.
@@ -124,7 +126,8 @@ def bake(
         opacity = ALPHA.get(base_material(patch.material))
         if opacity is not None:
             alpha[y : y + h, x : x + w] = 255.0 * opacity
-        uvs.append(_patch_uvs(patch, u0, v1, x, y, density, aw, ah))
+        uv_of[id(patch)] = _patch_uvs(patch, u0, v1, x, y, density, aw, ah)
+    uvs = [uv_of.get(id(p), []) for p in mesh.patches]
 
     image = Image.fromarray(np.clip(canvas, 0, 255).astype(np.uint8), "RGB")
     if alpha.min() < 255:  # see-through parts: X-Plane blends by the texture's alpha

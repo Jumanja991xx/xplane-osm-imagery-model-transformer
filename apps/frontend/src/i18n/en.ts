@@ -569,7 +569,7 @@ export const en: Record<MessageKey, string> = {
   "gate.c.no_blender": "Tip: with Blender (free, blender.org) the objects would get soft shading in corners and under cornices. Optional – works without.",
   "stage.write_blender": "Blender is baking soft shading: object {done} of {total} ({name}) …",
   "progress.hint.write_blender": "Usually 5–60 seconds per object, big stadiums longer; after 3 minutes an object is taken without shading.",
-  "install.blender_done": "🎨 Blender {version}: {shaded} of {total} objects refined with soft shading (also noted in the package README).",
+  "install.blender_done": "🎨 Blender {version}: {shaded} of {total} objects refined with soft shading (also noted in the package README). {detailed} of them with baked-in facade detail (window surrounds, pediments, dentils).",
   "install.blender_failed": "Blender {version} was switched on but shaded no object – the objects are complete, just without soft shading.",
   "install.blender_none": "Built without Blender (no soft shading baked in – optional, see settings).",
   "preview.blender_shaded": "Refined with Blender (soft shading baked in) – as in the finished package.",

@@ -83,6 +83,7 @@ export function InstallStep({ onInstall }: { onInstall: () => void }) {
                 version: job.build.blender,
                 shaded: job.build.shaded,
                 total: job.build.meshes,
+                detailed: job.build.detailed ?? 0,
               })}
             </span>
           ) : (

@@ -6,11 +6,15 @@ inside window reveals and near the ground) of objects into images laid out like
 their texture atlases. One Blender start for all objects of a package; the
 graphics card is used when Cycles supports it (OptiX/CUDA, HIP, oneAPI, Metal).
 
-LIST: a text file, one "IN.npz<TAB>OUT.png" per line.
+LIST: a text file, one "IN.npz<TAB>AO.png<TAB>NORMAL.png" per line.
 IN: positions (N, 3; metres, z up), uvs (N, 2; atlas coordinates, t up), receivers
 (M, 3; triangles that own their piece of the atlas), occluders (K, 3; everything
 else that casts shadow), size (2,), samples (), distance ().
-OUT: greyscale PNG (white = open, dark = occluded).
+Optional high_positions/high_tris: fine detail (window surrounds, dentils ...)
+whose relief is baked onto the receivers as a tangent-space normal map
+(high-to-low, "selected to active").
+AO: greyscale PNG (white = open, dark = occluded). NORMAL: RGB PNG, flat
+(128, 128, 255) where no detail was hit; only written when there is detail.
 Prints "XPSB_DEVICE <kind> <name>" once and "XPSB_DONE <line number>" per object.
 """
 
@@ -66,17 +70,23 @@ def _clear(scene) -> None:
             coll.remove(block)
 
 
-def bake_one(scene, src: str, dst: str) -> None:
+def bake_one(scene, src: str, dst: str, dst_normal: str | None = None) -> None:
     with np.load(src) as d:
         positions = d["positions"].astype(np.float64)
         uvs, receivers, occluders = d["uvs"], d["receivers"], d["occluders"]
         w, h = (int(v) for v in d["size"])
         scene.cycles.samples = int(d["samples"])
         scene.world.light_settings.distance = float(d["distance"])
+        high_pos = d["high_positions"].astype(np.float64) if "high_positions" in d else None
+        high_tris = d.get("high_tris")
+        dw, dh = (int(v) for v in d["detail_size"]) if "detail_size" in d else (w, h)
     _clear(scene)
     rec = _mesh("receivers", positions, receivers, uvs)
     if len(occluders):
         _mesh("occluders", positions, occluders)
+    high = None
+    if high_pos is not None and len(high_tris):
+        high = _mesh("detail", high_pos, high_tris)  # casts shade in the AO bake too
     # The ground darkens the foot of the walls.
     lo, hi = positions.min(axis=0), positions.max(axis=0)
     span = float(max(hi[0] - lo[0], hi[1] - lo[1])) + 40.0
@@ -107,6 +117,26 @@ def bake_one(scene, src: str, dst: str) -> None:
     image.file_format = "PNG"
     image.save()
 
+    if high is None or not dst_normal:
+        return
+    # High-to-low: the relief of the fine detail onto the walls behind it.
+    normal = bpy.data.images.new("normal", dw, dh, alpha=False)
+    normal.generated_color = (0.5, 0.5, 1.0, 1.0)  # flat where nothing is hit
+    node.image = normal
+    scene.render.bake.use_selected_to_active = True
+    scene.render.bake.cage_extrusion = 0.35
+    scene.render.bake.max_ray_distance = 0.5
+    scene.render.bake.normal_space = "TANGENT"
+    bpy.ops.object.select_all(action="DESELECT")
+    high.select_set(True)
+    rec.select_set(True)
+    bpy.context.view_layer.objects.active = rec
+    bpy.ops.object.bake(type="NORMAL", margin=4, use_clear=False, use_selected_to_active=True)
+    scene.render.bake.use_selected_to_active = False
+    normal.filepath_raw = dst_normal
+    normal.file_format = "PNG"
+    normal.save()
+
 
 def main(list_file: str) -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -117,9 +147,9 @@ def main(list_file: str) -> None:
     print("XPSB_DEVICE", _use_gpu(scene), flush=True)
     with open(list_file, encoding="utf-8") as f:
         jobs = [line.rstrip("\n").split("\t") for line in f if line.strip()]
-    for n, (src, dst) in enumerate(jobs):
+    for n, job in enumerate(jobs):
         try:
-            bake_one(scene, src, dst)
+            bake_one(scene, job[0], job[1], job[2] if len(job) > 2 else None)
         except Exception as exc:  # one broken object must not stop the others
             print("XPSB_FAILED", n, exc, flush=True)
         print("XPSB_DONE", n, flush=True)

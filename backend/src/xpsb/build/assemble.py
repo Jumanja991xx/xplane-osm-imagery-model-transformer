@@ -111,6 +111,7 @@ class ItemResult:
     lights: int = 0
     photo_textures: list[str] = field(default_factory=list)  # ids of photos painted on it
     shaded: bool = False  # ambient occlusion baked in by Blender
+    detailed: bool = False  # fine detail (surrounds, dentils) baked into its normal map
     blender_input: str | None = None  # prepared for Blender (package build only)
     # X-Plane library objects: path, x/y in metres from the anchor, heading, size
     library: list[dict] = field(default_factory=list)
@@ -569,7 +570,10 @@ def _shade_with_blender(
     todo = [r for r in results if r.blender_input]
     work = objects_dir / BLENDER_DIR
     try:
-        jobs = [(Path(r.blender_input), work / f"{r.stem}_ao.png") for r in todo]  # type: ignore[arg-type]
+        jobs = [
+            (Path(r.blender_input), work / f"{r.stem}_ao.png", work / f"{r.stem}_detail.png")  # type: ignore[arg-type]
+            for r in todo
+        ]
         done = blender.bake_batch(blender_exe, jobs, progress or (lambda *a: None))
         for i in sorted(done):
             res = todo[i]
@@ -577,6 +581,9 @@ def _shade_with_blender(
                 ao = blender.ao_from(jobs[i][0], jobs[i][1])
                 blender.shade_texture(objects_dir / f"{res.stem}.png", ao)
                 res.shaded = True
+                nml = objects_dir / f"{res.stem}_nml.png"
+                if nml.is_file():
+                    res.detailed = blender.detail_normals(jobs[i][0], jobs[i][2], nml)
             except (OSError, ValueError):
                 continue
     finally:
