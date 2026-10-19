@@ -183,6 +183,24 @@ def test_gate_a_lists_sources_cost_and_upload(client):
     imagery = next(i for i in items if i["key"] == "gate.a.imagery")
     assert imagery["params"]["attribution"] == "Test-Luftbild"
     assert job["pending_gate"]["blocked"] is False
+    # The user knows beforehand roughly how long it takes.
+    duration = next(i for i in items if i["key"] == "gate.a.duration")["params"]
+    assert 1 <= duration["min"] < duration["max"] <= 15
+
+
+def test_durations_grow_with_the_work():
+    from xpsb.jobs import gates
+    from xpsb.jobs.models import Brief
+
+    base = {"object_categories": ["buildings"], "package_name": "X", "use_ai": True}
+    quick = gates.analysis_minutes(Brief(**base, ai_detect=False, research=False), 1, True)
+    full = gates.analysis_minutes(Brief(**base, ai_detect=True), 4, True)
+    assert quick[1] < full[1]
+    assert gates.design_minutes("claude-opus-5-5", 9) > gates.design_minutes("claude-opus-5-5", 3)
+    assert (
+        gates.design_minutes("claude-haiku-5-5", 3)[1]
+        < gates.design_minutes("claude-opus-5-5", 3)[1]
+    )
 
 
 def test_custom_source_needs_confirmed_rights(client):
@@ -460,6 +478,37 @@ def test_architect_never_exceeds_the_confirmed_maximum(client, fake_ai):
     assert not fake_ai.calls
 
 
+def test_architect_answer_cut_off_or_declined(client, fake_ai):
+    job = planned(client)
+    obj = next(o for o in job["plan"]["objects"] if o["category"] == "buildings")
+    url = f"/api/jobs/{job['id']}/design/{obj['item_id']}"
+    est = client.get(url, headers=AUTH).json()
+
+    # Cut off once at the output limit: asked again for a more compact script.
+    fake_ai.calls.clear()
+    fake_ai.cut_off = 1
+    r = client.post(url, json={"request": "detailreicher", "max_usd": est["max_usd"]}, headers=AUTH)
+    assert r.status_code == 200, r.text
+    second = "".join(b.get("text", "") for b in fake_ai.calls[1]["content"])
+    assert "cut off at the output limit" in second
+    # the answers may never cost more than the confirmed maximum
+    from xpsb.ai.usage import cost_usd
+
+    for c in fake_ai.calls:
+        assert cost_usd(c["model"], 0, c["max_tokens"]) <= est["max_usd"]
+    assert r.json()["cost_usd"] <= est["max_usd"]
+
+    # Cut off twice: a clear message instead of "refused".
+    fake_ai.cut_off = 2
+    r = client.post(url, json={"request": "noch mehr", "max_usd": est["max_usd"]}, headers=AUTH)
+    assert r.status_code == 409 and r.json()["detail"]["key"] == "error.ai_too_long"
+    fake_ai.cut_off = 0
+
+    fake_ai.refuse = True
+    r = client.post(url, json={"request": "anders", "max_usd": est["max_usd"]}, headers=AUTH)
+    assert r.status_code == 409 and r.json()["detail"]["key"] == "error.ai_refused"
+
+
 # ---- photos of real objects --------------------------------------------------------
 
 
@@ -582,6 +631,7 @@ def test_architect_builds_the_important_objects_automatically(client, fake_ai, a
     # Step 3 already shows which objects these are (photos can be added before).
     targets = view["design_targets"]
     assert len(targets) == design["count"]
+    assert by_key["gate.b.design_duration"]["params"]["max"] >= 1
     cost = by_key["gate.b.design_cost"]["params"]
     assert 0 < cost["estimate_usd"] <= cost["max_usd"]
 

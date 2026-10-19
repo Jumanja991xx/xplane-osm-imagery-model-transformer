@@ -43,6 +43,8 @@ class FakeAi:
         self.fail_call: str | None = None
         self.served_model: str | None = None  # simulate a server-side fallback
         self.tokens = (3000, 1500)
+        self.cut_off = 0  # next n architect answers end at the output limit
+        self.refuse = False  # the architect's answers are declined
         # Browser tests: the architect takes a moment, like the real one (seconds).
         self.architect_delay = float(os.environ.get("XPSB_FAKE_AI_DELAY", "0"))
 
@@ -51,7 +53,14 @@ class FakeAi:
         return self
 
     def __call__(
-        self, *, model: str, system: str, content: list[dict], output_format, effort="low"
+        self,
+        *,
+        model: str,
+        system: str,
+        content: list[dict],
+        output_format,
+        effort="low",
+        max_tokens=16000,
     ) -> AiResponse:
         self.calls.append(
             {
@@ -60,6 +69,7 @@ class FakeAi:
                 "content": content,
                 "format": output_format.__name__,
                 "effort": effort,
+                "max_tokens": max_tokens,
             }
         )
         if self.fail_auth:
@@ -68,6 +78,13 @@ class FakeAi:
             raise AiCallError(self.fail_call)
         if output_format in (ArchitectScript, ArchitectReview):
             time.sleep(self.architect_delay)
+            if self.refuse:
+                return AiResponse(
+                    None, model, self.tokens[0], 0, refused=True, stop_reason="refusal"
+                )
+            if self.cut_off and output_format is ArchitectScript:
+                self.cut_off -= 1
+                return AiResponse(None, model, self.tokens[0], max_tokens, stop_reason="max_tokens")
         if output_format is ArchitectScript:
             text = "\n".join(b.get("text", "") for b in content)
             broken = "kaputt" in text and "failed in the sandbox" not in text

@@ -89,6 +89,8 @@ class AiBatchResult(BaseModel):
 
 # ---- transport (real API or fake in tests) -------------------------------------
 
+DEFAULT_MAX_TOKENS = 16000
+
 
 @dataclass
 class AiResponse:
@@ -97,6 +99,7 @@ class AiResponse:
     input_tokens: int
     output_tokens: int
     refused: bool = False
+    stop_reason: str = "end_turn"  # "max_tokens": cut off at the output limit
 
 
 class AiTransport(Protocol):
@@ -108,6 +111,7 @@ class AiTransport(Protocol):
         content: list[dict],
         output_format: type[BaseModel],
         effort: str = "low",
+        max_tokens: int = DEFAULT_MAX_TOKENS,
     ) -> AiResponse: ...
 
 
@@ -116,7 +120,9 @@ class AiAuthError(RuntimeError):
 
 
 class AiCallError(RuntimeError):
-    pass
+    def __init__(self, message: str, key: str | None = None):
+        super().__init__(message)
+        self.key = key  # i18n key for the user, if more specific than "call failed"
 
 
 class AnthropicTransport:
@@ -126,7 +132,11 @@ class AnthropicTransport:
         import anthropic
 
         self._anthropic = anthropic
-        self._client = anthropic.Anthropic(api_key=api_key, max_retries=3, timeout=180)
+        # Streamed: long answers (build scripts) never hit an HTTP timeout; the
+        # timeout is the longest pause between two parts of the answer.
+        self._client = anthropic.Anthropic(
+            api_key=api_key, max_retries=3, timeout=anthropic.Timeout(600.0, connect=20.0)
+        )
 
     def __call__(
         self,
@@ -136,22 +146,32 @@ class AnthropicTransport:
         content: list[dict],
         output_format: type[BaseModel],
         effort: str = "low",
+        max_tokens: int = DEFAULT_MAX_TOKENS,
     ) -> AiResponse:
         a = self._anthropic
+        # The schema goes in output_config and the answer is validated here, so an
+        # answer cut off at max_tokens is reported as such instead of raising mid-stream.
+        output_config: dict[str, Any] = {
+            "format": {
+                "type": "json_schema",
+                "schema": a.transform_schema(output_format.model_json_schema()),
+            }
+        }
+        if "haiku" not in model:  # effort steers thinking (and cost)
+            output_config["effort"] = effort
         try:
-            response = self._client.beta.messages.parse(
+            with self._client.beta.messages.stream(
                 model=model,
-                max_tokens=16000,
+                max_tokens=max_tokens,
                 system=system,
                 messages=[{"role": "user", "content": content}],
-                output_format=output_format,
-                # Effort steers thinking (and cost); Haiku runs without it.
-                **({} if "haiku" in model else {"output_config": {"effort": effort}}),
+                output_config=output_config,
                 # If the model declines, the server retries on its default fallback
                 # model; the answer says which model replied and we tell the user.
                 fallbacks="default",
                 betas=["server-side-fallback-2026-07-01"],
-            )
+            ) as stream:
+                response = stream.get_final_message()
         except (a.AuthenticationError, a.PermissionDeniedError) as exc:
             raise AiAuthError(type(exc).__name__) from None
         except a.APIStatusError as exc:
@@ -160,15 +180,23 @@ class AnthropicTransport:
         except a.APIConnectionError as exc:
             raise AiCallError(type(exc).__name__) from None
         usage = response.usage
-        refused = response.stop_reason == "refusal"
+        stop = str(response.stop_reason or "")
+        parsed = None
+        if stop not in ("refusal", "max_tokens"):
+            texts = [b.text for b in response.content if b.type == "text"]
+            try:
+                parsed = output_format.model_validate_json(texts[-1]) if texts else None
+            except ValueError:  # pydantic's ValidationError is a ValueError
+                parsed = None
         return AiResponse(
-            parsed=None if refused else response.parsed_output,
+            parsed=parsed,
             model=str(response.model),
             input_tokens=usage.input_tokens
             + (usage.cache_creation_input_tokens or 0)
             + (usage.cache_read_input_tokens or 0),
             output_tokens=usage.output_tokens,
-            refused=refused,
+            refused=stop == "refusal",
+            stop_reason=stop,
         )
 
 
@@ -415,6 +443,11 @@ class Budget:
                 return False
             self.reserved += estimate
             return True
+
+    def free(self) -> float:
+        """What is left of the limit right now (nothing reserved for this yet)."""
+        with self.lock:
+            return max(0.0, self.limit - self.info.cost_usd - self.reserved)
 
     def settle(self, estimate: float, response: AiResponse | None) -> None:
         with self.lock:

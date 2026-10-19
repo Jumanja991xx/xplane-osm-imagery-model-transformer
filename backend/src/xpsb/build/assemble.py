@@ -66,7 +66,9 @@ WALL_MATERIALS = {
     "timber_framing": "plaster",
     "plaster": "plaster",
     "cement_block": "concrete",
-    "stone": "concrete",
+    "stone": "stone",
+    "sandstone": "stone",
+    "limestone": "stone",
 }
 OSM_ROOF_MATERIALS = {
     "roof_tiles": "tiles",

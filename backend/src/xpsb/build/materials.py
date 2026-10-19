@@ -82,6 +82,141 @@ def windows(u, v, color):
     return img
 
 
+def _facade(
+    u,
+    v,
+    color,
+    *,
+    bay: float,
+    storey: float,
+    win_w: float,
+    win_h: float,
+    sill: float,
+    arched: bool,
+    base: RGB,
+    surround: RGB,
+    ground: float = 0.0,
+    bands: bool = True,
+):
+    """Wall with one window per bay and storey: stone surround, mullion and transom,
+    a cornice band under every storey line; optional round-arched window heads.
+    Nothing below `ground` metres (a plinth or rusticated base storey goes there)."""
+    img = plaster(u, v, color or base)
+    bu = u % bay
+    sv = v % storey
+    cx = bay / 2
+    half = win_w / 2
+    top = sill + win_h
+    spring = top - half if arched else top  # where the arch starts
+    dx = bu - cx
+    upper = (v >= ground) & (v > 0.5)
+
+    def opening(margin: float) -> np.ndarray:
+        rect = (np.abs(dx) < half + margin) & (sv > sill - margin) & (sv < spring)
+        if arched:
+            head = (sv >= spring) & (dx**2 + (sv - spring) ** 2 < (half + margin) ** 2)
+        else:
+            head = (sv >= spring) & (sv < top + margin) & (np.abs(dx) < half + margin)
+        return (rect | head) & upper
+
+    frame = opening(0.18)
+    glass_ = opening(0.0)
+    img[frame] = surround
+    img[frame] = _shade(img[frame], 0.04 * _noise(u[frame], v[frame], 0.3, 13))
+    img[glass_] = (58, 70, 82)
+    img[glass_] = _shade(img[glass_], 0.18 * _noise(u[glass_], v[glass_], 0.5, 9))
+    bars = glass_ & ((np.abs(dx) < 0.04) | (np.abs(sv - (sill + 0.62 * (spring - sill))) < 0.04))
+    img[bars] = (205, 200, 190)
+    if not bands:
+        return img
+    # Cornice band under each storey line, with its shadow below.
+    band = ((sv > storey - 0.35) | (sv < 0.08)) & upper
+    img[band] = np.array(surround, dtype=np.float32) * 0.97
+    shadow = (sv > storey - 0.5) & (sv <= storey - 0.35) & upper
+    img[shadow] = _shade(img[shadow], np.full(img[shadow].shape[0], -0.18, dtype=np.float32))
+    return img
+
+
+def windows_classic(u, v, color):
+    """Historic facade: tall windows with stone surrounds, 4.8 m storeys, one every 4.2 m."""
+    return _facade(
+        u,
+        v,
+        color,
+        bay=4.2,
+        storey=4.8,
+        win_w=1.5,
+        win_h=2.7,
+        sill=1.1,
+        arched=False,
+        base=(214, 206, 188),
+        surround=(232, 226, 212),
+    )
+
+
+def windows_arched(u, v, color):
+    """Historic facade with round-arched windows: 5.5 m storeys, one every 4.6 m."""
+    return _facade(
+        u,
+        v,
+        color,
+        bay=4.6,
+        storey=5.5,
+        win_w=1.7,
+        win_h=3.4,
+        sill=1.1,
+        arched=True,
+        base=(214, 206, 188),
+        surround=(232, 226, 212),
+    )
+
+
+def windows_house(u, v, color):
+    """Residential wall: 2.8 m storeys, a window every 3.6 m (fewer than `windows`)."""
+    return _facade(
+        u,
+        v,
+        color,
+        bay=3.6,
+        storey=2.8,
+        win_w=1.2,
+        win_h=1.35,
+        sill=0.9,
+        arched=False,
+        base=(230, 222, 204),
+        surround=(244, 242, 236),
+        bands=False,
+    )
+
+
+def stone(u, v, color):
+    """Ashlar: large dressed stone blocks in courses."""
+    base = np.array(color or (204, 196, 178), dtype=np.float32)
+    course = np.floor(v / 0.6)
+    shift = (course % 2) * 0.6
+    img = _fill(u, base)
+    img = _shade(img, 0.05 * _noise(u + shift, course, 1.2, 17) + 0.02 * _noise(u, v, 0.15, 19))
+    joint = ((v % 0.6) < 0.02) | (((u + shift) % 1.2) < 0.02)
+    img[joint] = _shade(img[joint], np.full(img[joint].shape[0], -0.22, dtype=np.float32))
+    return img
+
+
+def rustication(u, v, color):
+    """Rusticated base storey of palaces: stone with deep horizontal grooves."""
+    base = np.array(color or (186, 178, 162), dtype=np.float32)
+    course = np.floor(v / 0.5)
+    shift = (course % 2) * 0.9
+    img = _fill(u, base)
+    img = _shade(img, 0.05 * _noise(u + shift, course, 1.8, 23))
+    groove = (v % 0.5) < 0.07
+    joint = ((u + shift) % 1.8) < 0.03
+    img[groove] = _shade(img[groove], np.full(img[groove].shape[0], -0.35, dtype=np.float32))
+    img[joint & ~groove] = _shade(
+        img[joint & ~groove], np.full(img[joint & ~groove].shape[0], -0.2, dtype=np.float32)
+    )
+    return img
+
+
 def glass(u, v, color):
     img = _fill(u, color or (96, 124, 146))
     img = _shade(img, 0.12 * np.clip(np.sin(u * 0.7 + v * 0.3), -1, 1))
@@ -171,6 +306,11 @@ MATERIALS: dict[str, Painter] = {
     "plaster": plaster,
     "brick": brick,
     "windows": windows,
+    "windows_classic": windows_classic,
+    "windows_arched": windows_arched,
+    "windows_house": windows_house,
+    "stone": stone,
+    "rustication": rustication,
     "glass": glass,
     "metal_sheet": metal_sheet,
     "roof_metal": roof_metal,
@@ -190,7 +330,15 @@ MATERIAL_HELP = {
     "concrete": "grey concrete",
     "plaster": "rendered wall, colour = wall colour",
     "brick": "brick wall",
-    "windows": "wall with a window grid (3 m storeys), colour = wall colour",
+    "windows": "modern wall with a dense window grid (3 m storeys, a window every 2.6 m), "
+    "colour = wall colour - offices, apartment blocks",
+    "windows_classic": "historic facade (palaces, town halls, courts, museums, 19th century): "
+    "tall windows with stone surrounds, 4.8 m storeys, one every 4.2 m, cornice bands",
+    "windows_arched": "like windows_classic with round-arched windows (5.5 m storeys, one "
+    "every 4.6 m) - neo-renaissance/baroque palaces, churches, stations",
+    "windows_house": "residential wall: 2.8 m storeys, a window every 3.6 m",
+    "stone": "ashlar stone blocks, colour = stone colour (towers, plinths, monuments)",
+    "rustication": "rusticated base storey of palaces (deep horizontal grooves)",
     "glass": "glass facade with mullions",
     "metal_sheet": "ribbed cladding (vertical ribs along the face's u)",
     "roof_metal": "ribbed metal roof",

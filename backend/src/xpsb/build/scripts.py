@@ -157,12 +157,18 @@ SMALL = ["shed", "hut", "kiosk", "toilets", "cabin", "garage", "garages", "carpo
          "container", "allotment_house"]
 OFFICE = ["office", "commercial", "retail", "supermarket", "hotel"]
 CHURCH = ["church", "chapel", "cathedral", "mosque", "temple", "synagogue", "monastery"]
+HISTORIC = ["palace", "castle", "government", "civic", "public", "museum", "townhall",
+            "courthouse", "manor", "train_station"]
 
 def style():
     t = params.get("building") or "yes"
+    tags = params.get("tags") or {}
     area = polygon_area(footprint)
     if t == "stadium":
         return "stadium"
+    if t in HISTORIC or ((tags.get("historic") or tags.get("heritage")) and area > 300
+                         and t not in CHURCH and t not in HOUSE and t not in SMALL):
+        return "historic"
     if t in HALL or (t == "yes" and area > 1800 and params.get("levels") == None):
         return "hall"
     if t in SMALL or area < 35:
@@ -182,7 +188,10 @@ def style():
 STYLES = {
     "hall": (8.0, 4.5, "metal_sheet", "#C8CBCF", "flat", "roof_metal", "roof_metal", 0.15, 4.0),
     "small": (3.0, 2.8, "wood", None, "gabled", "roof_tiles", "roof_flat", 0.35, 2.5),
-    "house": (6.5, 2.8, "windows", "#E6DCC8", "gabled", "roof_tiles", "roof_flat", 0.45, 7.0),
+    "house": (6.5, 2.8, "windows_house", "#E6DCC8", "gabled", "roof_tiles", "roof_flat", 0.45,
+              7.0),
+    "historic": (16.0, 4.8, "windows_classic", "#DDD4C0", "hipped", "roof_metal", "roof_flat",
+                 0.25, 5.0),
     "apartments": (12.0, 3.0, "windows", "#E2DED6", "flat", "roof_tiles", "roof_flat", 0.35, 6.0),
     "office": (10.0, 3.5, "windows", "#D8D8D8", "flat", "roof_metal", "roof_flat", 0.3, 5.0),
     "church": (12.0, 4.0, "plaster", "#E9E2D3", "gabled", "roof_tiles", "roof_flat", 0.7, 14.0),

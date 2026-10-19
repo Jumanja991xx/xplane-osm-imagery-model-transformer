@@ -31,7 +31,19 @@ class Research(BaseModel):
     sources: list[str] = Field(default_factory=list)
 
 
-WallMaterial = Literal["windows", "plaster", "brick", "glass", "metal_sheet", "concrete", "wood"]
+WallMaterial = Literal[
+    "windows",
+    "windows_classic",
+    "windows_arched",
+    "windows_house",
+    "plaster",
+    "stone",
+    "brick",
+    "glass",
+    "metal_sheet",
+    "concrete",
+    "wood",
+]
 
 
 class ItemAttrs(BaseModel):

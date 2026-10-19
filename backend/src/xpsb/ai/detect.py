@@ -14,6 +14,7 @@ import io
 import logging
 import math
 import threading
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Literal
@@ -478,7 +479,7 @@ class _Scan:
                 done[0] += 1
                 self.cfg.progress((step * len(self.tiles) + done[0]) / (steps * len(self.tiles)))
             if response.refused or response.parsed is None:
-                self.drop("refused")
+                self.drop("too_long" if response.stop_reason == "max_tokens" else "refused")
                 return
             for find in response.parsed.finds:
                 confidence = min(1.0, max(0.0, find.confidence))
@@ -539,11 +540,14 @@ def search(
     objects: list[str],
     surfaces: list[str],
     passes: int = PASSES,
+    on_pass: Callable[[int, int], None] | None = None,
 ) -> tuple[list[SceneItem], AiRunInfo]:
     """Runs in a worker thread. Returns new proposal items and the run info."""
     scan = _Scan(items, aoi, image, info, cfg, objects, surfaces)
     system = system_prompt(cfg.language, cfg.notes, objects, surfaces, area_context(items))
     for step in range(passes):
+        if on_pass:
+            on_pass(step + 1, passes)  # tells the user which look is running
         prefix = "" if step == 0 else SECOND_PASS + "\n"
         if not scan.run(system, [], prefix, step, passes):
             break

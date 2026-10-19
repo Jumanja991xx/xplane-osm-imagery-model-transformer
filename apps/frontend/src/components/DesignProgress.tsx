@@ -2,13 +2,9 @@ import { useEffect, useState } from "react";
 import type { JobEvent } from "../api/client";
 import { useT } from "../i18n";
 import { useApp } from "../store";
+import { clock } from "./ProgressList";
 import { formatUsd } from "./steps/AnalysisStep";
 import { Spinner } from "./ui";
-
-function clock(ms: number): string {
-  const s = Math.max(0, Math.round(ms / 1000));
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-}
 
 interface ObjectState {
   last: JobEvent;

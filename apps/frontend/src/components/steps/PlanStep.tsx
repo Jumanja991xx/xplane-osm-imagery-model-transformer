@@ -20,7 +20,7 @@ export function PlanStep({ onBuild }: { onBuild: () => void }) {
         <p className="text-sm font-medium">{t("plan.designing")}</p>
         <p className="text-xs text-zinc-500">{t("plan.designing_hint")}</p>
         <DesignProgress />
-        <ProgressList runningState="planning" hideStage={(s) => s.startsWith("design")} />
+        <ProgressList runningState="planning" hideStage={(s) => s.startsWith("design")} elapsed={false} />
       </div>
     );
   }

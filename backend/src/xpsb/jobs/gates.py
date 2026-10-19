@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -186,6 +187,8 @@ def _gate_a(job: Job, ctx: GateContext):
                 },
             )
         )
+    lo, hi = analysis_minutes(b, _tile_count(job), source is not None)
+    items.append(GateItem(kind="info", key="gate.a.duration", params={"min": lo, "max": hi}))
     items.append(GateItem(kind="write", key="gate.a.workdir", params={"path": str(ctx.job_dir)}))
     payload = {
         "aoi": job.aoi.model_dump(),
@@ -193,6 +196,36 @@ def _gate_a(job: Job, ctx: GateContext):
         "imagery": imagery.model_dump(),
     }
     return items, blocked, payload
+
+
+def _speed(model: str) -> float:
+    """Rough answer time of a model relative to Sonnet."""
+    return 1.4 if "opus" in model else 0.5 if "haiku" in model else 1.0
+
+
+def _minutes(lo: float, hi: float) -> tuple[int, int]:
+    return max(1, round(lo)), max(1, math.ceil(hi))
+
+
+def analysis_minutes(b, tiles: int, imagery: bool) -> tuple[int, int]:
+    """Usual duration of the analysis in minutes (shown before it starts)."""
+    lo, hi = 0.2, 1.0  # OSM and aerial image
+    f = _speed(b.ai_model)
+    if b.use_ai:
+        lo, hi = lo + 0.3 * f, hi + 1.5 * f  # rating every item
+        if b.ai_detect and imagery:  # up to 4 images at a time, each pass
+            rounds = detect.PASSES * math.ceil(tiles / 4)
+            lo, hi = lo + 0.7 * rounds * f, hi + 2.5 * rounds * f
+    if b.research:
+        lo, hi = lo + 0.2, hi + 1.0
+    return _minutes(lo, hi)
+
+
+def design_minutes(model: str, count: int, parallel: int = 3) -> tuple[int, int]:
+    """Usual duration of the AI architect for `count` objects, `parallel` at a time."""
+    rounds = math.ceil(count / parallel)
+    f = _speed(model)
+    return _minutes(1.0 * rounds * f, 3.0 * rounds * f + 0.5)
 
 
 def _tile_count(job: Job) -> int:
@@ -256,6 +289,10 @@ def _gate_b(job: Job, ctx: GateContext):
         )
         items.append(
             GateItem(kind="action", key="gate.b.design_upload", params={"model": b.ai_model})
+        )
+        lo, hi = design_minutes(b.ai_model, len(ctx.design))
+        items.append(
+            GateItem(kind="info", key="gate.b.design_duration", params={"min": lo, "max": hi})
         )
         items.append(
             GateItem(

@@ -378,7 +378,19 @@ const CONTROLS: Record<string, Control[]> = {
 };
 const DEFAULT_CONTROLS: Control[] = ["height"];
 const ROOF_SHAPES = ["flat", "gabled", "hipped"] as const;
-const WALL_MATERIALS = ["windows", "plaster", "brick", "glass", "metal_sheet", "concrete", "wood"] as const;
+const WALL_MATERIALS = [
+  "windows",
+  "windows_classic",
+  "windows_arched",
+  "windows_house",
+  "plaster",
+  "stone",
+  "brick",
+  "glass",
+  "metal_sheet",
+  "concrete",
+  "wood",
+] as const;
 
 /** Quick controls for one object: free, instant, only this object is rebuilt. */
 type LibraryKind = "tree" | "light" | "vehicle" | "person" | "flag" | "fence" | "other";

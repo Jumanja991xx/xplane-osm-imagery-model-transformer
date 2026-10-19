@@ -88,6 +88,7 @@ with sync_playwright() as p:
     page.get_by_role("button", name="Schließen", exact=True).click()
     page.get_by_test_id("open-gate-a").click()
     expect(page.get_by_test_id("gate-approve")).to_be_enabled()
+    expect(page.get_by_role("dialog")).to_contain_text("Dauer: meist etwa")
     page.screenshot(path=OUT / "04-gate-a.png")
     page.get_by_test_id("gate-approve").click()
 

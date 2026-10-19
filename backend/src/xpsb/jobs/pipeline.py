@@ -186,8 +186,16 @@ def analyze_sync(job: Job, deps: AnalysisDeps, log: EventLog) -> AnalysisResult:
         run_info = None
         if job.brief.ai_detect:
             tiles = len(detect.plan_tiles(info))
-            run.progress = lambda p: _progress(log, "detect", p, "stage.detect", tiles=tiles)
-            run.progress(0.0)
+            look = {"pass": 1, "passes": detect.PASSES}
+
+            def detect_progress(p: float) -> None:
+                _progress(log, "detect", p, "stage.detect", tiles=tiles, **look)
+
+            def detect_pass(n: int, total: int) -> None:
+                look.update({"pass": n, "passes": total})
+                detect_progress((n - 1) / total)
+
+            run.progress = detect_progress
             proposals, run_info = detect.search(
                 items,
                 Polygon(job.aoi.ring),
@@ -196,6 +204,7 @@ def analyze_sync(job: Job, deps: AnalysisDeps, log: EventLog) -> AnalysisResult:
                 run,
                 [c.value for c in job.brief.object_categories],
                 [s.value for s in job.brief.surface_types],
+                on_pass=detect_pass,
             )
             for n, item in enumerate(proposals, start=1):
                 item.id = f"ai/{n}"

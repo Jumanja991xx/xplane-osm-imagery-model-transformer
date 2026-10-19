@@ -223,3 +223,42 @@ def test_barriers_along_a_path(kind):
     assert m.triangle_count > 0
     xs = [p[0] for patch in m.patches for p in patch.positions]
     assert min(xs) < 1 and max(xs) > 19
+
+
+def test_historic_buildings_get_fewer_larger_windows():
+    from xpsb.build.materials import MATERIAL_HELP, MATERIALS
+
+    for name in ("windows_classic", "windows_arched", "windows_house", "stone", "rustication"):
+        assert name in MATERIALS and name in MATERIAL_HELP
+    palace = run(
+        DEFAULT_SCRIPTS["buildings"],
+        [[0, 0], [60, 0], [60, 30], [0, 30]],
+        {"building": "palace", "levels": 3},
+    )
+    assert "windows_classic" in {p.material for p in palace.patches}
+    # an old public building tagged as heritage, mapped as plain "yes"
+    listed = run(
+        DEFAULT_SCRIPTS["buildings"],
+        [[0, 0], [40, 0], [40, 25], [0, 25]],
+        {"building": "yes", "tags": {"heritage": "2"}},
+    )
+    assert "windows_classic" in {p.material for p in listed.patches}
+    house = run(
+        DEFAULT_SCRIPTS["buildings"], [[0, 0], [12, 0], [12, 9], [0, 9]], {"building": "house"}
+    )
+    assert "windows_house" in {p.material for p in house.patches}
+
+
+def test_window_spacing_of_the_facades():
+    import numpy as np
+
+    from xpsb.build.materials import MATERIALS
+
+    def window_columns(name: str) -> int:
+        u, v = np.meshgrid(np.arange(0, 42, 0.05), np.array([1.8]))  # 42 m at window height
+        dark = np.flatnonzero(MATERIALS[name](u, v, None).mean(axis=-1)[0] < 110) * 0.05
+        # windows = groups of glass along the row (a mullion splits no window)
+        return int(1 + np.sum(np.diff(dark) > 0.5)) if len(dark) else 0
+
+    assert window_columns("windows") >= 15  # dense modern grid
+    assert 8 <= window_columns("windows_classic") <= 11  # one every 4.2 m

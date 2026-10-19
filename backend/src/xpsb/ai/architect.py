@@ -33,7 +33,17 @@ MAX_SCRIPT_CHARS = 30_000
 # script, images, and a full script plus thinking as output).
 SYSTEM_TOKENS_EST = 4500
 IMAGE_TOKENS_EST = 400
-OUTPUT_TOKENS_EST = 7000
+OUTPUT_TOKENS_EST = 12000  # thinking + a detailed script
+# Output limit per answer (thinking + script); streamed, so long answers are fine.
+MAX_OUTPUT = 48_000
+MIN_OUTPUT = 6_000
+FIRST_SHARE = 0.6
+TOO_LONG = (
+    "Your previous answer was cut off at the output limit before it was complete. Write "
+    "the COMPLETE script again, much more compactly: helper functions and loops instead "
+    "of repeating similar calls, fewer separate parts, no comments. Keep the main shape "
+    "and the most visible details."
+)
 
 
 class ArchitectScript(BaseModel):
@@ -153,6 +163,17 @@ HOW TO BUILD COMMON THINGS (adapt to the facts and photos):
   blocks: storeys of ~3 m, balconies as thin boxes.
 - Church: nave with steep roof, tower with spire (box + pyramid faces or cylinder with
   radius_top), apse.
+- Palace, town hall, court, museum, station (historic, monumental): NOT the dense
+  "windows" grid. Count the window axes and storeys on the photos and choose the facade
+  that matches: windows_classic (tall windows, 4.8 m storeys, one every 4.2 m) or
+  windows_arched (round-arched, 5.5 m storeys, one every 4.6 m); rustication on the
+  ground storey, stone for towers and plinths; cornices and parapets as sweeps, a
+  portico of cylinders with a triangular pediment (face), corner pavilions and towers as
+  separate higher blocks with their own roofs, statues or quadrigas as simple shapes.
+  Storey heights follow the facade material (e.g. 3 storeys of 5.5 m = 16.5 m), so the
+  window rows sit where they are on the photos.
+- Facade materials: windows (modern offices/apartments), windows_house (houses),
+  windows_classic / windows_arched (historic), glass, plaster, stone, brick.
 - Grandstand: rows of seats (sweep a stepped profile along the front), roof on columns.
 - Use offset_polygon for setbacks and upper storeys, sweep for cornices, roof edges and
   canopies, the X-Plane library (if listed) for lamps, fences, trees, vehicles, flags -
@@ -266,22 +287,47 @@ def design(
         return blocks
 
     def call(content: list[dict], fmt) -> object | None:
-        chars = sum(len(b.get("text", "")) for b in content)
-        images = sum(1 for b in content if b["type"] == "image")
-        est = _estimate(cfg.model, chars, images)
-        if result.calls >= MAX_CALLS or not budget.reserve(est):
-            return None
-        response = None
-        try:
-            response = cfg.transport(
-                model=cfg.model, system=system, content=content, output_format=fmt, effort=EFFORT
-            )
-        finally:
-            budget.settle(est, response)
-            result.calls += 1
-        if response.refused or response.parsed is None:
-            raise AiCallError("refused")
-        return response.parsed
+        """One request. A script cut off at the output limit is asked for once more,
+        written more compactly; the answer length never exceeds the confirmed budget."""
+        retried = False
+        while True:
+            chars = sum(len(b.get("text", "")) for b in content)
+            images = sum(1 for b in content if b["type"] == "image")
+            est = _estimate(cfg.model, chars, images)
+            # Longest answer the rest of this budget pays for (input first).
+            in_cost = est - cost_usd(cfg.model, 0, OUTPUT_TOKENS_EST)
+            per_token = cost_usd(cfg.model, 0, 1_000_000) / 1_000_000
+            room = int((budget.free() - in_cost) / per_token) if per_token > 0 else MAX_OUTPUT
+            # The first try leaves room for a second, more compact one.
+            max_out = min(MAX_OUTPUT, room if retried else int(room * FIRST_SHARE))
+            if result.calls >= MAX_CALLS or max_out < MIN_OUTPUT or not budget.reserve(est):
+                if retried:  # cut off and no budget left for another try
+                    raise AiCallError("output limit", key="error.ai_too_long")
+                return None
+            response = None
+            try:
+                response = cfg.transport(
+                    model=cfg.model,
+                    system=system,
+                    content=content,
+                    output_format=fmt,
+                    effort=EFFORT,
+                    max_tokens=max_out,
+                )
+            finally:
+                budget.settle(est, response)
+                result.calls += 1
+            if response.stop_reason == "max_tokens":
+                if retried:
+                    raise AiCallError("output limit", key="error.ai_too_long")
+                retried = True
+                content = [*content, {"type": "text", "text": TOO_LONG}]
+                continue
+            if response.refused:
+                raise AiCallError("refused", key="error.ai_refused")
+            if response.parsed is None:
+                raise AiCallError("no valid answer", key="error.ai_bad_answer")
+            return response.parsed
 
     def try_run(script: str) -> tuple[Mesh | None, str | None]:
         if len(script) > MAX_SCRIPT_CHARS:
@@ -383,5 +429,6 @@ def design(
     except AiAuthError:
         result.error_key = "error.ai_auth_failed"
     except AiCallError as exc:
-        result.error_key, result.error_detail = "error.ai_call_failed", str(exc)
+        result.error_key = exc.key or "error.ai_call_failed"
+        result.error_detail = str(exc)
     return result
