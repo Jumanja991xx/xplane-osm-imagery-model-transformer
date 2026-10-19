@@ -570,6 +570,7 @@ def build_package(
     log: EventLog,
     library: Catalog | None = None,
     blender_exe: str | None = None,
+    blender_version: str | None = None,
 ) -> BuildResult:
     """Runs in a worker thread."""
     plan = job.plan
@@ -580,7 +581,7 @@ def build_package(
         shutil.rmtree(package)
     package.mkdir(parents=True)
 
-    write_key = "stage.write_blender" if blender_exe else "stage.write"
+    write_key = "stage.write"
     log.publish_threadsafe(type="progress", stage="write", progress=0.0, key=write_key)
     assert job.analysis is not None
     tile = Tile.containing(*plan.center)
@@ -594,12 +595,42 @@ def build_package(
         library=library,
         photo_dir=job_dir / "photos",
         blender_exe=blender_exe,
-        progress=lambda p: log.publish_threadsafe(
-            type="progress", stage="write", progress=p, key=write_key
+        blender_progress=lambda done, total, device, left: log.publish_threadsafe(
+            type="progress",
+            stage="blender",
+            progress=done / max(1, total),
+            key="stage.blender" if left is not None else "stage.blender_start",
+            params={
+                "done": done,
+                "total": total,
+                "device": device,
+                "left": f"{int(left) // 60}:{int(left) % 60:02d}" if left is not None else "",
+            },
+        ),
+        progress=lambda p, n=0, total=0, name="": log.publish_threadsafe(
+            type="progress",
+            stage="write",
+            progress=p,
+            key=write_key,
+            params={"done": n, "total": total, "name": name},
         ),
     )
     text_file = result.dsf_text
-    (package / "README.txt").write_text(_readme(plan, job), encoding="utf-8")
+    meshes = [o for o in result.objects if o.status == "ok" and o.has_mesh]
+    shaded = sum(o.shaded for o in meshes)
+    # The 3D view of the result shows the finished textures (same atlas layout as
+    # the preview, now with Blender's shading).
+    preview_dir = job_dir / "preview"
+    for o in meshes:
+        if o.shaded and (preview_dir / f"{o.stem}.png").is_file():
+            shutil.copyfile(package / "objects" / f"{o.stem}.png", preview_dir / f"{o.stem}.png")
+    readme = _readme(plan, job)
+    if shaded:
+        readme += (
+            f"\nSoft shading (ambient occlusion) of {shaded} of {len(meshes)} objects "
+            f"baked with Blender {blender_version or ''}.\n"
+        )
+    (package / "README.txt").write_text(readme, encoding="utf-8")
 
     log.publish_threadsafe(type="progress", stage="compile", progress=0.0, key="stage.compile")
     version = dsftool.version(exe)
@@ -612,7 +643,15 @@ def build_package(
     _verify_roundtrip(text_file.read_text(encoding="ascii"), roundtrip.read_text(encoding="ascii"))
     log.publish_threadsafe(type="progress", stage="verify", progress=1.0, key="stage.verified")
 
-    return BuildResult(package_dir=str(package), files=files_for(package), dsftool_version=version)
+    return BuildResult(
+        package_dir=str(package),
+        files=files_for(package),
+        dsftool_version=version,
+        blender=blender_version if blender_exe else None,
+        shaded=shaded,
+        shaded_stems=[o.stem for o in meshes if o.shaded],
+        meshes=len(meshes),
+    )
 
 
 def _count(pattern: str, text: str) -> int:

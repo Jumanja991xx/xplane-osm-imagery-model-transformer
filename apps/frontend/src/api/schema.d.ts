@@ -830,6 +830,20 @@ export interface components {
             files: string[];
             /** Dsftool Version */
             dsftool_version: string;
+            /** Blender */
+            blender?: string | null;
+            /**
+             * Shaded
+             * @default 0
+             */
+            shaded: number;
+            /** Shaded Stems */
+            shaded_stems?: string[];
+            /**
+             * Meshes
+             * @default 0
+             */
+            meshes: number;
         };
         /**
          * BuildingPart

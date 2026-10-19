@@ -2258,6 +2258,34 @@
           "dsftool_version": {
             "type": "string",
             "title": "Dsftool Version"
+          },
+          "blender": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blender"
+          },
+          "shaded": {
+            "type": "integer",
+            "title": "Shaded",
+            "default": 0
+          },
+          "shaded_stems": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Shaded Stems"
+          },
+          "meshes": {
+            "type": "integer",
+            "title": "Meshes",
+            "default": 0
           }
         },
         "type": "object",

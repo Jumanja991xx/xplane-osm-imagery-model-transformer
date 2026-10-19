@@ -359,6 +359,7 @@ export function PreviewDialog({
     o.name || t(categoryLabelKey({ kind: "object", category: o.category as never }));
   const problems = data?.objects.filter((o) => o.status !== "ok") ?? [];
   const built = data?.objects.filter((o) => o.status === "ok") ?? [];
+  const shadedStems = useApp((s) => s.job?.build?.shaded_stems ?? []);
   const current = data?.objects.find((o) => o.stem === selected) ?? null;
 
   /** After an adjustment: take the new plan entry and show the rebuilt object. */
@@ -422,6 +423,11 @@ export function PreviewDialog({
                     >
                       {label(o)}
                       <span className="ml-1 text-xs text-zinc-400">{o.triangles}△</span>
+                      {shadedStems.includes(o.stem) && (
+                        <span className="ml-1 text-xs" title={t("preview.blender_shaded")}>
+                          🎨
+                        </span>
+                      )}
                     </button>
                   </li>
                 ))}

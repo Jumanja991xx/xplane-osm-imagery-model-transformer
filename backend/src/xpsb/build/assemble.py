@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import math
+import shutil
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -110,6 +111,7 @@ class ItemResult:
     lights: int = 0
     photo_textures: list[str] = field(default_factory=list)  # ids of photos painted on it
     shaded: bool = False  # ambient occlusion baked in by Blender
+    blender_input: str | None = None  # prepared for Blender (package build only)
     # X-Plane library objects: path, x/y in metres from the anchor, heading, size
     library: list[dict] = field(default_factory=list)
 
@@ -358,13 +360,12 @@ def generate_one(
         if baked is None:
             res.has_mesh = False
             return res
-        if blender_exe and not preview:  # soft shading baked in by Blender
+        if blender_exe and not preview:  # Blender shades it afterwards (all in one run)
             from xpsb import blender
 
-            ao = blender.bake_ao(blender_exe, mesh, baked)
-            if ao is not None:
-                blender.apply_ao(baked, ao)
-                res.shaded = True
+            npz = out_dir / BLENDER_DIR / f"{stem}.npz"
+            if blender.prepare(mesh, baked, npz):
+                res.blender_input = str(npz)
         baked.image.save(out_dir / f"{stem}.png", optimize=False)
         normal = None
         if baked.normal is not None:
@@ -392,11 +393,12 @@ def generate_all(
     detail: str,
     out_dir: Path,
     preview: bool,
-    progress: Callable[[float], None] | None = None,
+    progress: Callable[..., None] | None = None,
     library: Catalog | None = None,
     photo_dir: Path | None = None,
     blender_exe: str | None = None,
 ) -> list[ItemResult]:
+    """progress(fraction, object number, objects, object name)."""
     """Writes OBJ8 + PNG (package) or preview JSON + PNG (job folder) per object."""
     out_dir.mkdir(parents=True, exist_ok=True)
     todo = [it for it in items if buildable(it)]
@@ -416,7 +418,7 @@ def generate_all(
             )
         )
         if progress:
-            progress(n / max(1, len(todo)))
+            progress(n / max(1, len(todo)), n, len(todo), item.name or str(item.category))
     return results
 
 
@@ -551,6 +553,38 @@ def _ortho_uv(windings, bounds):
     ]
 
 
+BLENDER_DIR = ".blender"  # temporary inputs/outputs of the Blender run
+
+
+def _shade_with_blender(
+    results: list[ItemResult],
+    objects_dir: Path,
+    blender_exe: str,
+    progress: Callable[[int, int, str, float | None], None] | None,
+) -> None:
+    """One Blender run bakes the soft shading of all prepared objects, which is then
+    multiplied into their colour textures."""
+    from xpsb import blender
+
+    todo = [r for r in results if r.blender_input]
+    work = objects_dir / BLENDER_DIR
+    try:
+        jobs = [(Path(r.blender_input), work / f"{r.stem}_ao.png") for r in todo]  # type: ignore[arg-type]
+        done = blender.bake_batch(blender_exe, jobs, progress or (lambda *a: None))
+        for i in sorted(done):
+            res = todo[i]
+            try:
+                ao = blender.ao_from(jobs[i][0], jobs[i][1])
+                blender.shade_texture(objects_dir / f"{res.stem}.png", ao)
+                res.shaded = True
+            except (OSError, ValueError):
+                continue
+    finally:
+        for r in todo:
+            r.blender_input = None
+        shutil.rmtree(work, ignore_errors=True)
+
+
 @dataclass
 class PackageResult:
     dsf_text: Path
@@ -565,16 +599,19 @@ def write_package(
     detail: str,
     exclusions: list[tuple[str, tuple[float, float, float, float]]],
     ortho: Ortho | None = None,
-    progress: Callable[[float], None] | None = None,
+    progress: Callable[..., None] | None = None,
     library: Catalog | None = None,
     photo_dir: Path | None = None,
     blender_exe: str | None = None,
+    blender_progress: Callable[[int, int, str, float | None], None] | None = None,
 ) -> PackageResult:
     objects_dir = package / "objects"
     polygons_dir = package / "polygons"
     results = generate_all(
         items, detail, objects_dir, False, progress, library, photo_dir, blender_exe
     )
+    if blender_exe:
+        _shade_with_blender(results, objects_dir, blender_exe, blender_progress)
 
     dsf = DsfText(tile=tile)
     for kind, bounds in exclusions:

@@ -392,7 +392,7 @@ def _gate_c(job: Job, ctx: GateContext):
             GateItem(
                 kind="action",
                 key="gate.c.blender",
-                params={"version": ctx.blender, "minutes": max(1, round(meshes * 15 / 60))},
+                params={"version": ctx.blender, "minutes": max(1, round((30 + meshes * 6) / 60))},
             )
         )
     elif ctx.settings.use_blender and meshes:

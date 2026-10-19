@@ -75,6 +75,21 @@ export function InstallStep({ onInstall }: { onInstall: () => void }) {
       {previewButton}
       {job.state === "built" && job.plan && <PackageName job={job} />}
       {job.build && <code className="block text-xs break-all text-zinc-600 dark:text-zinc-300">{job.build.package_dir}</code>}
+      {job.build && job.build.meshes > 0 && (
+        <p className="text-xs" data-testid="build-blender">
+          {job.build.blender ? (
+            <span className={job.build.shaded ? "text-emerald-600" : "text-amber-600"}>
+              {t(job.build.shaded ? "install.blender_done" : "install.blender_failed", {
+                version: job.build.blender,
+                shaded: job.build.shaded,
+                total: job.build.meshes,
+              })}
+            </span>
+          ) : (
+            <span className="text-zinc-500">{t("install.blender_none")}</span>
+          )}
+        </p>
+      )}
       <div className="flex justify-end gap-2">
         {back}
         <Button variant="primary" onClick={onInstall} data-testid="install-button">

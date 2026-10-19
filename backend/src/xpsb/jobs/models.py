@@ -225,6 +225,10 @@ class BuildResult(BaseModel):
     package_dir: str
     files: list[str]
     dsftool_version: str
+    blender: str | None = None  # Blender version used for the soft shading
+    shaded: int = 0  # objects Blender shaded
+    shaded_stems: list[str] = Field(default_factory=list)  # their file names (xpsb_obj_003)
+    meshes: int = 0  # objects with an own 3D model
 
 
 class InstallResult(BaseModel):

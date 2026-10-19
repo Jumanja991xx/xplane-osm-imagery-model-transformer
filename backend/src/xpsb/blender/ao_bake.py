@@ -1,20 +1,47 @@
-"""Runs INSIDE Blender (blender --background --factory-startup --python ao_bake.py -- IN OUT).
+"""Runs INSIDE Blender (blender --background --factory-startup --python ao_bake.py -- LIST).
 
 A fixed, reviewed script that ships with the app - the AI never writes code for
 Blender. It bakes ambient occlusion (the soft shadow in corners, under cornices,
-inside window reveals and near the ground) of an object into an image laid out
-like the object's texture atlas.
+inside window reveals and near the ground) of objects into images laid out like
+their texture atlases. One Blender start for all objects of a package; the
+graphics card is used when Cycles supports it (OptiX/CUDA, HIP, oneAPI, Metal).
 
-IN: .npz with positions (N, 3; metres, z up), uvs (N, 2; atlas coordinates, t up),
-receivers (M, 3; triangles that own their piece of the atlas), occluders (K, 3;
-everything else that casts shadow), size (2,), samples (), distance ().
+LIST: a text file, one "IN.npz<TAB>OUT.png" per line.
+IN: positions (N, 3; metres, z up), uvs (N, 2; atlas coordinates, t up), receivers
+(M, 3; triangles that own their piece of the atlas), occluders (K, 3; everything
+else that casts shadow), size (2,), samples (), distance ().
 OUT: greyscale PNG (white = open, dark = occluded).
+Prints "XPSB_DEVICE <kind> <name>" once and "XPSB_DONE <line number>" per object.
 """
 
 import sys
 
 import bpy
 import numpy as np
+
+GPU_KINDS = ("OPTIX", "CUDA", "HIP", "ONEAPI", "METAL")
+
+
+def _use_gpu(scene) -> str:
+    """Switches Cycles to the graphics card if there is a supported one."""
+    try:
+        prefs = bpy.context.preferences.addons["cycles"].preferences
+    except (KeyError, AttributeError):
+        return "CPU"
+    for kind in GPU_KINDS:
+        try:
+            prefs.compute_device_type = kind
+            prefs.get_devices()
+        except (TypeError, ValueError, AttributeError):
+            continue
+        gpus = [d for d in prefs.devices if d.type == kind]
+        if gpus:
+            for d in prefs.devices:
+                d.use = d.type == kind
+            scene.cycles.device = "GPU"
+            return f"{kind} {gpus[0].name}"
+    scene.cycles.device = "CPU"
+    return "CPU"
 
 
 def _mesh(name, positions, tris, uvs=None):
@@ -31,23 +58,25 @@ def _mesh(name, positions, tris, uvs=None):
     return ob
 
 
-def bake(src: str, dst: str) -> None:
-    d = np.load(src)
-    positions = d["positions"].astype(np.float64)
-    w, h = (int(v) for v in d["size"])
-    bpy.ops.wm.read_factory_settings(use_empty=True)
-    scene = bpy.context.scene
-    scene.render.engine = "CYCLES"
-    scene.cycles.device = "CPU"
-    scene.cycles.samples = int(d["samples"])
-    scene.cycles.use_denoising = False
-    world = bpy.data.worlds.new("world")
-    world.light_settings.distance = float(d["distance"])
-    scene.world = world
+def _clear(scene) -> None:
+    for ob in list(scene.collection.objects):
+        bpy.data.objects.remove(ob, do_unlink=True)
+    for coll in (bpy.data.meshes, bpy.data.images, bpy.data.materials):
+        for block in list(coll):
+            coll.remove(block)
 
-    receivers = _mesh("receivers", positions, d["receivers"], d["uvs"])
-    if len(d["occluders"]):
-        _mesh("occluders", positions, d["occluders"])
+
+def bake_one(scene, src: str, dst: str) -> None:
+    with np.load(src) as d:
+        positions = d["positions"].astype(np.float64)
+        uvs, receivers, occluders = d["uvs"], d["receivers"], d["occluders"]
+        w, h = (int(v) for v in d["size"])
+        scene.cycles.samples = int(d["samples"])
+        scene.world.light_settings.distance = float(d["distance"])
+    _clear(scene)
+    rec = _mesh("receivers", positions, receivers, uvs)
+    if len(occluders):
+        _mesh("occluders", positions, occluders)
     # The ground darkens the foot of the walls.
     lo, hi = positions.min(axis=0), positions.max(axis=0)
     span = float(max(hi[0] - lo[0], hi[1] - lo[1])) + 40.0
@@ -68,17 +97,34 @@ def bake(src: str, dst: str) -> None:
     node = mat.node_tree.nodes.new("ShaderNodeTexImage")
     node.image = image
     mat.node_tree.nodes.active = node
-    receivers.data.materials.append(mat)
+    rec.data.materials.append(mat)
 
     bpy.ops.object.select_all(action="DESELECT")
-    receivers.select_set(True)
-    bpy.context.view_layer.objects.active = receivers
+    rec.select_set(True)
+    bpy.context.view_layer.objects.active = rec
     bpy.ops.object.bake(type="AO", margin=4, use_clear=True)
     image.filepath_raw = dst
     image.file_format = "PNG"
     image.save()
 
 
+def main(list_file: str) -> None:
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    scene = bpy.context.scene
+    scene.render.engine = "CYCLES"
+    scene.cycles.use_denoising = False
+    scene.world = bpy.data.worlds.new("world")
+    print("XPSB_DEVICE", _use_gpu(scene), flush=True)
+    with open(list_file, encoding="utf-8") as f:
+        jobs = [line.rstrip("\n").split("\t") for line in f if line.strip()]
+    for n, (src, dst) in enumerate(jobs):
+        try:
+            bake_one(scene, src, dst)
+        except Exception as exc:  # one broken object must not stop the others
+            print("XPSB_FAILED", n, exc, flush=True)
+        print("XPSB_DONE", n, flush=True)
+
+
 if __name__ == "__main__":
     args = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else sys.argv[1:]
-    bake(args[0], args[1])
+    main(args[0])

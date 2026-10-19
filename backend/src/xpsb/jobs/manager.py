@@ -1291,6 +1291,7 @@ class JobManager:
             self.events(job.id),
             self.library(),
             info.path if info else None,
+            info.version if info else None,
         )
         self._set_state(job, JobState.BUILT)
 

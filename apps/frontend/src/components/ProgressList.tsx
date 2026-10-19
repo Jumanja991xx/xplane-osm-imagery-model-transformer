@@ -12,6 +12,7 @@ const HINTED = new Set([
   "research",
   "plan",
   "write",
+  "blender",
   "compile",
   "verify",
   "backup",

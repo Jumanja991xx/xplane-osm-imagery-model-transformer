@@ -1,8 +1,8 @@
-"""Blender bridge: finding it, the bake call (fake Blender) and applying the result."""
+"""Blender bridge: finding it, the batch run (fake Blender) and applying the result."""
 
 from __future__ import annotations
 
-import subprocess
+import io
 import sys
 from pathlib import Path
 
@@ -21,38 +21,69 @@ def _mesh():
     return run_script(src, ScriptInputs(footprint=fp, path=None, params={}), 40_000)
 
 
-def test_bake_runs_the_fixed_script_and_shades_only_own_texture_pieces():
-    mesh = _mesh()
-    baked = bake(mesh)
-    seen = {}
+class FakeProc:
+    """Stands in for the Blender process: bakes 'everything occluded' images."""
 
-    def fake_run(cmd, **kw):
-        # what the app hands to Blender: our own script, never anything else
+    def __init__(self, cmd, hang_after=None, **kw):
         assert "--python" in cmd and Path(cmd[cmd.index("--python") + 1]) == blender.SCRIPT
         assert "--factory-startup" in cmd
-        src, dst = cmd[-2], cmd[-1]
-        with np.load(src) as d:  # closed again: Windows cannot delete open files
-            seen["rec"], seen["occ"] = len(d["receivers"]), len(d["occluders"])
-            w, h = (int(v) for v in d["size"])
-        Image.new("L", (w, h), 64).save(dst)  # "everything occluded"
-        return subprocess.CompletedProcess(cmd, 0, "", "")
+        out = ["XPSB_DEVICE OPTIX NVIDIA RTX\n"]
+        jobs = Path(cmd[-1]).read_text(encoding="utf-8").splitlines()
+        for n, line in enumerate(jobs):
+            if hang_after is not None and n >= hang_after:
+                break
+            src, dst = line.split("\t")
+            with np.load(src) as d:  # closed again: Windows cannot delete open files
+                w, h = (int(v) for v in d["size"])
+            Image.new("L", (w, h), 64).save(dst)
+            out.append(f"XPSB_DONE {n}\n")
+        self.stdout = io.StringIO("".join(out))
 
-    ao = blender.bake_ao("blender", mesh, baked, run=fake_run)
-    assert ao is not None and seen["rec"] > 0 and seen["occ"] > 0
-    assert ao.min() < 0.3 and ao.max() == 1.0  # dark only where receivers are
-    before = np.asarray(baked.image).astype(int).sum()
-    blender.apply_ao(baked, ao)
-    assert np.asarray(baked.image).astype(int).sum() < before
+    def kill(self):
+        pass
+
+    def wait(self, timeout=None):
+        return 0
 
 
-def test_failed_blender_leaves_the_object_alone():
+def test_one_run_for_all_objects_shades_only_own_texture_pieces(tmp_path):
     mesh = _mesh()
     baked = bake(mesh)
+    texture = tmp_path / "obj.png"
+    baked.image.save(texture)
+    jobs = []
+    for k in range(3):
+        npz = tmp_path / ".blender" / f"o{k}.npz"
+        assert blender.prepare(mesh, baked, npz)
+        jobs.append((npz, tmp_path / ".blender" / f"o{k}_ao.png"))
+    calls, seen = [], []
 
-    def broken(cmd, **kw):
-        return subprocess.CompletedProcess(cmd, 1, "", "error")
+    def popen(cmd, **kw):
+        calls.append(cmd)
+        return FakeProc(cmd, **kw)
 
-    assert blender.bake_ao("blender", mesh, baked, run=broken) is None
+    done = blender.bake_batch("blender", jobs, lambda *a: seen.append(a), popen=popen)
+    assert done == {0, 1, 2} and len(calls) == 1  # Blender started once
+    assert seen[-1][:3] == (3, 3, "OPTIX NVIDIA RTX") and seen[-1][3] is not None
+    ao = blender.ao_from(*jobs[0])
+    assert ao.min() < 0.3 and ao.max() == 1.0  # dark only where receivers are
+    before = np.asarray(Image.open(texture)).astype(int).sum()
+    blender.shade_texture(texture, ao)
+    assert np.asarray(Image.open(texture)).astype(int).sum() < before
+
+
+def test_a_hanging_blender_keeps_what_was_done(tmp_path, monkeypatch):
+    mesh = _mesh()
+    baked = bake(mesh)
+    jobs = []
+    for k in range(3):
+        npz = tmp_path / f"o{k}.npz"
+        blender.prepare(mesh, baked, npz)
+        jobs.append((npz, tmp_path / f"o{k}_ao.png"))
+    done = blender.bake_batch(
+        "blender", jobs, popen=lambda cmd, **kw: FakeProc(cmd, hang_after=1, **kw)
+    )
+    assert done == {0}
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="uses a shell script as fake Blender")
