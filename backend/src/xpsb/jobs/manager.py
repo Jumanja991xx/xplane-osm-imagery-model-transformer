@@ -699,6 +699,13 @@ class JobManager:
         inputs = assemble._script_inputs(item, job.analysis.items, detail)
         max_tris = assemble.DETAIL.get(detail, assemble.DETAIL["medium"])[0]
         label = f"{item.name or ''} ({item.category})".strip()
+        log = self.events(job_id)
+
+        def on_step(key: str, params: dict) -> None:
+            log.publish_threadsafe(
+                type="progress", stage="design", key=key, params={**params, "item": item.id}
+            )
+
         self._busy.add(job_id)
         try:
             result = await asyncio.to_thread(
@@ -710,6 +717,7 @@ class JobManager:
                 aerial_png=aerial,
                 cfg=cfg,
                 object_label=label,
+                on_step=on_step,
             )
         finally:
             self._busy.discard(job_id)

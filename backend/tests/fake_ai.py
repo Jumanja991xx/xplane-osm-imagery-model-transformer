@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import re
+import time
 from pathlib import Path
 
 from xpsb.ai.analyze import (
@@ -41,6 +43,8 @@ class FakeAi:
         self.fail_call: str | None = None
         self.served_model: str | None = None  # simulate a server-side fallback
         self.tokens = (3000, 1500)
+        # Browser tests: the architect takes a moment, like the real one (seconds).
+        self.architect_delay = float(os.environ.get("XPSB_FAKE_AI_DELAY", "0"))
 
     def factory(self, api_key: str) -> FakeAi:
         self.keys.append(api_key)
@@ -62,6 +66,8 @@ class FakeAi:
             raise AiAuthError("AuthenticationError")
         if self.fail_call:
             raise AiCallError(self.fail_call)
+        if output_format in (ArchitectScript, ArchitectReview):
+            time.sleep(self.architect_delay)
         if output_format is ArchitectScript:
             text = "\n".join(b.get("text", "") for b in content)
             broken = "kaputt" in text and "failed in the sandbox" not in text

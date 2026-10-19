@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import inspect
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from pydantic import BaseModel, Field
@@ -164,6 +165,7 @@ def design(
     aerial_png: bytes | None,
     cfg: AiRun,
     object_label: str,
+    on_step: Callable[[str, dict], None] = lambda key, params: None,
 ) -> DesignResult:
     result = DesignResult(info=AiRunInfo(model=cfg.model))
     budget = Budget(cfg.budget_usd, result.info, cfg.on_cost)
@@ -229,6 +231,7 @@ def design(
     content.append({"type": "text", "text": "Current script:\n" + current_script})
 
     try:
+        on_step("design.step.writing", {})
         out = call(content, ArchitectScript)
         error: str | None = None
         mesh: Mesh | None = None
@@ -236,9 +239,11 @@ def design(
         while out is not None:
             script = _clean(out.script)  # type: ignore[attr-defined]
             result.summary = out.summary  # type: ignore[attr-defined]
+            on_step("design.step.testing", {})
             mesh, error = try_run(script)
             if mesh is not None:
                 break
+            on_step("design.step.fixing", {"attempt": result.calls + 1})
             fix = [
                 {"type": "text", "text": f"The user asks: {request}"},
                 {"type": "text", "text": facts},
@@ -254,6 +259,7 @@ def design(
         result.script, result.mesh = script, mesh
 
         # Self-check: the model looks at its result once and may improve it.
+        on_step("design.step.checking", {})
         review = call(
             [
                 {"type": "text", "text": f"The user asked: {request}"},
@@ -279,6 +285,7 @@ def design(
             result.summary = review.summary or result.summary  # type: ignore[attr-defined]
             better = getattr(review, "script", None)
             if not review.ok and better:  # type: ignore[attr-defined]
+                on_step("design.step.improving", {})
                 better = _clean(better)
                 mesh2, _ = try_run(better)
                 if mesh2 is not None:  # otherwise keep the first working version

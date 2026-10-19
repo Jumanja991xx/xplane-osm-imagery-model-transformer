@@ -616,6 +616,50 @@ function ColorField({
   );
 }
 
+/** Live steps of the AI architect with elapsed time, while the user waits. */
+function DesignProgress({ itemId, since, started }: { itemId: string; since: number; started: number }) {
+  const { t } = useT();
+  const events = useApp((s) => s.events);
+  const [now, setNow] = useState(Date.now());
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    box.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  const steps = events.filter((e) => e.seq > since && e.stage === "design" && e.params?.item === itemId);
+  const secs = Math.floor((now - started) / 1000);
+  const elapsed = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
+  const current = steps[steps.length - 1];
+  return (
+    <div
+      ref={box}
+      className="space-y-2 rounded-md border border-accent-500/50 bg-accent-600/10 p-2.5"
+      data-testid="design-progress"
+      aria-live="polite"
+    >
+      <div className="flex items-center gap-3">
+        <span className="inline-block h-7 w-7 shrink-0 animate-spin rounded-full border-[3px] border-accent-500 border-t-transparent" />
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium">
+            {current?.key ? t(current.key, current.params ?? {}) : t("design.step.sending")}
+          </div>
+          <div className="text-xs text-zinc-500 tabular-nums">
+            {elapsed} · {t("design.running_hint")}
+          </div>
+        </div>
+      </div>
+      {steps.length > 1 && (
+        <ul className="space-y-0.5 text-xs text-zinc-500">
+          {steps.slice(0, -1).map((e) => (
+            <li key={e.seq}>✓ {t(e.key ?? "", e.params ?? {})}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 /** Request to the AI architect in own words: cost first, then send, then keep or reset. */
 function DesignPanel({
   jobId,
@@ -637,6 +681,7 @@ function DesignPanel({
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sending, setSending] = useState<{ since: number; started: number } | null>(null);
   if (!item) return null;
   const aiOn = Boolean(job?.brief?.use_ai);
 
@@ -664,7 +709,11 @@ function DesignPanel({
   const send = () =>
     run(async () => {
       if (!estimate) return;
-      const out = await api.redesign(jobId, object.item_id, text.trim(), estimate.max);
+      const events = useApp.getState().events;
+      setSending({ since: events.length ? events[events.length - 1].seq : 0, started: Date.now() });
+      const out = await api.redesign(jobId, object.item_id, text.trim(), estimate.max).finally(() =>
+        setSending(null),
+      );
       setEstimate(null);
       setText("");
       setDone(t("design.done", { summary: out.summary, cost: out.cost_usd.toFixed(3) }));
@@ -722,11 +771,7 @@ function DesignPanel({
               </Button>
             </div>
           )}
-          {busy && estimate && (
-            <div className="flex items-center gap-2 text-xs">
-              <Spinner /> {t("design.running")}
-            </div>
-          )}
+          {sending && <DesignProgress itemId={object.item_id} since={sending.since} started={sending.started} />}
         </>
       )}
       {done && <Alert kind="success">{done}</Alert>}

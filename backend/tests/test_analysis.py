@@ -411,6 +411,21 @@ def test_architect_writes_fixes_and_checks_a_script(client, fake_ai, app_ctx):
     )
     assert "extrude(" in fake_ai.calls[0]["system"]  # tool reference
 
+    # Every step is reported live (shown while the user waits).
+    import time
+
+    for _ in range(50):  # events from the worker thread arrive via the event loop
+        steps = [e.key for e in app_ctx.jobs.events(jid).events if e.stage == "design"]
+        if "design.step.checking" in steps:
+            break
+        time.sleep(0.05)
+    assert steps == [
+        "design.step.writing",
+        "design.step.testing",
+        "design.step.fixing",
+        "design.step.testing",
+        "design.step.checking",
+    ]
     job = out["job"]
     item = next(i for i in job["analysis"]["items"] if i["id"] == obj["item_id"])
     assert "cylinder(" in item["script"] and item["script_request"].startswith("kaputt")
