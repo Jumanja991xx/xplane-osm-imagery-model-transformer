@@ -3417,6 +3417,44 @@
           "image_url": {
             "type": "string",
             "title": "Image Url"
+          },
+          "heading": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heading"
+          },
+          "pano": {
+            "type": "boolean",
+            "title": "Pano",
+            "default": false
+          },
+          "bearing": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bearing"
+          },
+          "facing": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Facing"
           }
         },
         "type": "object",

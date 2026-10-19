@@ -1220,6 +1220,17 @@ export interface components {
             thumb_url: string;
             /** Image Url */
             image_url: string;
+            /** Heading */
+            heading?: number | null;
+            /**
+             * Pano
+             * @default false
+             */
+            pano: boolean;
+            /** Bearing */
+            bearing?: number | null;
+            /** Facing */
+            facing?: boolean | null;
         };
         /** PhotoUpload */
         PhotoUpload: {

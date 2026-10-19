@@ -2,9 +2,12 @@
 
 Two ways in: the user uploads own photos (and confirms the rights), or picks
 photos from open sources near the object (Wikimedia Commons, Panoramax and,
-with the user's own token, Mapillary). Photos are only ever sent to the AI as
-input; they never go into the scenery package. Stored re-encoded as JPEG (this
-also drops EXIF data such as GPS positions of private photos).
+with the user's own token, Mapillary - the open counterpart of Street View).
+Street-level photos carry the camera direction: those looking at the object come
+first, and of a 360° panorama only the view towards the object is kept.
+Photos are only ever sent to the AI as input; they never go into the scenery
+package. Stored re-encoded as JPEG (this also drops EXIF data such as GPS
+positions of private photos).
 """
 
 from __future__ import annotations
@@ -76,6 +79,11 @@ class PhotoCandidate(BaseModel):
     distance_m: float | None = None
     thumb_url: str  # kept server-side; the client asks for /photo-thumb/<id>
     image_url: str
+    # Street-level photos: camera direction, 360° panorama, direction to the object.
+    heading: float | None = None
+    pano: bool = False
+    bearing: float | None = None
+    facing: bool | None = None  # None: unknown (no camera direction)
 
 
 # ---- storing ---------------------------------------------------------------------
@@ -156,6 +164,61 @@ def http_get(url: str, timeout: float = 30) -> bytes:
 
 def _distance_m(lon: float, lat: float, lon2: float, lat2: float) -> float:
     return math.hypot((lon2 - lon) * meters_per_deg_lon(lat), (lat2 - lat) * METERS_PER_DEG_LAT)
+
+
+FACING_DEG = 40.0  # half the usual field of view of a street-level camera
+
+
+def _bearing(cam_lon: float, cam_lat: float, lon: float, lat: float) -> float:
+    """Compass direction from the camera to the object (0 = north, clockwise)."""
+    dx = (lon - cam_lon) * meters_per_deg_lon(cam_lat)
+    dy = (lat - cam_lat) * METERS_PER_DEG_LAT
+    return math.degrees(math.atan2(dx, dy)) % 360.0
+
+
+def _turn(heading: float, bearing: float) -> float:
+    """Signed angle from the camera direction to the object, -180..180."""
+    return (bearing - heading + 540.0) % 360.0 - 180.0
+
+
+def _aim(c: PhotoCandidate, geom: list, lon: float, lat: float) -> PhotoCandidate:
+    """Fills bearing/facing from the camera position and direction."""
+    if len(geom) < 2 or c.heading is None:
+        return c
+    c.bearing = round(_bearing(geom[0], geom[1], lon, lat), 1)
+    c.facing = c.pano or abs(_turn(c.heading, c.bearing)) <= FACING_DEG
+    return c
+
+
+def view_towards(raw: bytes, heading: float, bearing: float, fov: float = 90.0) -> bytes:
+    """The part of an equirectangular 360° panorama that looks at the object (the
+    image centre is the camera direction): like turning around in Street View."""
+    try:
+        with Image.open(io.BytesIO(raw)) as img:
+            pano = img.convert("RGB")
+    except (UnidentifiedImageError, OSError) as exc:
+        raise PhotoError("not an image") from exc
+    w, h = pano.size
+    if w < 2 * h * 0.9:  # not equirectangular: keep the photo as it is
+        return raw
+    cx = (w / 2 + _turn(heading, bearing) / 360.0 * w) % w
+    half = int(w * fov / 360.0 / 2)
+    wide = Image.new("RGB", (w * 2, h))  # two copies side by side: crops across the seam
+    wide.paste(pano, (0, 0))
+    wide.paste(pano, (w, 0))
+    left = int(cx) - half + (w if cx - half < 0 else 0)
+    view = wide.crop((left, int(h * 0.25), left + 2 * half, int(h * 0.75)))
+    buf = io.BytesIO()
+    view.save(buf, format="JPEG", quality=90)
+    return buf.getvalue()
+
+
+def download(c: PhotoCandidate) -> bytes:
+    """The candidate's image; for panoramas only the view towards the object."""
+    raw = http_get(c.image_url)
+    if c.pano and c.heading is not None and c.bearing is not None:
+        return view_towards(raw, c.heading, c.bearing)
+    return raw
 
 
 def _bbox(lon: float, lat: float, radius: float) -> tuple[float, float, float, float]:
@@ -244,19 +307,22 @@ def search_panoramax(lon: float, lat: float, radius: float) -> list[PhotoCandida
         props = feat.get("properties") or {}
         providers = feat.get("providers") or props.get("providers") or []
         geom = (feat.get("geometry") or {}).get("coordinates") or []
-        out.append(
-            PhotoCandidate(
-                id=uuid.uuid4().hex[:12],
-                source="panoramax",
-                title=props.get("datetime"),
-                author=(providers[0] or {}).get("name") if providers else None,
-                license=props.get("license") or "CC-BY-SA-4.0",
-                page_url=f"https://panoramax.xyz/#focus=pic&pic={feat.get('id')}",
-                distance_m=_distance_m(lon, lat, geom[0], geom[1]) if len(geom) >= 2 else None,
-                thumb_url=thumb,
-                image_url=image,
-            )
+        azimuth = props.get("view:azimuth")
+        fov = (props.get("pers:interior_orientation") or {}).get("field_of_view")
+        c = PhotoCandidate(
+            id=uuid.uuid4().hex[:12],
+            source="panoramax",
+            title=props.get("datetime"),
+            author=(providers[0] or {}).get("name") if providers else None,
+            license=props.get("license") or "CC-BY-SA-4.0",
+            page_url=f"https://panoramax.xyz/#focus=pic&pic={feat.get('id')}",
+            distance_m=_distance_m(lon, lat, geom[0], geom[1]) if len(geom) >= 2 else None,
+            thumb_url=thumb,
+            image_url=image,
+            heading=float(azimuth) if isinstance(azimuth, (int, float)) else None,
+            pano=isinstance(fov, (int, float)) and fov >= 359,
         )
+        out.append(_aim(c, geom, lon, lat))
     return out
 
 
@@ -264,7 +330,8 @@ def search_mapillary(lon: float, lat: float, radius: float, token: str) -> list[
     w, s, e, n = _bbox(lon, lat, min(radius, 120))  # the API limits the bbox size
     params = {
         "access_token": token,
-        "fields": "id,thumb_256_url,thumb_1024_url,captured_at,computed_geometry,creator",
+        "fields": "id,thumb_256_url,thumb_1024_url,thumb_2048_url,captured_at,computed_geometry,"
+        "creator,compass_angle,computed_compass_angle,is_pano",
         "bbox": f"{w:.6f},{s:.6f},{e:.6f},{n:.6f}",
         "limit": "40",
     }
@@ -277,19 +344,23 @@ def search_mapillary(lon: float, lat: float, radius: float, token: str) -> list[
         if not img.get("thumb_256_url") or not img.get("thumb_1024_url"):
             continue
         geom = (img.get("computed_geometry") or {}).get("coordinates") or []
-        out.append(
-            PhotoCandidate(
-                id=uuid.uuid4().hex[:12],
-                source="mapillary",
-                title=str(img.get("captured_at") or "") or None,
-                author=(img.get("creator") or {}).get("username"),
-                license="CC-BY-SA-4.0",
-                page_url=f"https://www.mapillary.com/app/?pKey={img.get('id')}",
-                distance_m=_distance_m(lon, lat, geom[0], geom[1]) if len(geom) >= 2 else None,
-                thumb_url=img["thumb_256_url"],
-                image_url=img["thumb_1024_url"],
-            )
+        heading = img.get("computed_compass_angle", img.get("compass_angle"))
+        pano = bool(img.get("is_pano"))
+        c = PhotoCandidate(
+            id=uuid.uuid4().hex[:12],
+            source="mapillary",
+            title=str(img.get("captured_at") or "") or None,
+            author=(img.get("creator") or {}).get("username"),
+            license="CC-BY-SA-4.0",
+            page_url=f"https://www.mapillary.com/app/?pKey={img.get('id')}",
+            distance_m=_distance_m(lon, lat, geom[0], geom[1]) if len(geom) >= 2 else None,
+            thumb_url=img["thumb_256_url"],
+            # panoramas: the larger image, only the view towards the object is kept
+            image_url=(img.get("thumb_2048_url") if pano else None) or img["thumb_1024_url"],
+            heading=float(heading) if isinstance(heading, (int, float)) else None,
+            pano=pano,
         )
+        out.append(_aim(c, geom, lon, lat))
     return out
 
 
@@ -314,5 +385,8 @@ def search(
             candidates += fn()
         except (PhotoError, ValueError, KeyError, TypeError) as exc:
             errors[name] = str(exc)[:200]
-    candidates.sort(key=lambda c: c.distance_m if c.distance_m is not None else 1e9)
+    # Photos that look at the object first (then by distance); those looking away last.
+    candidates.sort(
+        key=lambda c: (c.facing is False, c.distance_m if c.distance_m is not None else 1e9)
+    )
     return SearchResult(candidates=candidates[:60], errors=errors)

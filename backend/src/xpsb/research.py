@@ -319,8 +319,12 @@ def research_item(item: SceneItem, language: str, mapillary_token: str | None) -
         nearby = _safe(
             lambda: photos.search(lon, lat, mapillary_token, radius=min(radius, 400)), None
         )
-        if nearby is not None:
-            candidates += [c for c in nearby.candidates if (c.distance_m or 0) <= radius]
+        if nearby is not None:  # street-level photos only if they look at the object
+            candidates += [
+                c
+                for c in nearby.candidates
+                if (c.distance_m or 0) <= radius and c.facing is not False
+            ]
 
     chosen: list[PhotoCandidate] = []
     seen: set[str] = set()
@@ -353,7 +357,7 @@ def attach_photos(item: SceneItem, found: Found, folder: Path) -> int:
         if c.page_url and c.page_url in have:
             continue
         try:
-            raw = http_get(c.image_url)
+            raw = photos.download(c)
             meta = c.model_dump(include={"source", "title", "author", "license", "page_url"})
             item.photos.append(photos.store(folder, raw, meta))
             added += 1

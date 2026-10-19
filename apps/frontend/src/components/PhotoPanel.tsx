@@ -176,8 +176,20 @@ export function PhotoPanel({ jobId, item }: { jobId: string; item: SceneItem }) 
                         alt={c.title ?? ""}
                         className="h-20 w-full rounded object-cover"
                       />
-                      <span className="block truncate text-[10px] text-zinc-500">
+                      <span
+                        className={`block truncate text-[10px] ${c.facing === false ? "text-zinc-400" : "text-zinc-500"}`}
+                        title={
+                          c.pano
+                            ? t("photos.pano_hint")
+                            : c.facing === true
+                              ? t("photos.facing_hint")
+                              : c.facing === false
+                                ? t("photos.away_hint")
+                                : undefined
+                        }
+                      >
                         {imported.has(c.id) ? "✓ " : ""}
+                        {c.pano ? "360° · " : c.facing === true ? "👁 " : c.facing === false ? "↷ " : ""}
                         {SOURCE_NAMES[c.source]}
                         {c.distance_m != null ? ` · ${Math.round(c.distance_m)} m` : ""}
                       </span>

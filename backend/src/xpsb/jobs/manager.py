@@ -1083,8 +1083,12 @@ class JobManager:
             raise JobConflict("error.photo_not_found")
         cache = self._thumbs.setdefault(job_id, {})
         if candidate_id not in cache:
+            c = entry[1]
             try:
-                cache[candidate_id] = photos.http_get(entry[1].thumb_url)
+                thumb = photos.http_get(c.thumb_url)
+                if c.pano and c.heading is not None and c.bearing is not None:
+                    thumb = photos.view_towards(thumb, c.heading, c.bearing)
+                cache[candidate_id] = thumb
             except photos.PhotoError as exc:
                 raise JobConflict("error.photo_download", detail=str(exc)) from None
         return cache[candidate_id]
@@ -1097,7 +1101,7 @@ class JobManager:
         item_id, c = entry
         item = self._item(job, item_id)
         try:
-            raw = photos.http_get(c.image_url)
+            raw = photos.download(c)
         except photos.PhotoError as exc:
             raise JobConflict("error.photo_download", detail=str(exc)) from None
         meta = c.model_dump(include={"source", "title", "author", "license", "page_url"})
