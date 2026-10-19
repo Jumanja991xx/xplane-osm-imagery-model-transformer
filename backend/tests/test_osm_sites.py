@@ -195,3 +195,27 @@ def test_all_kinds_of_ground_are_surfaces():
         assert [str(x.category) for x in items] == [expected], tags
     # A closed footway is a line, not a paved area.
     assert run([way(200, rect(0, 0, 30, 30), highway="footway", surface="asphalt")]) == []
+
+
+def test_grounds_enclosing_the_whole_drawn_area():
+    # The user draws tightly around the bowl: the grounds have no node inside the area.
+    elements = [
+        way(
+            1,
+            rect(-200, -170, 200, 170),
+            leisure="stadium",
+            name="Puskás Aréna",
+            wikidata="Q39069592",
+            capacity="67155",
+        ),
+        way(2, rect(-52, -34, 52, 34), leisure="pitch", surface="grass"),
+        way(3, rect(130, -10, 145, 5), building="yes", name="Torony", height="18"),
+    ]
+    items = run(elements, aoi(-150, -130, 150, 130))
+    stands = next(i for i in items if i.id == "way/1/stands")
+    assert stands.name == "Puskás Aréna" and stands.tags["building"] == "stadium"
+    tower = next(i for i in items if i.osm_ref == "way/3")
+    assert tower.name == "Torony" and tower.tags["site:name"] == "Puskás Aréna"
+    # The same grounds twice in the answer (both parts of the query): one stadium.
+    items = run(elements + elements[:1], aoi(-150, -130, 150, 130))
+    assert sum(i.id.endswith("/stands") for i in items) == 1

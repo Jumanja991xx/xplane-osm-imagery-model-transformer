@@ -97,6 +97,8 @@ def test_overpass_query_uses_polygon_filter():
     q = overpass.build_query([(8.5, 49.0), (8.6, 49.0), (8.6, 49.1), (8.5, 49.0)])
     assert 'poly:"49.0000000 8.5000000 49.0000000 8.6000000 49.1000000 8.6000000"' in q
     assert q.rstrip().endswith("out geom tags;")
+    # Named grounds enclosing the whole area (no node inside it) are asked for as well.
+    assert "is_in(" in q and 'way(pivot.encl)["leisure"]["name"]' in q
 
 
 def test_wms_layer_choice_and_tiling(tmp_path):

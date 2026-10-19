@@ -16,6 +16,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from shapely.geometry import Polygon
+
 from xpsb import __version__
 
 log = logging.getLogger(__name__)
@@ -52,22 +54,24 @@ SELECTORS = [
     'wr["landuse"~"^(village_green|meadow|flowerbed|cemetery|construction|brownfield)$"]',
     'wr["leisure"~"^(park|garden|playground|dog_park|golf_course|common)$"]',
     'wr["natural"~"^(sand|beach)$"]',
-    # Named grounds around buildings: what a building belongs to (name, Wikidata).
-    *(
-        f'wr["{key}"]["name"]["{key}"!~"^(nature_reserve|forest|farmland|meadow|district)$"]'
-        for key in (
-            "leisure",
-            "historic",
-            "amenity",
-            "tourism",
-            "man_made",
-            "office",
-            "healthcare",
-            "military",
-            "landuse",
-        )
-    ),
 ]
+
+# Named grounds around buildings: what a building belongs to (name, Wikidata).
+SITE_KEYS = (
+    "leisure",
+    "historic",
+    "amenity",
+    "tourism",
+    "man_made",
+    "office",
+    "healthcare",
+    "military",
+    "landuse",
+)
+# Too big or too general to say anything about the buildings on them.
+SKIP = "nature_reserve|forest|farmland|meadow|district|residential|commercial|retail|industrial"
+SITE_FILTERS = [f'["{key}"]["name"]["{key}"!~"^({SKIP})$"]' for key in SITE_KEYS]
+SELECTORS += [f"wr{f}" for f in SITE_FILTERS]
 
 
 class OverpassError(RuntimeError):
@@ -77,7 +81,16 @@ class OverpassError(RuntimeError):
 def build_query(ring: list[tuple[float, float]], timeout_s: int = 90) -> str:
     poly = " ".join(f"{lat:.7f} {lon:.7f}" for lon, lat in ring[:-1])
     parts = "\n".join(f'  {sel}(poly:"{poly}");' for sel in SELECTORS)
-    return f"[out:json][timeout:{timeout_s}];\n(\n{parts}\n);\nout geom tags;\n"
+    # Grounds that enclose the whole drawn area (a stadium drawn tightly inside its
+    # grounds) have no node inside it: ask which named areas contain its centre.
+    inside = Polygon(ring).representative_point()
+    enclosing = "\n".join(
+        f"  way(pivot.encl){f};\n  relation(pivot.encl){f};" for f in SITE_FILTERS
+    )
+    return (
+        f"[out:json][timeout:{timeout_s}];\n(\n{parts}\n);\nout geom tags;\n"
+        f"is_in({inside.y:.7f},{inside.x:.7f})->.encl;\n(\n{enclosing}\n);\nout geom tags;\n"
+    )
 
 
 def _fixture_dir() -> Path | None:

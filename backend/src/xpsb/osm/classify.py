@@ -252,6 +252,10 @@ SITE_EXCLUDE = {
     "district",
     "grass",
     "yes",
+    "residential",
+    "commercial",
+    "retail",
+    "industrial",
 }
 # What a building inherits from its site when it has nothing of its own.
 SITE_INHERIT = (
@@ -524,6 +528,7 @@ def classify(
     items: list[SceneItem] = []
     seen: set[str] = set()
     sites: list[_Site] = []
+    site_refs: set[str] = set()
     fields: list = []  # pitches and tracks (for stadium outlines)
     # type=building relations: their name/Wikidata belong to the outline way.
     outline_tags: dict[str, dict[str, str]] = {}
@@ -547,7 +552,8 @@ def classify(
         if not geom.is_valid:
             geom = geom.buffer(0) if geom.geom_type != "LineString" else geom
         if geom.geom_type in ("Polygon", "MultiPolygon"):
-            if site_kind(tags):
+            if site_kind(tags) and ref not in site_refs:  # may come twice from Overpass
+                site_refs.add(ref)
                 sites.append(_Site(ref, tags, geom))
             if tags.get("leisure") in ("pitch", "track"):
                 fields.append(geom)
