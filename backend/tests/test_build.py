@@ -165,10 +165,61 @@ def test_building_reads_the_quick_controls():
 
 
 def test_wide_halls_get_their_pitched_roof_too():
-    fp = [[0, 0], [60, 0], [60, 40], [0, 40]]
+    fp = [[0, 0], [60, 0], [60, 40], [0, 40]]  # big building=yes: treated as a hall
     for flip in (False, True):
         m = run(
             DEFAULT_SCRIPTS["buildings"], fp, {"roof_shape": "gabled", "height": 8, "flip": flip}
         )
-        assert any(p.material == "roof_tiles" for p in m.patches)
-        assert max(p[2] for patch in m.patches for p in patch.positions) <= 8 + 6.01
+        assert any(p.material == "roof_metal" for p in m.patches)
+        assert max(p[2] for patch in m.patches for p in patch.positions) <= 8 + 4.01
+
+
+def test_building_style_follows_the_osm_type():
+    hall = run(
+        DEFAULT_SCRIPTS["buildings"],
+        [[0, 0], [60, 0], [60, 40], [0, 40]],
+        {"building": "industrial"},
+    )
+    assert {p.material for p in hall.patches} == {"metal_sheet", "roof_metal"}
+    house = run(
+        DEFAULT_SCRIPTS["buildings"], [[0, 0], [12, 0], [12, 9], [0, 9]], {"building": "house"}
+    )
+    assert "roof_tiles" in {p.material for p in house.patches}  # pitched by default
+    top = max(p[2] for patch in house.patches for p in patch.positions)
+    assert 9 < top < 11  # 6.5 m walls + roof
+
+
+def test_stadium_bowl():
+    import math
+
+    oval = [
+        [110 * math.cos(2 * math.pi * i / 64), 80 * math.sin(2 * math.pi * i / 64)]
+        for i in range(64)
+    ]
+    m = run(
+        DEFAULT_SCRIPTS["buildings"],
+        oval,
+        {"building": "stadium", "detail": "medium"},
+        budget=30_000,
+    )
+    mats = {p.material for p in m.patches}
+    assert {"seats", "membrane"} <= mats
+    # stands climb towards the outside: seats near the outer wall are higher
+    seats = [p for patch in m.patches if patch.material == "seats" for p in patch.positions]
+    outer = [p for p in seats if math.hypot(p[0] / 110, p[1] / 80) > 0.93]
+    inner = [p for p in seats if math.hypot(p[0] / 110, p[1] / 80) < 0.85]
+    assert min(p[2] for p in outer) > max(p[2] for p in inner)
+
+
+@pytest.mark.parametrize("kind", ["fence", "wall", "hedge", "guard_rail"])
+def test_barriers_along_a_path(kind):
+    m = run_script(
+        DEFAULT_SCRIPTS["barriers"],
+        ScriptInputs(
+            footprint=None, path=[[0, 0], [20, 0], [20, 15]], params={"tags": {"barrier": kind}}
+        ),
+        20_000,
+    )
+    assert m.triangle_count > 0
+    xs = [p[0] for patch in m.patches for p in patch.positions]
+    assert min(xs) < 1 and max(xs) > 19

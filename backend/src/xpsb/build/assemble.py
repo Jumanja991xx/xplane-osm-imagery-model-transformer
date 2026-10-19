@@ -55,6 +55,33 @@ SURFACE_TILE_M = {
     "markings": 8.0,
 }
 SOLAR_WORDS = ("solar", "photovolt", "pv-")
+# OSM building:material / roof:material → our materials
+WALL_MATERIALS = {
+    "brick": "brick",
+    "concrete": "concrete",
+    "glass": "glass",
+    "metal": "metal_sheet",
+    "steel": "metal_sheet",
+    "wood": "wood",
+    "timber_framing": "plaster",
+    "plaster": "plaster",
+    "cement_block": "concrete",
+    "stone": "concrete",
+}
+OSM_ROOF_MATERIALS = {
+    "roof_tiles": "tiles",
+    "tile": "tiles",
+    "metal": "metal",
+    "metal_sheet": "metal",
+    "glass": "glass",
+    "concrete": "flat",
+    "tar_paper": "flat",
+    "gravel": "flat",
+    "asphalt": "flat",
+    "membrane": "membrane",
+    "plastic": "membrane",
+    "solar_panels": "solar",
+}
 ROOF_MATERIALS = {
     "metal": "roof_metal",
     "membrane": "membrane",
@@ -119,7 +146,10 @@ def _params(item: SceneItem, items: list[SceneItem], local, detail: str) -> dict
     a = item.attrs
     summary = (item.ai.summary if item.ai else "").lower()
     material = (a.material or "").lower()
-    if material.startswith("roof:"):  # chosen explicitly (AI find or the user)
+    tags = item.tags
+    if not material and tags.get("roof:material"):
+        material = "roof:" + OSM_ROOF_MATERIALS.get(tags["roof:material"], "")
+    if material.startswith("roof:"):  # chosen explicitly (AI find, the user or OSM)
         roof_material = "solar" if "solar" in material else ROOF_MATERIALS.get(material[5:])
     elif a.covered is False:  # the user took the roof off
         roof_material = None
@@ -139,7 +169,9 @@ def _params(item: SceneItem, items: list[SceneItem], local, detail: str) -> dict
         "facing": _facing(item, items, local),
         "flip": bool(a.flip),
         "rows": a.rows,
-        "wall_material": a.wall_material,
+        "wall_material": a.wall_material or WALL_MATERIALS.get(tags.get("building:material", "")),
+        "building": tags.get("building") or tags.get("building:part"),
+        "tags": dict(tags),
         "detail": detail,
         "name": item.name,
     }
@@ -178,7 +210,7 @@ def generate(item: SceneItem, items: list[SceneItem], detail: str, library: Cata
         raise LookupError("no generator yet")
     budget, atlas, max_ppm = DETAIL.get(detail, DETAIL["medium"])
     inputs = _script_inputs(item, items, detail)
-    if inputs.footprint is None and str(item.category) != "masts":
+    if inputs.footprint is None and inputs.path is None and str(item.category) != "masts":
         raise LookupError("needs an area outline")
     name = f"{item.id}.star" if item.script else f"{item.category}.star"
     lib = frozenset(library.objects) if library else None

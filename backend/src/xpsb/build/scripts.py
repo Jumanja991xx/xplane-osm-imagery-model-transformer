@@ -8,7 +8,9 @@ Inputs available to every script:
   params     dict: height, levels, roof_shape, roof_color, wall_color, seat_color,
              covered, roof_material, material, name, facing ([x, y] unit
              vector towards the field/track, or None), flip (turn the front
-             around), rows (grandstand rows or None), detail ("low"|"medium"|"high")
+             around), rows (grandstand rows or None), wall_material, building
+             (OSM building type, e.g. "industrial", "house", "stadium"), tags (OSM
+             tags of the object), detail ("low"|"medium"|"high")
 """
 
 from __future__ import annotations
@@ -144,17 +146,106 @@ main()
 BUILDING = (
     COMMON
     + """
+HALL = ["industrial", "warehouse", "hangar", "hall", "sports_hall", "sports_centre",
+        "riding_hall", "manufacture", "farm_auxiliary", "barn", "service", "storage",
+        "retail_warehouse", "transportation", "factory", "depot", "cowshed", "stable"]
+HOUSE = ["house", "detached", "semidetached_house", "terrace", "bungalow", "residential",
+         "farm", "villa"]
+SMALL = ["shed", "hut", "kiosk", "toilets", "cabin", "garage", "garages", "carport",
+         "container", "allotment_house"]
+OFFICE = ["office", "commercial", "retail", "supermarket", "hotel"]
+CHURCH = ["church", "chapel", "cathedral", "mosque", "temple", "synagogue", "monastery"]
+
+def style():
+    t = params.get("building") or "yes"
+    area = polygon_area(footprint)
+    if t == "stadium":
+        return "stadium"
+    if t in HALL or (t == "yes" and area > 1800 and params.get("levels") == None):
+        return "hall"
+    if t in SMALL or area < 35:
+        return "small"
+    if t in HOUSE:
+        return "house"
+    if t in CHURCH:
+        return "church"
+    if t == "apartments":
+        return "apartments"
+    if t in OFFICE:
+        return "office"
+    return "generic"
+
+# style: (height, storey height, wall material, wall colour, roof shape, pitched roof
+#         material, flat roof material, roof rise factor, max rise)
+STYLES = {
+    "hall": (8.0, 4.5, "metal_sheet", "#C8CBCF", "flat", "roof_metal", "roof_metal", 0.15, 4.0),
+    "small": (3.0, 2.8, "wood", None, "gabled", "roof_tiles", "roof_flat", 0.35, 2.5),
+    "house": (6.5, 2.8, "windows", "#E6DCC8", "gabled", "roof_tiles", "roof_flat", 0.45, 7.0),
+    "apartments": (12.0, 3.0, "windows", "#E2DED6", "flat", "roof_tiles", "roof_flat", 0.35, 6.0),
+    "office": (10.0, 3.5, "windows", "#D8D8D8", "flat", "roof_metal", "roof_flat", 0.3, 5.0),
+    "church": (12.0, 4.0, "plaster", "#E9E2D3", "gabled", "roof_tiles", "roof_flat", 0.7, 14.0),
+    "generic": (8.0, 3.0, "windows", None, "flat", "roof_tiles", "roof_flat", 0.35, 6.0),
+}
+
+def stadium():
+    ring = footprint
+    if len(ring) > 90:  # very detailed outlines: even points every few metres
+        ring = resample(ring + [ring[0]], 5.0)[:-1]
+    r = oriented_rect(ring)
+    W = r["width"]
+    depth = clamp(W * 0.22, 10, min(42, W * 0.3))
+    H = g("height", clamp(W * 0.17, 10, 42))
+    facade = g("wall_material", "metal_sheet")
+    steps = {"low": 6, "medium": 14, "high": 24}.get(params.get("detail"), 14)
+    z_top = H - 2.5
+    z_bot = 1.5
+    x0 = depth * 0.08
+    prof = [[0, 0], [0, H], [x0, H], [x0, z_top]]
+    mats = [facade, "concrete", "concrete"]
+    colors = [g("wall_color", "#DADADA"), None, None]
+    for i in range(steps):
+        xb = x0 + (depth - x0) * (i + 1) / steps
+        za = z_top - (z_top - z_bot) * i / steps
+        zb = z_top - (z_top - z_bot) * (i + 1) / steps
+        prof.append([xb, za])
+        mats.append("seats")
+        colors.append(g("seat_color", None))
+        prof.append([xb, zb])
+        mats.append("steps")
+        colors.append(None)
+    prof.append([depth, 0])
+    mats.append("concrete")
+    colors.append(None)
+    mats.append("concrete")  # closing edge along the ground
+    colors.append(None)
+    line = [[p[0], p[1], 0] for p in ring]
+    sweep(line, prof, mats=mats, colors=colors, closed_path=True, caps=True)
+    # Roof ring over the stands, falling slightly towards the pitch.
+    roof_mat = params.get("roof_material") or "membrane"
+    reach = depth * 0.8
+    sweep(line, [[-1.5, H + 3.0], [reach, H + 1.2], [reach, H + 1.6], [-1.5, H + 3.4]],
+          mats=[roof_mat, "steel", roof_mat, "steel"],  # underside, inner edge, top, outer edge
+          colors=[g("roof_color", None), None, g("roof_color", None), None],
+          closed_path=True, caps=True)
+
 def main():
+    st = style()
+    if st == "stadium":
+        stadium()
+        return
+    H0, storey, wall_def, wall_col, shape_def, pitched_def, flat_def, rise_k, rise_max = STYLES[st]
     H = params.get("height")
     if H == None:
         lv = params.get("levels")
-        H = lv * 3.0 if lv else 8.0
-    wall = g("wall_color", None)
-    wall_mat = g("wall_material", "windows")
-    gable_mat = "plaster" if wall_mat in ("windows", "glass") else wall_mat
+        H = lv * storey if lv else H0
+    wall = g("wall_color", wall_col)
+    wall_mat = g("wall_material", wall_def)
+    gable_mat = "plaster" if wall_mat in ("windows", "glass", "metal_sheet") else wall_mat
+    if st == "hall":
+        gable_mat = wall_mat
     roof_color = g("roof_color", None)
     roof_mat = params.get("roof_material")
-    shape = g("roof_shape", "flat")
+    shape = g("roof_shape", shape_def)
     r = oriented_rect(footprint)
     if g("flip", False):
         # ridge across instead of along the long side
@@ -162,12 +253,12 @@ def main():
              "ux": r["vx"], "uy": r["vy"], "vx": -r["vy"], "vy": r["vx"]}
     rect_like = polygon_area(footprint) > 0.85 * r["length"] * r["width"]
     if shape in ("gabled", "hipped") and rect_like:
-        pitched = roof_mat or "roof_tiles"
+        pitched = roof_mat or pitched_def
         extrude(footprint, 0, H, mat=wall_mat, top=None, color=wall)
         P = frame(r)
         L2 = r["length"] / 2
         W2 = r["width"] / 2
-        rise = min(r["width"] * 0.35, 6.0)
+        rise = min(r["width"] * rise_k, rise_max)
         A = P(-L2, -W2, H)
         B = P(L2, -W2, H)
         C = P(L2, W2, H)
@@ -185,8 +276,47 @@ def main():
         quad(A, B, R2, R1, mat=pitched, color=roof_color)
         quad(C, D, R1, R2, mat=pitched, color=roof_color)
     else:
-        extrude(footprint, 0, H, mat=wall_mat, top=roof_mat or "roof_flat", color=wall,
+        extrude(footprint, 0, H, mat=wall_mat, top=roof_mat or flat_def, color=wall,
                 top_color=roof_color)
+
+main()
+"""
+)
+
+BARRIER = (
+    COMMON
+    + """
+HEIGHTS = {"wall": 1.8, "retaining_wall": 1.5, "city_wall": 5.0, "fence": 2.0,
+           "guard_rail": 0.8, "hedge": 1.5, "handrail": 1.0, "jersey_barrier": 0.8}
+
+def main():
+    tags = params.get("tags") or {}
+    kind = tags.get("barrier") or "fence"
+    closed = path == None
+    pts = footprint if closed else path
+    H = g("height", HEIGHTS.get(kind, 1.8))
+    line = [[p[0], p[1], 0] for p in pts]
+    if kind in ("wall", "retaining_wall", "city_wall", "jersey_barrier"):
+        t = 0.6 if kind == "city_wall" else 0.15
+        mat = g("wall_material", "brick" if tags.get("material") == "brick" else "concrete")
+        sweep(line, [[-t, 0], [-t, H], [t, H], [t, 0]], mat=mat, color=g("wall_color", None),
+              closed_path=closed, caps=True)
+    elif kind == "hedge":
+        sweep(line, [[-0.4, 0], [-0.45, H], [0.45, H], [0.4, 0]], mat="paint",
+              color="#4E6E35", closed_path=closed, caps=True)
+    elif kind == "guard_rail":
+        for p in resample(pts + ([pts[0]] if closed else []), 2.0):
+            cylinder(p[0], p[1], 0, 0.06, H, mat="steel", segments=4)
+        sweep(line, [[-0.05, H - 0.35], [-0.05, H], [0.05, H], [0.05, H - 0.35]],
+              mat="steel", closed_path=closed, caps=True)
+    else:  # fences: posts and rails (see-through)
+        s = 4 if params.get("detail") == "low" else 6
+        posts = resample(pts + ([pts[0]] if closed else []), 2.5)
+        for p in posts:
+            cylinder(p[0], p[1], 0, 0.04, H, mat="steel", segments=s)
+        for z in (0.15, H * 0.5, H - 0.05):
+            sweep(line, [[-0.025, z - 0.03], [-0.025, z + 0.03], [0.025, z + 0.03],
+                         [0.025, z - 0.03]], mat="steel", closed_path=closed, caps=True)
 
 main()
 """
@@ -266,4 +396,5 @@ DEFAULT_SCRIPTS = {
     "canopies": CANOPY,
     "masts": MAST,
     "scaffolding": SCAFFOLDING,
+    "barriers": BARRIER,
 }

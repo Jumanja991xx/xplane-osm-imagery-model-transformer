@@ -216,6 +216,23 @@ KEEP_TAGS = (
     "landuse",
     "covered",
     "area:highway",
+    # identity and look: used by the research and the AI architect
+    "wikidata",
+    "wikipedia",
+    "name:en",
+    "name:de",
+    "description",
+    "operator",
+    "tourism",
+    "historic",
+    "start_date",
+    "architect",
+    "capacity",
+    "material",
+    "roof:material",
+    "roof:height",
+    "min_height",
+    "building:min_level",
 )
 
 
