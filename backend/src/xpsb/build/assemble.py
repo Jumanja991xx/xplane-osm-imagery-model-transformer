@@ -14,9 +14,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageEnhance
 from shapely.geometry import shape
 from shapely.geometry.polygon import orient
+from shapely.ops import unary_union
 
 from xpsb.build.bake import bake
 from xpsb.build.objexport import to_obj8, to_preview
@@ -289,27 +290,58 @@ class Ortho:
 ORTHO_MAX_PX = 4096
 
 
-def _write_ortho(ortho: Ortho, polygons_dir: Path) -> str:
-    """Saves the image at a power-of-two size (what X-Plane's texture loader likes)
-    and the matching non-repeating .pol. Returns the .pol path."""
+ORTHO_MARGIN_M = 5.0
+# Orthophotos look washed out under X-Plane 12's lighting; a mild lift helps.
+ORTHO_CONTRAST = 1.12
+ORTHO_SATURATION = 1.08
+ORTHO_GAMMA = 1.12
+
+
+def _ortho_region(ortho: Ortho, geoms) -> tuple[float, float, float, float]:
+    """Bounds of the surfaces plus a small margin, within the image."""
+    west, south, east, north = ortho.bounds
+    w, s, e, n = unary_union(geoms).bounds
+    lat = (s + n) / 2
+    dx = ORTHO_MARGIN_M / meters_per_deg_lon(lat)
+    dy = ORTHO_MARGIN_M / METERS_PER_DEG_LAT
+    return max(west, w - dx), max(south, s - dy), min(east, e + dx), min(north, n + dy)
+
+
+def _write_ortho(ortho: Ortho, polygons_dir: Path, region) -> str:
+    """Crops the image to `region` (more pixels per metre than the whole image),
+    lifts contrast a little, saves it at a power-of-two size (what X-Plane's
+    texture loader likes) and writes the matching non-repeating .pol."""
+    west, south, east, north = ortho.bounds
+    rw, rs, re_, rn = region
     with Image.open(ortho.image) as src:
         img = src.convert("RGB")
-    w, h = img.size
+    sx = img.width / (east - west)
+    sy = img.height / (north - south)
+    img = img.crop(
+        (
+            int((rw - west) * sx),
+            int((north - rn) * sy),
+            math.ceil((re_ - west) * sx),
+            math.ceil((north - rs) * sy),
+        )
+    )
+    img = ImageEnhance.Contrast(img).enhance(ORTHO_CONTRAST)
+    img = ImageEnhance.Color(img).enhance(ORTHO_SATURATION)
+    img = img.point([round(255 * (i / 255) ** ORTHO_GAMMA) for i in range(256)] * 3)
 
     def pot(n: int) -> int:
-        return min(ORTHO_MAX_PX, 1 << max(6, round(math.log2(max(1, n)))))
+        return min(ORTHO_MAX_PX, 1 << max(6, math.ceil(math.log2(max(1, n)))))
 
-    img.resize((pot(w), pot(h)), Image.Resampling.LANCZOS).save(polygons_dir / "xpsb_ortho.png")
-    west, south, east, north = ortho.bounds
-    lat = (south + north) / 2
-    width_m = (east - west) * meters_per_deg_lon(lat)
-    height_m = (north - south) * METERS_PER_DEG_LAT
+    img.resize((pot(img.width), pot(img.height)), Image.Resampling.LANCZOS).save(
+        polygons_dir / "xpsb_ortho.png"
+    )
+    lat = (rs + rn) / 2
     (polygons_dir / "xpsb_ortho.pol").write_text(
         DrapedPolygonDef(
             texture="xpsb_ortho.png",
             wrap=False,
-            scale_s_m=width_m,
-            scale_t_m=height_m,
+            scale_s_m=(re_ - rw) * meters_per_deg_lon(lat),
+            scale_t_m=(rn - rs) * METERS_PER_DEG_LAT,
             layer_group=SURFACE_LAYER,
             layer_offset=0,
             no_alpha=True,
@@ -359,16 +391,17 @@ def write_package(
 
     surface_defs: dict[str, int] = {}
     surfaces = 0
-    if ortho is not None:
+    ortho_items = [i for i in items if i.kind == "surface" and i.included and not i.proposal]
+    if ortho is not None and ortho_items:
         # One aerial image under every surface: they look like the real place.
         polygons_dir.mkdir(parents=True, exist_ok=True)
-        ortho_def = dsf.add_polygon_def(_write_ortho(ortho, polygons_dir))
-        for item in items:
-            if item.kind == "surface" and item.included and not item.proposal:
-                for windings in _windings(shape(item.geometry)):
-                    # 65535: texture coordinates come with each point (no tiling).
-                    dsf.add_polygon(ortho_def, 65535, _ortho_uv(windings, ortho.bounds))
-                    surfaces += 1
+        region = _ortho_region(ortho, [shape(i.geometry) for i in ortho_items])
+        ortho_def = dsf.add_polygon_def(_write_ortho(ortho, polygons_dir, region))
+        for item in ortho_items:
+            for windings in _windings(shape(item.geometry)):
+                # 65535: texture coordinates come with each point (no tiling).
+                dsf.add_polygon(ortho_def, 65535, _ortho_uv(windings, region))
+                surfaces += 1
     for item in sorted(
         (i for i in items if i.kind == "surface" and i.included and not i.proposal),
         key=lambda i: SURFACE_ORDER.get(str(i.category), 0),

@@ -168,16 +168,21 @@ export function PreviewDialog({
         const d = await preview.scene(jobId);
         if (disposed) return;
         setData(d);
-        // Ground: aerial image if there is one, else a neutral plane.
+        // Ground: aerial image if there is one, else a neutral plane. With the aerial
+        // image as surface texture only the surfaces carry it in X-Plane: there it is
+        // shown at full brightness, the rest is dimmed (orientation only).
+        const orthoMode = Boolean(d.imagery) && d.surface_mode === "imagery";
+        let aerial: THREE.Texture | null = null;
         if (d.imagery) {
           const url = await imageryObjectUrl(jobId).catch(() => null);
           const { sw, ne } = d.imagery;
           const geo = new THREE.PlaneGeometry(ne[0] - sw[0], ne[1] - sw[1]);
-          const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 });
+          const mat = new THREE.MeshStandardMaterial({ color: orthoMode ? 0x858585 : 0xffffff, roughness: 1 });
           if (url) {
             urls.push(url);
-            mat.map = await loader.loadAsync(url);
-            mat.map.colorSpace = THREE.SRGBColorSpace;
+            aerial = await loader.loadAsync(url);
+            aerial.colorSpace = THREE.SRGBColorSpace;
+            mat.map = aerial;
           }
           const ground = new THREE.Mesh(geo, mat);
           ground.rotation.x = -Math.PI / 2;
@@ -185,19 +190,29 @@ export function PreviewDialog({
           ground.receiveShadow = true;
           scene.add(ground);
         }
-        // With the aerial image as ground texture the photo already is the surface.
-        for (const s of d.imagery && d.surface_mode === "imagery" ? [] : d.surfaces) {
+        for (const s of d.surfaces) {
           const shape = new THREE.Shape(s.rings[0].map(([x, y]) => new THREE.Vector2(x, y)));
           shape.holes = s.rings.slice(1).map((r) => new THREE.Path(r.map(([x, y]) => new THREE.Vector2(x, y))));
-          const mesh = new THREE.Mesh(
-            new THREE.ShapeGeometry(shape),
-            new THREE.MeshStandardMaterial({
+          const geo = new THREE.ShapeGeometry(shape);
+          let mat: THREE.MeshStandardMaterial;
+          if (orthoMode && aerial && d.imagery) {
+            const { sw, ne } = d.imagery;
+            const pos = geo.getAttribute("position");
+            const uv: number[] = [];
+            for (let i = 0; i < pos.count; i++) {
+              uv.push((pos.getX(i) - sw[0]) / (ne[0] - sw[0]), (pos.getY(i) - sw[1]) / (ne[1] - sw[1]));
+            }
+            geo.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+            mat = new THREE.MeshStandardMaterial({ map: aerial, roughness: 1 });
+          } else {
+            mat = new THREE.MeshStandardMaterial({
               color: CATEGORY_COLORS[s.category as keyof typeof CATEGORY_COLORS] ?? "#888888",
               transparent: true,
               opacity: 0.55,
               depthWrite: false,
-            }),
-          );
+            });
+          }
+          const mesh = new THREE.Mesh(geo, mat);
           mesh.rotation.x = -Math.PI / 2;
           mesh.position.y = 0.05;
           mesh.receiveShadow = true;
@@ -271,6 +286,9 @@ export function PreviewDialog({
               </div>
             )}
             {error && <Alert kind="error">{error}</Alert>}
+            {data?.imagery && data.surface_mode === "imagery" && (
+              <p className="text-xs text-zinc-500">{t("preview.ortho_legend")}</p>
+            )}
             {current && editable && (
               <ObjectControls key={current.stem} jobId={jobId} object={current} onAdjusted={onAdjusted} />
             )}

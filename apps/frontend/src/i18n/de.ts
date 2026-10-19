@@ -344,6 +344,7 @@ export const de = {
   "design.no_ai": "Für Änderungen mit KI braucht es die KI-Analyse im Auftrag und einen API-Key.",
   "gate.c.custom_scripts": "{count} Objekt(e) mit eigenem Bauskript der KI-Architektin.",
   "error.architect_failed": "Die KI konnte kein funktionierendes Bauskript schreiben ({detail}). Es bleibt beim bisherigen.",
+  "preview.ortho_legend": "Hell = Luftbild als Bodentextur im Paket. Abgedunkelt = nur zur Orientierung, dort bleibt in X-Plane der normale Boden.",
   "preview.loading": "Lädt …",
   "preview.not_built": "Nicht gebaut",
   "preview.status.error": "Fehler",

@@ -346,6 +346,7 @@ export const en: Record<MessageKey, string> = {
   "design.no_ai": "Changes with AI need the AI analysis in the job and an API key.",
   "gate.c.custom_scripts": "{count} object(s) with an own build script by the AI architect.",
   "error.architect_failed": "The AI could not write a working build script ({detail}). The previous one stays.",
+  "preview.ortho_legend": "Bright = aerial image as ground texture in the package. Dimmed = orientation only; X-Plane keeps its normal ground there.",
   "preview.loading": "Loading …",
   "preview.not_built": "Not built",
   "preview.status.error": "error",

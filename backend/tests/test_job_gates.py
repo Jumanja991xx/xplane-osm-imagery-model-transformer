@@ -273,6 +273,18 @@ def test_exclusions_under_objects_and_aerial_ground(client, app_ctx, dsftool_exe
     assert text.count("PROPERTY sim/exclude_obj ") == built
     assert "BEGIN_POLYGON 0 65535 4" in text
     assert "TEXTURE_NOWRAP xpsb_ortho.png" in (package / "polygons/xpsb_ortho.pol").read_text()
+    # The texture is cropped to the surfaces: their points span (almost) all of it.
+    uvs = [
+        tuple(map(float, line.split()[3:5]))
+        for line in text.splitlines()
+        if line.startswith("POLYGON_POINT")
+    ]
+    us, vs = [u for u, _ in uvs], [v for _, v in uvs]
+    assert 0 <= min(us) < 0.2 and 0.8 < max(us) <= 1 and 0 <= min(vs) < 0.2 and 0.8 < max(vs) <= 1
+    from PIL import Image
+
+    with Image.open(package / "polygons/xpsb_ortho.png") as tex:
+        assert all(n & (n - 1) == 0 for n in tex.size)
     # Every object is shown regardless of the user's object density.
     assert "PROPERTY sim/require_object 1/0" in text
     roundtrip = (package.parent / "roundtrip.txt").read_text()
