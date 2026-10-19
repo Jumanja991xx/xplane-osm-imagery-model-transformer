@@ -128,7 +128,12 @@ export function SettingsDialog() {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
       <div className="flex max-h-[90vh] w-full max-w-xl flex-col rounded-lg bg-white shadow-xl dark:bg-zinc-900">
         <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-3 dark:border-zinc-700">
-          <h2 className="text-base font-semibold">{t("settings.title")}</h2>
+          <h2 className="text-base font-semibold">
+            {t("settings.title")}{" "}
+            <span className="text-xs font-normal text-zinc-500" data-testid="build-id">
+              {system?.version} · Build {(import.meta.env.VITE_BUILD_ID ?? "dev").slice(0, 7)}
+            </span>
+          </h2>
           <Button variant="ghost" onClick={() => setSettingsOpen(false)}>
             {t("common.close")}
           </Button>
