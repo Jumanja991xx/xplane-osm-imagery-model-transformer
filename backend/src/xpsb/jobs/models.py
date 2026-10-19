@@ -197,6 +197,10 @@ class PlanObject(BaseModel):
     triangles: int = 0
     has_mesh: bool = True
     designed: bool = False  # own build script by the AI architect
+    lit: bool = False  # lit windows/lamps at night
+    lights: int = 0  # X-Plane lights (floodlights, street lamps)
+    photo_textures: list[str] = Field(default_factory=list)  # photos painted onto it
+    shaded: bool = False  # soft shading baked in by Blender (package build only)
     library: list[LibraryPlacement] = Field(default_factory=list)
 
 

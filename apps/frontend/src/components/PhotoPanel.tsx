@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { api, ApiError, authedImageUrl, type SceneItem } from "../api/client";
+import { api, ApiError, authedImageUrl, type PhotoTexture, type SceneItem } from "../api/client";
 import type { components } from "../api/schema";
 import { useT } from "../i18n";
 import { useApp } from "../store";
+import { TextureEditor } from "./TextureEditor";
 import { Alert, Button, Checkbox, Spinner } from "./ui";
 
 type Candidate = components["schemas"]["PhotoCandidate"];
@@ -48,7 +49,9 @@ export function PhotoPanel({ jobId, item }: { jobId: string; item: SceneItem }) 
   const [searchAsked, setSearchAsked] = useState(false);
   const [results, setResults] = useState<{ candidates: Candidate[]; errors: Record<string, string> } | null>(null);
   const [imported, setImported] = useState<Set<string>>(new Set());
+  const [editing, setEditing] = useState<{ photoId: string; texture?: PhotoTexture } | null>(null);
   const photos = item.photos ?? [];
+  const textures = item.textures ?? [];
   const full = photos.length >= MAX_PHOTOS;
 
   const run = async (fn: () => Promise<void>) => {
@@ -103,9 +106,46 @@ export function PhotoPanel({ jobId, item }: { jobId: string; item: SceneItem }) 
               >
                 ✕
               </button>
+              <button
+                className={`absolute bottom-0.5 left-0.5 rounded bg-black/70 px-1 text-[10px] text-white ${p.shareable ? "" : "opacity-40"}`}
+                onClick={() => p.shareable && setEditing({ photoId: p.id })}
+                title={p.shareable ? t("texture.use") : t("texture.not_shareable", { license: p.license ?? "?" })}
+                disabled={busy || !p.shareable}
+                data-testid="photo-as-texture"
+              >
+                🧱
+              </button>
             </div>
           ))}
         </div>
+      )}
+      {textures.length > 0 && (
+        <ul className="space-y-0.5 text-xs" data-testid="texture-list">
+          {textures.map((tx) => (
+            <li key={tx.name} className="flex items-center gap-1.5">
+              <span>🧱</span>
+              <span className="font-medium">{tx.name}</span>
+              <span className="text-zinc-500">
+                {tx.width_m} × {tx.height_m} m{tx.repeat ? ` · ${t("texture.repeat_short")}` : ""}
+                {tx.walls ? ` · ${t("texture.walls_short")}` : ""}
+                {tx.source === "ai" ? ` · ${t("texture.by_ai")}` : ""}
+              </span>
+              <button className="ml-auto text-accent-600 hover:underline" onClick={() => setEditing({ photoId: tx.photo_id, texture: tx })} disabled={busy}>
+                {t("common.edit")}
+              </button>
+              <button
+                className="text-red-600 hover:underline"
+                onClick={() => run(async () => setJob(await api.setTextures(jobId, item.id, textures.filter((x) => x.name !== tx.name))))}
+                disabled={busy}
+              >
+                {t("common.remove")}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {editing && (
+        <TextureEditor jobId={jobId} item={item} photoId={editing.photoId} texture={editing.texture} onClose={() => setEditing(null)} />
       )}
       <p className="text-xs text-zinc-500">{t("photos.hint")}</p>
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from xpsb.catalog import ObjectCategory, SurfaceType
 from xpsb.photos import Photo
@@ -79,6 +79,29 @@ class BuildingPart(BaseModel):
     part: str | None = None  # building:part value, e.g. "roof", "tower"
 
 
+class PhotoTexture(BaseModel):
+    """A facade cut out of one of the item's photos (see build/phototex.py): the four
+    corners in the photo (fractions of its width/height, from the top left, in the
+    order top-left, top-right, bottom-right, bottom-left) and its real size."""
+
+    name: str = Field(pattern=r"^[a-z][a-z0-9_]{0,23}$")
+    photo_id: str = Field(pattern=r"^[A-Za-z0-9]{1,40}$")
+    corners: list[list[float]] = Field(min_length=4, max_length=4)
+    width_m: float = Field(ge=0.5, le=400)
+    height_m: float = Field(ge=0.5, le=200)
+    repeat: bool = False  # a sample that repeats (e.g. two bays of a stadium facade)
+    walls: bool = False  # the default script puts it on all walls
+    source: Literal["ai", "user"] = "user"
+
+    @field_validator("corners")
+    @classmethod
+    def _fractions(cls, value: list[list[float]]) -> list[list[float]]:
+        for p in value:
+            if len(p) != 2 or not all(-0.05 <= c <= 1.05 for c in p):
+                raise ValueError("corners are [x, y] fractions of the photo (0..1)")
+        return [[round(min(1.0, max(0.0, c)), 5) for c in p] for p in value]
+
+
 class SceneItem(BaseModel):
     id: str
     kind: ItemKind
@@ -103,6 +126,9 @@ class SceneItem(BaseModel):
     script_request: str | None = None
     # Photos of the real object (input for the AI architect, never in the package).
     photos: list[Photo] = Field(default_factory=list)
+    # Facades cut out of those photos, painted onto the model (only photos whose
+    # licence allows sharing them go into the package).
+    textures: list[PhotoTexture] = Field(default_factory=list)
     research: Research | None = None
     parts: list[BuildingPart] = Field(default_factory=list)
 

@@ -25,6 +25,7 @@ export type Note = S["Note"];
 export type ImageryInfo = S["ImageryInfo"];
 export type ImagerySettings = S["ImagerySettings"];
 export type SimilarEstimate = S["SimilarEstimate"];
+export type PhotoTexture = S["PhotoTexture"];
 
 export interface JobSummary {
   id: string;
@@ -174,6 +175,8 @@ export const api = {
     request<S["SearchResult"]>("GET", `/api/jobs/${id}/photo-search?item=${encodeURIComponent(itemId)}`),
   importPhoto: (id: string, candidateId: string) =>
     request<JobView>("POST", `/api/jobs/${id}/photo-search/${candidateId}/import`),
+  setTextures: (id: string, itemId: string, textures: PhotoTexture[]) =>
+    request<JobView>("PUT", `/api/jobs/${id}/textures?item=${encodeURIComponent(itemId)}`, { textures }),
   adjustObject: (id: string, itemId: string, attrs: Partial<ItemAttrs>) =>
     request<JobView>("PATCH", `/api/jobs/${id}/objects/${itemId}`, { attrs }),
 };
@@ -201,6 +204,21 @@ export async function authedImageUrl(path: string): Promise<string> {
   return URL.createObjectURL(await res.blob());
 }
 
+/** The straightened facade of a photo texture, as a blob URL (nothing is saved). */
+export async function texturePreviewUrl(jobId: string, itemId: string, tex: PhotoTexture): Promise<string> {
+  const { baseUrl, token } = await backend();
+  const res = await fetch(`${baseUrl}/api/jobs/${jobId}/texture-preview?item=${encodeURIComponent(itemId)}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(tex),
+  });
+  if (!res.ok) {
+    const detail = (await res.json().catch(() => ({})))?.detail;
+    throw new ApiError(res.status, detail?.key ?? "error.texture_corners", detail?.params ?? {});
+  }
+  return URL.createObjectURL(await res.blob());
+}
+
 export interface PreviewObject {
   item_id: string;
   stem: string;
@@ -221,11 +239,25 @@ export interface PreviewData {
   surface_mode?: string;
 }
 
+export interface PreviewLight {
+  x: number;
+  y: number;
+  z: number;
+  kind: string;
+  color: [number, number, number];
+  cd: number;
+  dir: [number, number, number]; // local axes: x east, y north, z up
+  cos: number; // cosine of half the beam angle
+}
+
 export interface PreviewMesh {
   positions: number[];
   normals: number[];
   uvs: number[];
   index: number[];
+  lights?: PreviewLight[];
+  lit?: boolean; // has a night texture
+  alpha?: boolean; // see-through parts
 }
 
 async function authedFetch(path: string): Promise<Response> {
@@ -242,6 +274,14 @@ export const preview = {
     authedFetch(`/api/jobs/${jobId}/preview/${stem}.json`).then((r) => r.json() as Promise<PreviewMesh>),
   textureUrl: async (jobId: string, stem: string) =>
     URL.createObjectURL(await (await authedFetch(`/api/jobs/${jobId}/preview/${stem}.png`)).blob()),
+  /** Night texture of the object (lit windows, lamps). */
+  litUrl: async (jobId: string, stem: string): Promise<string | null> => {
+    try {
+      return URL.createObjectURL(await (await authedFetch(`/api/jobs/${jobId}/preview/${stem}_lit.png`)).blob());
+    } catch {
+      return null;
+    }
+  },
   /** Normal map of the object, if it has one (objects built before it existed do not). */
   normalUrl: async (jobId: string, stem: string): Promise<string | null> => {
     try {

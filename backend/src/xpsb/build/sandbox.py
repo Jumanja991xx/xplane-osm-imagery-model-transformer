@@ -29,6 +29,11 @@ GEOMETRY_TOOLS = (
     "quad",
     "face",
     "place",
+    "light",
+    "floodlight",
+    "lamp_post",
+    "floodlight_mast",
+    "flag",
 )
 HELPER_TOOLS = ("oriented_rect", "offset_polygon", "polygon_area", "polygon_centroid", "resample")
 DEFAULT_TIMEOUT_S = 5.0
@@ -44,6 +49,9 @@ class ScriptInputs:
     path: list[list[float]] | None  # for line objects (fences, walls)
     params: dict[str, Any]
     courtyards: list[list[list[float]]] = field(default_factory=list)  # holes, clockwise
+    # Photo textures of the object: name -> {"width", "height", "repeat", "walls"}
+    # (used as mat="photo:<name>").
+    textures: dict[str, dict] = field(default_factory=dict)
 
 
 def _dialect() -> sl.Dialect:
@@ -64,7 +72,7 @@ def run_script(
     if len(source.encode("utf-8")) > MAX_SOURCE_BYTES:
         raise ScriptError("script too long")
     mesh = Mesh(max_triangles=max_triangles)
-    t = tools.Tools(mesh, library)
+    t = tools.Tools(mesh, library, frozenset(inputs.textures))
     module = sl.Module()
     for fname in GEOMETRY_TOOLS:
         module.add_callable(fname, getattr(t, fname))
@@ -77,6 +85,7 @@ def run_script(
     module["path"] = inputs.path
     module["courtyards"] = inputs.courtyards
     module["params"] = inputs.params
+    module["textures"] = inputs.textures
 
     try:
         ast = sl.parse(name, source, _dialect())

@@ -67,9 +67,9 @@ def brick(u, v, color):
     return img
 
 
-def windows(u, v, color):
+def windows(u, v, color, masks: bool = False, wall=None):
     """Facade wall with a window grid (3 m storeys, window every 2.6 m)."""
-    img = plaster(u, v, color)
+    img = (wall or plaster)(u, v, color)
     in_x = (u % 2.6) > 1.0
     in_y = ((v % 3.0) > 0.9) & ((v % 3.0) < 2.4) & (v > 0.5)
     glass = in_x & in_y
@@ -79,6 +79,8 @@ def windows(u, v, color):
     img[glass] = (70, 88, 104)
     img[glass] = _shade(img[glass], 0.15 * _noise(u[glass], v[glass], 0.6, 9))
     img[frame] = (235, 235, 230)
+    if masks:
+        return img, glass & ~frame, np.floor(u / 2.6) * 7919 + np.floor(v / 3.0)
     return img
 
 
@@ -97,11 +99,13 @@ def _facade(
     surround: RGB,
     ground: float = 0.0,
     bands: bool = True,
+    masks: bool = False,
+    wall=None,
 ):
     """Wall with one window per bay and storey: stone surround, mullion and transom,
     a cornice band under every storey line; optional round-arched window heads.
     Nothing below `ground` metres (a plinth or rusticated base storey goes there)."""
-    img = plaster(u, v, color or base)
+    img = (wall or plaster)(u, v, color or (None if wall else base))
     bu = u % bay
     sv = v % storey
     cx = bay / 2
@@ -127,17 +131,18 @@ def _facade(
     img[glass_] = _shade(img[glass_], 0.18 * _noise(u[glass_], v[glass_], 0.5, 9))
     bars = glass_ & ((np.abs(dx) < 0.04) | (np.abs(sv - (sill + 0.62 * (spring - sill))) < 0.04))
     img[bars] = (205, 200, 190)
+    cells = np.floor(u / bay) * 7919 + np.floor(v / storey)
     if not bands:
-        return img
+        return (img, glass_ & ~bars, cells) if masks else img
     # Cornice band under each storey line, with its shadow below.
     band = ((sv > storey - 0.35) | (sv < 0.08)) & upper
     img[band] = np.array(surround, dtype=np.float32) * 0.97
     shadow = (sv > storey - 0.5) & (sv <= storey - 0.35) & upper
     img[shadow] = _shade(img[shadow], np.full(img[shadow].shape[0], -0.18, dtype=np.float32))
-    return img
+    return (img, glass_ & ~bars, cells) if masks else img
 
 
-def windows_classic(u, v, color):
+def windows_classic(u, v, color, masks: bool = False, wall=None):
     """Historic facade: tall windows with stone surrounds, 4.8 m storeys, one every 4.2 m."""
     return _facade(
         u,
@@ -151,10 +156,12 @@ def windows_classic(u, v, color):
         arched=False,
         base=(214, 206, 188),
         surround=(232, 226, 212),
+        masks=masks,
+        wall=wall,
     )
 
 
-def windows_arched(u, v, color):
+def windows_arched(u, v, color, masks: bool = False, wall=None):
     """Historic facade with round-arched windows: 5.5 m storeys, one every 4.6 m."""
     return _facade(
         u,
@@ -168,10 +175,12 @@ def windows_arched(u, v, color):
         arched=True,
         base=(214, 206, 188),
         surround=(232, 226, 212),
+        masks=masks,
+        wall=wall,
     )
 
 
-def windows_house(u, v, color):
+def windows_house(u, v, color, masks: bool = False, wall=None):
     """Residential wall: 2.8 m storeys, a window every 3.6 m (fewer than `windows`)."""
     return _facade(
         u,
@@ -186,6 +195,8 @@ def windows_house(u, v, color):
         base=(230, 222, 204),
         surround=(244, 242, 236),
         bands=False,
+        masks=masks,
+        wall=wall,
     )
 
 
@@ -299,19 +310,72 @@ def solar(u, v, color):
     return _shade(img, 0.05 * _noise(np.floor(u / 1.02), np.floor(v / 1.72), 1.0, 21))
 
 
+AISLE_EVERY = 14.0  # a stair aisle across the stand every 14 m, 1.2 m wide
+
+
+def _aisle(u):
+    return (u % AISLE_EVERY) < 1.2
+
+
 def seats(u, v, color):
-    """Rows of seats along u (0.5 m wide), on a concrete tread."""
+    """Rows of seats along u (0.5 m wide, a row every 0.8 m of tread) with stair
+    aisles every 14 m: seen from the air the stand shows its seat colour."""
     img = concrete(u, v, None)
-    seat = ((u % 0.5) > 0.06) & ((v % 0.8) > 0.25) & ((v % 0.8) < 0.65)
+    seat = ((u % 0.5) > 0.05) & ((v % 0.8) > 0.12) & ((v % 0.8) < 0.72) & ~_aisle(u)
     img[seat] = color or (40, 90, 170)
-    back = seat & ((v % 0.8) > 0.55)
+    img[seat] = _shade(img[seat], 0.06 * _noise(np.floor(u[seat] / 0.5), v[seat], 0.8, 51))
+    back = seat & ((v % 0.8) > 0.6)
     img[back] *= 0.8
+    return img
+
+
+def seat_riser(u, v, color):
+    """Front of a stand row: the seat backs of the row above seen from the pitch."""
+    img = concrete(u, v, None)
+    backs = ((u % 0.5) > 0.05) & (v > 0.08) & ~_aisle(u)
+    img[backs] = np.array(color or (40, 90, 170), dtype=np.float32) * 0.85
+    img[(v <= 0.08) & ~_aisle(u)] *= 0.6  # shadow line under the seats
     return img
 
 
 def steps(u, v, color):
     img = concrete(u, v, color)
     img[(v % 0.4) < 0.03] *= 0.75
+    return img
+
+
+BOARD_COLORS = np.array(
+    [(200, 32, 44), (24, 64, 150), (236, 236, 232), (28, 28, 30), (246, 188, 20), (30, 130, 70)],
+    dtype=np.float32,
+)
+
+
+def stand_fascia(u, v, color):
+    """Front of an upper tier: a dark band with advertising boards (lit at night)."""
+    img = _fill(u, color or (34, 36, 42))
+    board = (v > 0.5) & (v < 1.9)
+    pick = ((_noise(np.floor(u / 9.0), u * 0, 1.0, 47) + 1) * 3).astype(np.int64) % 6
+    img[board] = BOARD_COLORS[pick[board]]
+    lettering = board & ((u % 9.0) > 2) & ((u % 9.0) < 7) & (np.abs(v - 1.2) < 0.25)
+    img[lettering] = 255 - img[lettering] * 0.6
+    return img
+
+
+def lamella(u, v, color):
+    """Modern facade of vertical fins (0.3 m every 1.2 m) in front of a dark wall."""
+    img = _fill(u, (46, 50, 56))
+    fin = (u % 1.2) < 0.3
+    img[fin] = color or (232, 232, 228)
+    img = _shade(img, 0.03 * _noise(u, v, 0.5, 53))
+    img[fin & ((u % 1.2) > 0.22)] *= 0.82  # the fin's side in its own shadow
+    return img
+
+
+def roof_clear(u, v, color):
+    """Translucent roof panels (polycarbonate/ETFE) with thin ribs; alpha 0.35."""
+    img = _fill(u, color or (225, 230, 232))
+    rib = ((u % 2.5) < 0.08) | ((v % 2.5) < 0.08)
+    img[rib] = (150, 154, 160)
     return img
 
 
@@ -361,13 +425,33 @@ MATERIALS: dict[str, Painter] = {
     "roof_tiles": roof_tiles,
     "solar": solar,
     "seats": seats,
+    "seat_riser": seat_riser,
     "steps": steps,
     "steel": steel,
+    "stand_fascia": stand_fascia,
+    "lamella": lamella,
+    "roof_clear": roof_clear,
     "membrane": membrane,
     "wood": wood,
     "lamp": lamp,
     "paint": paint,
 }
+
+
+def base_material(name: str) -> str:
+    """ "windows_house+brick" (painted windows on brick) → "windows_house"."""
+    return name.split("+", 1)[0]
+
+
+def painter(name: str) -> Painter:
+    """The painter of a material, including painted-window walls on another wall
+    material ("windows_house+brick": built for the stand-ins of real facades)."""
+    if "+" in name:
+        flat, wall = name.split("+", 1)
+        fn, wall_fn = MATERIALS[flat], MATERIALS[wall]
+        return lambda u, v, color, masks=False: fn(u, v, color, masks=masks, wall=wall_fn)
+    return MATERIALS[name]
+
 
 MATERIAL_HELP = {
     "concrete": "grey concrete",
@@ -392,9 +476,17 @@ MATERIAL_HELP = {
     "roof_flat": "flat roof membrane/gravel",
     "roof_tiles": "pitched tile roof",
     "solar": "solar panel modules",
-    "seats": "stand tread with a row of seats, colour = seat colour",
+    "seats": "stand tread with rows of seats (a row every 0.8 m, stair aisles every 14 m), "
+    "colour = seat colour",
+    "seat_riser": "riser between two stand rows (the seat backs seen from the pitch), colour = "
+    "seat colour",
     "steps": "concrete steps/terracing",
     "steel": "dark steel (columns, beams, trusses)",
+    "lamella": "modern facade of vertical fins (stadiums, arenas, new public buildings), "
+    "colour = fin colour",
+    "stand_fascia": "front band of an upper tier with advertising boards (lit at night)",
+    "roof_clear": "translucent roof panels (polycarbonate/ETFE, see-through): inner roof "
+    "edges of stadiums, glass-like canopies",
     "membrane": "white fabric/membrane roof",
     "wood": "timber",
     "lamp": "floodlight head / bright panel",
@@ -456,6 +548,8 @@ FROM_BRIGHTNESS_M = {
     "door": 0.03,
     "seats": 0.04,
     "steps": 0.05,
+    "seat_riser": 0.04,
+    "lamella": 0.25,
 }
 # Gloss for X-Plane's normal-map alpha (1 = smooth and shiny, 0 = rough).
 GLOSS: dict[str, float] = {
@@ -470,14 +564,20 @@ GLOSS: dict[str, float] = {
     "lamp": 0.3,
 }
 DEFAULT_GLOSS = 0.08
+# See-through materials: opacity written into the colour texture's alpha.
+ALPHA: dict[str, float] = {"roof_clear": 0.35}
 
 
 def normal_map(
     rgb: np.ndarray, material: str, px_per_m: float, u: np.ndarray, v: np.ndarray
 ) -> np.ndarray:
     """Tangent-space normals (+u right, +v up) and gloss of a painted region, RGBA 0..255."""
+    material = base_material(material)
     fn = HEIGHT.get(material)
-    if fn is not None:
+    if material.startswith("photo:"):  # a little relief from the photo's light and shade
+        lum = rgb[..., 0] * 0.3 + rgb[..., 1] * 0.59 + rgb[..., 2] * 0.11
+        height = (lum / 255.0) * 0.05
+    elif fn is not None:
         height = fn(u, v).astype(np.float32)
     elif material in FROM_BRIGHTNESS_M:
         lum = rgb[..., 0] * 0.3 + rgb[..., 1] * 0.59 + rgb[..., 2] * 0.11
@@ -495,4 +595,64 @@ def normal_map(
     out[..., 1] = (ny / length) * 127.5 + 127.5
     out[..., 2] = (nz / length) * 127.5 + 127.5
     out[..., 3] = GLOSS.get(material, DEFAULT_GLOSS) * 255.0
+    return out
+
+
+# ---- night (TEXTURE_LIT) ------------------------------------------------------------
+
+# Share of windows with the light on at night, and their colours.
+LIT_SHARE = 0.32
+ROOM_LIGHT = np.array((255, 190, 120), dtype=np.float32)  # warm interior light
+OFFICE_LIGHT = np.array((235, 238, 255), dtype=np.float32)  # cool office light
+PAINTED_WINDOWS = ("windows", "windows_classic", "windows_arched", "windows_house")
+
+
+def _lit_cells(cells: np.ndarray, seed: int, share: float) -> np.ndarray:
+    h = (cells.astype(np.int64) * 2654435761 + seed * 97) & 0xFFFFFFFF
+    h = (h ^ (h >> 15)) * 2246822519 & 0xFFFFFFFF
+    return ((h & 0xFFFF) / 65535.0) < share
+
+
+def lit_window(seed: int, share: float = LIT_SHARE) -> bool:
+    """Whether a single window (by a repeatable seed) has its light on."""
+    return bool(_lit_cells(np.array([seed]), 5, share)[0])
+
+
+def emission(
+    material: str, glow: str | None, u: np.ndarray, v: np.ndarray, color, upright: bool = True
+) -> np.ndarray:
+    """Night texture of a painted region (RGB 0..255, black = dark). Rooms only light
+    up behind walls (`upright`), not behind glass roofs."""
+    out = np.zeros(u.shape + (3,), dtype=np.float32)
+    if glow == "lamp" or material == "lamp":
+        out[...] = painter(material)(u, v, color)
+        return out
+    if not upright and glow is None:
+        return out
+    if base_material(material) in PAINTED_WINDOWS:
+        _img, glass_, cells = painter(material)(u, v, color, masks=True)
+        on = glass_ & _lit_cells(cells, 3, LIT_SHARE)
+        flicker = 0.85 + 0.15 * _noise(cells, cells * 0 + 1, 1.0, 43)
+        out[on] = ROOM_LIGHT * flicker[on][:, None] * 0.9
+        return out
+    if material == "glass":
+        # whole rooms (6 m wide, a storey high) are lit or dark, not single panes
+        cells = np.floor(u / 6.0) * 7919 + np.floor(v / 3.5)
+        mullion = ((u % 1.5) < 0.06) | ((v % 2.0) < 0.06)
+        on = ~mullion & _lit_cells(cells, 7, 0.4)
+        out[on] = OFFICE_LIGHT * 0.5
+        return out
+    if glow == "window" and material == "glass_pane":
+        frame = (u < 0.12) | (u > 1.88) | (v < 0.1) | (v > 1.9)
+        bars = (np.abs(u - 1.0) < 0.05) | (np.abs(v - 1.3) < 0.05)
+        inside = ~(frame | bars)
+        # brighter towards the top: a ceiling lamp in the room behind
+        out[inside] = ROOM_LIGHT * (0.75 + 0.1 * np.clip(v[inside], 0, 2))[:, None]
+        return out
+    if material == "stand_fascia":
+        board = (v > 0.5) & (v < 1.9)
+        out[board] = painter(material)(u, v, color)[board] * 0.8
+        return out
+    if glow == "window":  # any other material lit from behind (e.g. a glass roof)
+        out[...] = ROOM_LIGHT * 0.6
     return out

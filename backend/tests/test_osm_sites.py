@@ -119,9 +119,9 @@ def test_building_parts_are_folded_into_their_outline():
     loose = next(i for i in items if i.osm_ref == "way/4")
     assert loose.attrs.min_height_m == 5.0
     # Both build: tower higher than the nave, the loose roof floats.
-    mesh, _ = assemble.generate(church, items, "low")
+    mesh, _, _ = assemble.generate(church, items, "low")
     assert mesh.bounds()[1][2] > 45
-    mesh, _ = assemble.generate(loose, items, "low")
+    mesh, _, _ = assemble.generate(loose, items, "low")
     assert mesh.bounds()[0][2] >= 4.9
 
 

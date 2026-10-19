@@ -25,7 +25,7 @@ from xpsb import photos as photos_mod
 from xpsb.ai import analyze as ai
 from xpsb.ai import detect
 from xpsb.ai.usage import UsageLedger
-from xpsb.build import assemble
+from xpsb.build import assemble, phototex
 from xpsb.geo import METERS_PER_DEG_LAT, meters_per_deg_lon
 from xpsb.imagery import wms
 from xpsb.imagery.sources import resolve_source
@@ -44,6 +44,7 @@ from xpsb.jobs.models import (
     PlanObject,
 )
 from xpsb.osm import classify, overpass
+from xpsb.photos import Photo
 from xpsb.settings import Settings
 from xpsb.xplane import dsftool
 from xpsb.xplane.dsf_text import Tile
@@ -371,7 +372,24 @@ def library_packs(objects: list[PlanObject]) -> list[str]:
     return sorted({p.pack for o in objects for p in o.library if not p.default and p.pack})
 
 
-OBJECT_ITEM_KINDS = ("objects", "designed", "library", "library_packs")
+def object_files(objects: list[PlanObject]) -> list[str]:
+    """Package files of the 3D objects."""
+    return [
+        f"objects/{o.stem}{suffix}"
+        for o in objects
+        if o.status == "ok" and o.has_mesh
+        for suffix in (".obj", ".png", "_nml.png") + (("_lit.png",) if o.lit else ())
+    ]
+
+
+OBJECT_ITEM_KINDS = (
+    "objects",
+    "designed",
+    "photo_textures",
+    "night",
+    "library",
+    "library_packs",
+)
 
 
 def object_items(objects: list[PlanObject]) -> list[PlanItem]:
@@ -381,6 +399,22 @@ def object_items(objects: list[PlanObject]) -> list[PlanItem]:
     designed = sum(o.designed for o in ok)
     if designed:
         items.append(PlanItem(kind="designed", label_key="plan.designed", count=designed))
+    photo_objs = sum(1 for o in ok if o.photo_textures)
+    if photo_objs:
+        items.append(
+            PlanItem(
+                kind="photo_textures",
+                label_key="plan.photo_textures",
+                count=photo_objs,
+                params={"photos": len({p for o in ok for p in o.photo_textures})},
+            )
+        )
+    lit = sum(o.lit for o in ok)
+    lights = sum(o.lights for o in ok)
+    if lit or lights:
+        items.append(
+            PlanItem(kind="night", label_key="plan.night", count=lit, params={"lights": lights})
+        )
     placed = sum(len(o.library) for o in ok)
     if placed:
         items.append(PlanItem(kind="library", label_key="plan.library", count=placed))
@@ -430,7 +464,9 @@ def make_plan(job: Job, job_dir: Path, library: Catalog | None = None) -> BuildP
     preview_dir = job_dir / "preview"
     if preview_dir.exists():
         shutil.rmtree(preview_dir)
-    results = assemble.generate_all(job.analysis.items, detail, preview_dir, True, None, library)
+    results = assemble.generate_all(
+        job.analysis.items, detail, preview_dir, True, None, library, job_dir / "photos"
+    )
     objects = [PlanObject(**r.__dict__) for r in results]
     surfaces = [
         it for it in job.analysis.items if it.kind == "surface" and it.included and not it.proposal
@@ -451,13 +487,7 @@ def make_plan(job: Job, job_dir: Path, library: Catalog | None = None) -> BuildP
             count=len(surfaces),
         )
     )
-    files = [tile.dsf_relative_path, "README.txt"]
-    files += [
-        f"objects/{o.stem}{suffix}"
-        for o in ok
-        if o.has_mesh
-        for suffix in (".obj", ".png", "_nml.png")
-    ]
+    files = [tile.dsf_relative_path, "README.txt"] + object_files(objects)
     kinds = ["ortho"] if ortho and surfaces else sorted({str(s.category) for s in surfaces})
     files += [f"polygons/xpsb_{k}.{ext}" for k in kinds for ext in ("pol", "png")]
     rects = _exclusion_rects(job, {o.item_id for o in ok})
@@ -505,11 +535,41 @@ def _readme(plan: BuildPlan, job: Job) -> str:
             "\nRequires these library packs in Custom Scenery (objects are referenced, "
             "not included): " + ", ".join(packs) + "\n"
         )
+    used = photo_texture_photos(plan.objects, job)
+    if used:
+        text += "\nPhotos used as textures (straightened and cropped):\n" + "\n".join(
+            phototex.attribution(p) for p in used
+        )
+        if any("sa" in (p.license or "").lower() for p in used):
+            text += (
+                "\nThe textures made from photos under a share-alike licence (CC BY-SA) "
+                "are shared under the same licence.\n"
+            )
+        else:
+            text += "\n"
     return text
 
 
+def photo_texture_photos(objects: list[PlanObject], job: Job) -> list[Photo]:
+    """The photos painted onto objects of the plan (for the README and approval C)."""
+    wanted = {pid for o in objects if o.status == "ok" for pid in o.photo_textures}
+    if not wanted or job.analysis is None:
+        return []
+    seen: dict[str, Photo] = {}
+    for it in job.analysis.items:
+        for p in it.photos:
+            if p.id in wanted:
+                seen[p.id] = p
+    return [seen[k] for k in sorted(seen)]
+
+
 def build_package(
-    job: Job, job_dir: Path, exe: Path, log: EventLog, library: Catalog | None = None
+    job: Job,
+    job_dir: Path,
+    exe: Path,
+    log: EventLog,
+    library: Catalog | None = None,
+    blender_exe: str | None = None,
 ) -> BuildResult:
     """Runs in a worker thread."""
     plan = job.plan
@@ -520,7 +580,8 @@ def build_package(
         shutil.rmtree(package)
     package.mkdir(parents=True)
 
-    log.publish_threadsafe(type="progress", stage="write", progress=0.0, key="stage.write")
+    write_key = "stage.write_blender" if blender_exe else "stage.write"
+    log.publish_threadsafe(type="progress", stage="write", progress=0.0, key=write_key)
     assert job.analysis is not None
     tile = Tile.containing(*plan.center)
     result = assemble.write_package(
@@ -531,8 +592,10 @@ def build_package(
         _exclusions(job),
         ortho=_ortho(job, job_dir),
         library=library,
+        photo_dir=job_dir / "photos",
+        blender_exe=blender_exe,
         progress=lambda p: log.publish_threadsafe(
-            type="progress", stage="write", progress=p, key="stage.write"
+            type="progress", stage="write", progress=p, key=write_key
         ),
     )
     text_file = result.dsf_text

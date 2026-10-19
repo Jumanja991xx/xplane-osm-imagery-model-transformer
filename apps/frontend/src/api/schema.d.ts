@@ -459,6 +459,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/jobs/{job_id}/textures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Textures */
+        put: operations["set_textures_api_jobs__job_id__textures_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/texture-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Texture Preview */
+        post: operations["texture_preview_api_jobs__job_id__texture_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs/{job_id}/photo-search": {
         parameters: {
             query?: never;
@@ -1031,7 +1065,7 @@ export interface components {
             /** Rows */
             rows?: number | null;
             /** Wall Material */
-            wall_material?: ("windows" | "plaster" | "brick" | "glass" | "metal_sheet" | "concrete" | "wood") | null;
+            wall_material?: ("windows" | "windows_classic" | "windows_arched" | "windows_house" | "plaster" | "stone" | "brick" | "glass" | "metal_sheet" | "concrete" | "wood") | null;
         };
         /**
          * ItemPatch
@@ -1222,6 +1256,11 @@ export interface components {
             license?: string | null;
             /** Page Url */
             page_url?: string | null;
+            /**
+             * Shareable
+             * @description May it go into a scenery package as a texture (see redistributable)?
+             */
+            readonly shareable: boolean;
         };
         /**
          * PhotoCandidate
@@ -1260,6 +1299,40 @@ export interface components {
             bearing?: number | null;
             /** Facing */
             facing?: boolean | null;
+        };
+        /**
+         * PhotoTexture
+         * @description A facade cut out of one of the item's photos (see build/phototex.py): the four
+         *     corners in the photo (fractions of its width/height, from the top left, in the
+         *     order top-left, top-right, bottom-right, bottom-left) and its real size.
+         */
+        PhotoTexture: {
+            /** Name */
+            name: string;
+            /** Photo Id */
+            photo_id: string;
+            /** Corners */
+            corners: number[][];
+            /** Width M */
+            width_m: number;
+            /** Height M */
+            height_m: number;
+            /**
+             * Repeat
+             * @default false
+             */
+            repeat: boolean;
+            /**
+             * Walls
+             * @default false
+             */
+            walls: boolean;
+            /**
+             * Source
+             * @default user
+             * @enum {string}
+             */
+            source: "ai" | "user";
         };
         /** PhotoUpload */
         PhotoUpload: {
@@ -1327,6 +1400,23 @@ export interface components {
              * @default false
              */
             designed: boolean;
+            /**
+             * Lit
+             * @default false
+             */
+            lit: boolean;
+            /**
+             * Lights
+             * @default 0
+             */
+            lights: number;
+            /** Photo Textures */
+            photo_textures?: string[];
+            /**
+             * Shaded
+             * @default false
+             */
+            shaded: boolean;
             /** Library */
             library?: components["schemas"]["LibraryPlacement"][];
         };
@@ -1456,6 +1546,8 @@ export interface components {
             script_request?: string | null;
             /** Photos */
             photos?: components["schemas"]["Photo"][];
+            /** Textures */
+            textures?: components["schemas"]["PhotoTexture"][];
             research?: components["schemas"]["Research"] | null;
             /** Parts */
             parts?: components["schemas"]["BuildingPart"][];
@@ -1488,6 +1580,13 @@ export interface components {
              * @default false
              */
             update_check: boolean;
+            /**
+             * Use Blender
+             * @default true
+             */
+            use_blender: boolean;
+            /** Blender Path */
+            blender_path?: string | null;
         };
         /** SimilarBody */
         SimilarBody: {
@@ -1542,6 +1641,13 @@ export interface components {
              * @default false
              */
             has_esri_key: boolean;
+            /** Blender */
+            blender?: string | null;
+        };
+        /** TexturesBody */
+        TexturesBody: {
+            /** Textures */
+            textures: components["schemas"]["PhotoTexture"][];
         };
         /** TokenBody */
         TokenBody: {
@@ -2663,6 +2769,81 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_textures_api_jobs__job_id__textures_put: {
+        parameters: {
+            query: {
+                item: string;
+            };
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TexturesBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    texture_preview_api_jobs__job_id__texture_preview_post: {
+        parameters: {
+            query: {
+                item: string;
+            };
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhotoTexture"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                    "image/jpeg": unknown;
                 };
             };
             /** @description Validation Error */

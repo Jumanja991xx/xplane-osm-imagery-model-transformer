@@ -46,6 +46,17 @@ class Patch:
     uv_m: list[Vec2] = field(default_factory=list)
     tris: list[tuple[int, int, int]] = field(default_factory=list)
     two_sided: bool = False
+    # Detail level: "all", "near" (only close up: real windows, small parts) or
+    # "far" (the cheap stand-in shown from further away instead of the near parts).
+    lod: str = "all"
+    # Night: "window" lights the glass of this patch (a lit room behind it),
+    # "lamp" makes the whole patch shine; None: decided by the material.
+    glow: str | None = None
+    # Part of a flipbook animation: (index into Mesh.anims, frame number).
+    anim: tuple[int, int] | None = None
+    # Many faces share the same piece of texture (window panes, trims): nothing that
+    # differs from place to place (such as baked shading) may be painted into it.
+    shared_uv: bool = False
 
     def add_vertex(self, p: Vec3, n: Vec3, uv: Vec2) -> int:
         self.positions.append(p)
@@ -74,6 +85,32 @@ class Placement:
 
 
 MAX_PLACEMENTS = 300
+MAX_LIGHTS = 2000
+
+
+@dataclass
+class Anim:
+    """Flipbook animation (flags): its frames are shown one after another in a loop,
+    the whole turning about a vertical axis at `pivot` with the wind if `wind`.
+    Frame geometry is in local metres like everything else."""
+
+    frames: int
+    period_s: float
+    pivot: tuple[float, float, float]
+    wind: bool = True
+
+
+@dataclass
+class Light:
+    """A light of X-Plane (lights.txt) in local metres; `params` follow the light's
+    definition after the position (see xplane/lights.py)."""
+
+    name: str
+    x: float
+    y: float
+    z: float
+    params: tuple[float, ...] = ()
+    named: bool = False  # LIGHT_NAMED (fixed light without parameters)
 
 
 @dataclass
@@ -81,6 +118,15 @@ class Mesh:
     max_triangles: int
     patches: list[Patch] = field(default_factory=list)
     placements: list[Placement] = field(default_factory=list)
+    lights: list[Light] = field(default_factory=list)
+    anims: list[Anim] = field(default_factory=list)
+
+    def add_light(self, light: Light) -> None:
+        if len(self.lights) >= MAX_LIGHTS:
+            raise GeometryError(f"more than {MAX_LIGHTS} lights")
+        if not all(math.isfinite(c) for c in (light.x, light.y, light.z, *light.params)):
+            raise GeometryError("light contains NaN/inf values")
+        self.lights.append(light)
 
     @property
     def triangle_count(self) -> int:

@@ -17,6 +17,7 @@ from xpsb.build import details
 from xpsb.build.materials import MATERIALS, parse_color
 from xpsb.build.mesh import (
     MAX_PLACEMENTS,
+    Anim,
     GeometryError,
     Mesh,
     Patch,
@@ -29,6 +30,7 @@ from xpsb.build.mesh import (
     quad_face,
     sub,
 )
+from xpsb.xplane import lights
 
 MAX_SEGMENTS = 64
 MAX_PATH_POINTS = 2000
@@ -75,6 +77,15 @@ def _material(mat: Any) -> str:
     return mat
 
 
+def _intensity(value: Any) -> float:
+    """Light intensity in candela (not a size: its own range)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        raise GeometryError("intensity must be a number (candela)")
+    if not 10 <= value <= 2_000_000:
+        raise GeometryError("intensity must be between 10 and 2000000 cd")
+    return float(value)
+
+
 def _segments(value: Any) -> int:
     n = int(_num(value, "segments"))
     if not 3 <= n <= MAX_SEGMENTS:
@@ -85,9 +96,23 @@ def _segments(value: Any) -> int:
 class Tools:
     """Bound to one mesh; the methods below are exposed to the script."""
 
-    def __init__(self, mesh: Mesh, library: frozenset[str] | None = None):
+    def __init__(
+        self,
+        mesh: Mesh,
+        library: frozenset[str] | None = None,
+        photos: frozenset[str] = frozenset(),
+    ):
         self.mesh = mesh
         self.library = library or frozenset()
+        self.photos = photos  # names of the item's photo textures ("photo:<name>")
+
+    def _mat(self, mat: Any) -> str:
+        if isinstance(mat, str) and mat.startswith("photo:"):
+            if mat[6:] not in self.photos:
+                have = ", ".join(sorted(self.photos)) or "none"
+                raise GeometryError(f"unknown photo texture {mat!r}; this object has: {have}")
+            return mat
+        return _material(mat)
 
     # -- helpers ------------------------------------------------------------------
 
@@ -134,7 +159,7 @@ class Tools:
         if z1 <= z0:
             raise GeometryError("extrude: z1 must be above z0")
         rings = details.rings_of(pts, _holes(holes))
-        wall_mat, col = _material(mat), self._color(color)
+        wall_mat, col = self._mat(mat), self._color(color)
         # One patch per wall keeps texture patterns straight on every side.
         for ring in rings:
             for (ax, ay), (bx, by) in zip(ring, ring[1:] + ring[:1], strict=True):
@@ -146,7 +171,7 @@ class Tools:
                     )
                 )
         if top is not None:
-            details.flat_top(self.mesh, rings, z1, _material(top), self._color(top_color))
+            details.flat_top(self.mesh, rings, z1, self._mat(top), self._color(top_color))
         if bottom:
             self.mesh.add(
                 planar_face(
@@ -197,10 +222,10 @@ class Tools:
             style,
             n,
             None if bay is None else _num(bay, "bay"),
-            None if mat is None else _material(mat),
+            None if mat is None else self._mat(mat),
             self._color(color),
             self._color(trim_color),
-            None if top is None else _material(top),
+            None if top is None else self._mat(top),
             self._color(top_color),
             bool(entrance),
         )
@@ -217,7 +242,7 @@ class Tools:
             raise GeometryError("parapet: statues must be between 0 and 80")
         rings = details.rings_of(_pts2(polygon, "polygon"), _holes(holes))
         details.parapet(
-            self.mesh, rings, _num(z, "z"), h, _material(mat), self._color(color), count
+            self.mesh, rings, _num(z, "z"), h, self._mat(mat), self._color(color), count
         )
 
     def chimneys(self, polygon, z0, z1, count=None, size=0.9, mat="brick", color=None, holes=None):
@@ -233,7 +258,7 @@ class Tools:
         if z1 <= z0:
             raise GeometryError("chimneys: z1 must be above z0")
         return details.chimneys(
-            self.mesh, rings, z0, z1, n, _num(size, "size"), _material(mat), self._color(color)
+            self.mesh, rings, z0, z1, n, _num(size, "size"), self._mat(mat), self._color(color)
         )
 
     def mansard(
@@ -260,9 +285,9 @@ class Tools:
             _num(z, "z"),
             rise_,
             depth_,
-            _material(mat),
+            self._mat(mat),
             self._color(color),
-            None if top is None else _material(top),
+            None if top is None else self._mat(top),
             self._color(top_color),
         )
 
@@ -325,7 +350,7 @@ class Tools:
         n = _segments(segments)
         if r0 <= 0 or h <= 0 or r1 < 0:
             raise GeometryError("cylinder: radius and height must be positive")
-        mat_, col = _material(mat), self._color(color)
+        mat_, col = self._mat(mat), self._color(color)
         side = Patch(mat_, col)
         slope = (r0 - r1) / h
         circumference = 2 * math.pi * r0
@@ -363,7 +388,7 @@ class Tools:
         d = norm(axis)
         e1 = norm(cross(d, (0.0, 0.0, 1.0) if abs(d[2]) < 0.9 else (1.0, 0.0, 0.0)))
         e2 = cross(d, e1)
-        patch = Patch(_material(mat), self._color(color))
+        patch = Patch(self._mat(mat), self._color(color))
         for i in range(n + 1):
             a_ = 2 * math.pi * i / n
             off = tuple(math.cos(a_) * e1[k] + math.sin(a_) * e2[k] for k in range(3))
@@ -421,7 +446,7 @@ class Tools:
         v_off = 0.0
         for e in prof_edges:
             j0, j1 = e, (e + 1) % len(prof)
-            emat = _material(mats[e] if mats else mat)
+            emat = self._mat(mats[e] if mats else mat)
             ecol = self._color(colors[e] if colors else color)
             seg_len = math.dist(prof[j0], prof[j1])
             patch = Patch(emat, ecol, two_sided=two_sided)
@@ -443,11 +468,11 @@ class Tools:
                     patch.tris += [(base, base + 2, base + 1), (base, base + 3, base + 2)]
                 else:
                     patch.tris += [(base, base + 1, base + 2), (base, base + 2, base + 3)]
-            v_off += seg_len
+            # every profile edge is its own patch: its texture starts at v = 0
             self.mesh.add(patch)
         if caps and not closed_path and len(prof) >= 3:
             first, last = rings[0], rings[-1]
-            cap_mat = _material(mats[0] if mats else mat)
+            cap_mat = self._mat(mats[0] if mats else mat)
             cap_col = self._color(colors[0] if colors else color)
             self.mesh.add(planar_face(list(first), cap_mat, cap_col, two_sided=True))
             self.mesh.add(planar_face(list(last), cap_mat, cap_col, two_sided=True))
@@ -471,7 +496,7 @@ class Tools:
         n = _segments(segments)
         a0, a1 = _num(start, "start"), _num(end, "end")
         full = abs((a1 - a0) % 360) < 1e-6 and a1 != a0
-        mat_, col = _material(mat), self._color(color)
+        mat_, col = self._mat(mat), self._color(color)
         angles = [math.radians(a0 + (a1 - a0) * i / n) for i in range(n + 1)]
         for j in range(len(prof) - 1):
             (r0, z0), (r1, z1) = prof[j], prof[j + 1]
@@ -508,15 +533,261 @@ class Tools:
                     patch.tris += [(base, base + 2, base + 1), (base, base + 3, base + 2)]
             self.mesh.add(patch)
 
+    # -- night ----------------------------------------------------------------------
+
+    def _light_color(self, color) -> tuple[float, float, float]:
+        if color is None or color == "warm":
+            return lights.WARM
+        if color == "white":
+            return lights.WHITE
+        r, g, b = self._color(color)
+        return (r / 255, g / 255, b / 255)
+
+    def light(
+        self,
+        x,
+        y,
+        z,
+        dx=0.0,
+        dy=0.0,
+        dz=-1.0,
+        color="warm",
+        intensity=6000,
+        beam=60,
+        glow=True,
+    ):
+        """A spot light at (x, y, z) shining along (dx, dy, dz) at night: lights up
+        what it points at (X-Plane 12 spill light) and, with glow, shows the lamp.
+        color "warm" (sodium/halogen), "white" (LED floodlight) or a colour;
+        intensity in candela (facade spot ~3000-15000, stadium floodlight
+        ~50000-200000); beam = full beam angle in degrees."""
+        for li in lights.spot(
+            _num(x, "x"),
+            _num(y, "y"),
+            _num(z, "z"),
+            (_num(dx, "dx"), _num(dy, "dy"), _num(dz, "dz")),
+            self._light_color(color),
+            _intensity(intensity),
+            _num(beam, "beam"),
+            bool(glow),
+        ):
+            self.mesh.add_light(li)
+
+    def floodlight(self, polygon, z0, z1, spacing=12.0, color="warm", intensity=None, holes=None):
+        """Lights the walls of `polygon` from below at night (monuments, palaces,
+        churches, bridges): spots on the ground every `spacing` metres along the
+        outline, aimed up the wall from z0 to z1. Returns how many were placed."""
+        step = _num(spacing, "spacing")
+        if not 3.0 <= step <= 100.0:
+            raise GeometryError("floodlight: spacing must be between 3 and 100 m")
+        z0_, z1_ = _num(z0, "z0"), _num(z1, "z1")
+        if z1_ <= z0_:
+            raise GeometryError("floodlight: z1 must be above z0")
+        cd = (
+            _intensity(intensity)
+            if intensity is not None
+            else min(30000.0, max(2500.0, 450.0 * (z1_ - z0_)))
+        )
+        col = self._light_color(color)
+        rings = details.rings_of(_pts2(polygon, "polygon"), _holes(holes))
+        count = 0
+        for ring in rings[:1]:  # courtyards stay dark
+            for origin, d, n, length in details._edges(ring):
+                k = max(1, round(length / step))
+                for j in range(k):
+                    s = (j + 0.5) * length / k
+                    x = origin[0] + d[0] * s + n[0] * 1.2
+                    y = origin[1] + d[1] * s + n[1] * 1.2
+                    # aimed up, slightly towards the wall
+                    for li in lights.spot(
+                        x, y, z0_ + 0.3, (-n[0] * 0.35, -n[1] * 0.35, 1.0), col, cd, 50.0, False
+                    ):
+                        self.mesh.add_light(li)
+                    count += 1
+        return count
+
+    def lamp_post(self, x, y, height=6.0, heading=0.0, color=None):
+        """A street lamp: pole, arm and lamp head facing `heading` (degrees from
+        north), with a real street light at night."""
+        cx, cy = _num(x, "x"), _num(y, "y")
+        h = _num(height, "height")
+        if not 2.5 <= h <= 20:
+            raise GeometryError("lamp_post: height must be between 2.5 and 20 m")
+        ux, uy = _dir(heading)
+        self.cylinder(cx, cy, 0.0, 0.08, h, mat="steel", segments=6, radius_top=0.06, color=color)
+        arm = 0.9
+        hx, hy = cx + ux * arm, cy + uy * arm
+        self.tube([cx, cy, h - 0.1], [hx, hy, h], 0.04, mat="steel", segments=4, color=color)
+        head = Patch("lamp", None, glow="lamp")
+        corners = [
+            (hx - 0.25, hy - 0.12),
+            (hx + 0.25, hy - 0.12),
+            (hx + 0.25, hy + 0.12),
+            (hx - 0.25, hy + 0.12),
+        ]
+        details._shared_quad(head, [(px, py, h - 0.08) for px, py in reversed(corners)], 0.5, 0.24)
+        self.mesh.add(head)
+        self.mesh.add_light(lights.street_lamp(hx, hy, h - 0.12))
+
+    def floodlight_mast(self, x, y, height, aim_x, aim_y, lamps=6, color="white", intensity=80000):
+        """Stadium/sports floodlight mast at (x, y), its lamp head facing the point
+        (aim_x, aim_y) on the ground: steel mast, lamp panel lit at night and
+        `lamps` strong spot lights aimed at that point."""
+        cx, cy, h = _num(x, "x"), _num(y, "y"), _num(height, "height")
+        if not 8 <= h <= 80:
+            raise GeometryError("floodlight_mast: height must be between 8 and 80 m")
+        n = int(_num(lamps, "lamps"))
+        if not 1 <= n <= 24:
+            raise GeometryError("floodlight_mast: lamps must be between 1 and 24")
+        ax, ay = _num(aim_x, "aim_x") - cx, _num(aim_y, "aim_y") - cy
+        dist = math.hypot(ax, ay)
+        if dist < 1:
+            raise GeometryError("floodlight_mast: aim point must differ from the mast")
+        ux, uy = ax / dist, ay / dist
+        self.cylinder(cx, cy, 0.0, 0.6, h, mat="steel", segments=8, radius_top=0.35)
+        # Lamp panel: a frame across the aim direction, tilted down towards the pitch.
+        width = 1.2 * max(2, n // 2 + 1)
+        vx, vy = -uy, ux
+        tilt = math.atan2(h, dist)
+        panel_h = 3.0
+        bx, by = cx + ux * 0.6, cy + uy * 0.6
+        top_z, bot_z = h + panel_h / 2, h - panel_h / 2
+        back = math.sin(tilt) * panel_h / 2
+        front = Patch("lamp", None, glow="lamp")
+        corners = [
+            (bx - vx * width / 2 + ux * back, by - vy * width / 2 + uy * back, bot_z),
+            (bx + vx * width / 2 + ux * back, by + vy * width / 2 + uy * back, bot_z),
+            (bx + vx * width / 2 - ux * back, by + vy * width / 2 - uy * back, top_z),
+            (bx - vx * width / 2 - ux * back, by - vy * width / 2 - uy * back, top_z),
+        ]
+        # facing the aim point (counter-clockwise seen from there)
+        details._shared_quad(front, list(reversed(corners)), width, panel_h)
+        self.mesh.add(front)
+        rear = Patch("steel", None)
+        details._shared_quad(rear, corners, width, panel_h)
+        self.mesh.add(rear)
+        col = self._light_color(color)
+        cd = _intensity(intensity)
+        for k in range(n):
+            t = (k + 0.5) / n - 0.5
+            px, py = bx + vx * width * t, by + vy * width * t
+            # each lamp aims at a slightly different spot: an even pool of light
+            tx = ax + vx * dist * 0.6 * t
+            ty = ay + vy * dist * 0.6 * t
+            for li in lights.spot(px, py, h, (tx, ty, -h), col, cd, 40.0, True):
+                self.mesh.add_light(li)
+
+    def flag(
+        self,
+        x,
+        y,
+        height=10.0,
+        length=3.0,
+        width=2.0,
+        colors=None,
+        stripes="horizontal",
+        pole=True,
+        wind=True,
+        heading=0.0,
+        z=0.0,
+    ):
+        """A flag on a pole at (x, y) that waves (animated) and turns with the wind
+        in X-Plane. length = from the pole to the free end, width = top to bottom,
+        colors = the stripes from top to bottom (stripes="horizontal") or from the
+        pole outwards ("vertical"), e.g. ["#CE2939", "#FFFFFF", "#477050"] for
+        Hungary. pole=False hangs it on something else at `height` (top edge);
+        wind=False keeps it pointing to `heading`. z = foot of the pole."""
+        cx, cy, z0 = _num(x, "x"), _num(y, "y"), _num(z, "z")
+        h, ln, w = _num(height, "height"), _num(length, "length"), _num(width, "width")
+        if not (1 <= h <= 120 and 0.3 <= ln <= 30 and 0.2 <= w <= 20):
+            raise GeometryError("flag: height 1-120 m, length 0.3-30 m, width 0.2-20 m")
+        cols = colors if colors is not None else ["#FFFFFF"]
+        if not isinstance(cols, list) or not 1 <= len(cols) <= 9:
+            raise GeometryError("flag: colors must be a list of 1 to 9 colours")
+        cols = [self._color(c) for c in cols]
+        if stripes not in ("horizontal", "vertical"):
+            raise GeometryError('flag: stripes must be "horizontal" or "vertical"')
+        if pole:
+            self.cylinder(
+                cx,
+                cy,
+                z0,
+                0.06 + h * 0.004,
+                h + 0.3,
+                mat="paint",
+                color="#E8E8E8",
+                segments=6,
+                radius_top=0.04 + h * 0.002,
+            )
+            self.cylinder(
+                cx,
+                cy,
+                z0 + h + 0.3,
+                0.09,
+                0.15,
+                mat="paint",
+                color="#C9A642",
+                segments=6,
+                radius_top=0.0,
+                cap=False,
+            )
+        frames, period = 8, 1.6
+        anim = Anim(frames, period, (cx, cy, z0), bool(wind))
+        if not wind:  # a fixed flag: no rotation, shape still waves
+            anim.wind = False
+        a_idx = len(self.mesh.anims)
+        self.mesh.anims.append(anim)
+        hd = math.radians(_num(heading, "heading")) if not wind else 0.0
+        top = z0 + h
+        nu, nv = 8, max(2, 2 * len(cols)) if stripes == "horizontal" else 3
+        for f in range(frames):
+            phase = 2 * math.pi * f / frames
+
+            def at(u: float, v: float, phase: float = phase) -> Vec3:
+                # u from the pole (0) to the free end (1), v from the top (0) down
+                along = u * ln
+                side = 0.12 * ln * u * math.sin(2 * math.pi * (u * 1.1) - phase)
+                droop = 0.06 * ln * u * u
+                lx, ly = side, along  # streaming north before turning
+                rx = lx * math.cos(hd) + ly * math.sin(hd)
+                ry = -lx * math.sin(hd) + ly * math.cos(hd)
+                return (cx + rx, cy + ry, top - v * w - droop)
+
+            for k, col in enumerate(cols):
+                patch = Patch("paint", col, two_sided=True, anim=(a_idx, f))
+                if stripes == "horizontal":
+                    u_rng, v_rng = (0.0, 1.0), (k / len(cols), (k + 1) / len(cols))
+                    cu, cv = nu, max(1, nv // len(cols))
+                else:
+                    u_rng, v_rng = (k / len(cols), (k + 1) / len(cols)), (0.0, 1.0)
+                    cu, cv = max(1, nu // len(cols)), nv
+                grid = []
+                for i in range(cu + 1):
+                    row = []
+                    for j in range(cv + 1):
+                        u = u_rng[0] + (u_rng[1] - u_rng[0]) * i / cu
+                        v = v_rng[0] + (v_rng[1] - v_rng[0]) * j / cv
+                        p0 = at(u, v)
+                        du = sub(at(min(1.0, u + 0.01), v), at(max(0.0, u - 0.01), v))
+                        dv = sub(at(u, min(1.0, v + 0.01)), at(u, max(0.0, v - 0.01)))
+                        row.append(patch.add_vertex(p0, norm(cross(dv, du)), (u * ln, (1 - v) * w)))
+                    grid.append(row)
+                for i in range(cu):
+                    for j in range(cv):
+                        a0, a1 = grid[i][j], grid[i + 1][j]
+                        b0, b1 = grid[i][j + 1], grid[i + 1][j + 1]
+                        patch.tris += [(a0, b0, b1), (a0, b1, a1)]
+                self.mesh.add(patch)
+
     def quad(self, a, b, c, d, mat="concrete", color=None, two_sided=True):
         """Free quadrilateral (roof planes, panels, screens)."""
         pts = _pts3([a, b, c, d], "quad", 4)
-        self.mesh.add(quad_face(pts, _material(mat), self._color(color), two_sided=two_sided))
+        self.mesh.add(quad_face(pts, self._mat(mat), self._color(color), two_sided=two_sided))
 
     def face(self, points, mat="concrete", color=None, two_sided=True):
         """Free flat polygon of [x, y, z] points (gables, irregular roofs)."""
         pts = _pts3(points, "points", 3)
-        self.mesh.add(planar_face(pts, _material(mat), self._color(color), two_sided=two_sided))
+        self.mesh.add(planar_face(pts, self._mat(mat), self._color(color), two_sided=two_sided))
 
 
 # ---- geometry helpers for scripts (pure functions) ------------------------------

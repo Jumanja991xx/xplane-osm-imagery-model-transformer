@@ -8,11 +8,22 @@ Tribünen, Gebäude, Gerüste, Rasen, Asphalt usw. Kostenlos für die Community.
 Dateien schreiben, X-Plane-Ordner ändern) und zeigt dabei, *was passiert, was es kostet
 und wohin geschrieben wird*.
 
-> **Status: Meilenstein 3, Schritt 1 (Vorschau).** Aus der bestätigten Liste werden echte
-> 3D-Objekte gebaut: Tribünen (auch überdacht/Solardach), Gebäude, Überdachungen, Masten und
-> Gerüste – über Bauskripte in einer abgeschotteten Skriptsprache (Starlark), mit Texturen in
-> echtem Maßstab, dazu Bodenflächen. Vor dem Bauen zeigt die App alles in einer 3D-Vorschau.
-> Als Nächstes schreibt die KI eigene Bauskripte pro Bauwerk (aus Luftbild, Fotos, Wissen).
+> **Status: Meilenstein 3.** Aus der bestätigten Liste werden echte 3D-Objekte gebaut –
+> über Bauskripte in einer abgeschotteten Skriptsprache (Starlark), auf Wunsch individuell
+> von der KI-Architektin (aus Luftbild, Fotos, Wissen). Dazu gehören:
+> - **Detail-Baukasten:** Fassaden mit echter Tiefe (Fensterlaibungen, Gesimse, Pilaster),
+>   Mansarddächer, Balustraden, Kamine, Normal-Maps.
+> - **Fassadenfotos:** Ecken auf einem Foto markieren → die App zieht es gerade und malt es
+>   als Textur aufs Modell (nur Fotos, deren Lizenz das erlaubt; Urheber stehen in der README
+>   des Pakets). Für Stadien/Bürofassaden reicht ein Muster-Stück.
+> - **Nacht:** beleuchtete Fenster (`TEXTURE_LIT`), angestrahlte Wahrzeichen, Flutlicht,
+>   Laternen (X-Plane-12-Lichter aus `lights.txt`).
+> - **Detailstufen:** nah echte Fenster, weiter weg gemalte Fassaden (zwei `ATTR_LOD`).
+> - **Stadion-Baukasten:** zwei Ränge mit Sitzreihen, Werbebande, Lamellenfassade,
+>   durchscheinendes Dachinnenteil, Dachträger, Flutlicht.
+> - **Wehende Fahnen** (Animation, drehen sich mit dem Wind).
+> - **Blender (optional, vom Nutzer installiert):** backt beim Paketbau weiche Schatten
+>   (Ambient Occlusion) in die Texturen – mit einem festen Skript, nie mit KI-Code.
 
 Architektur und Roadmap: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) ·
 geprüfte X-Plane-Formatdetails: [`docs/xplane-format-notes.md`](docs/xplane-format-notes.md)

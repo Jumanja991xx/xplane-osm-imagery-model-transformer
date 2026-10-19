@@ -12,7 +12,7 @@ import base64
 import inspect
 import json
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from pydantic import BaseModel, Field
 
@@ -24,6 +24,7 @@ from xpsb.build.mesh import Mesh
 from xpsb.build.render import views_png
 from xpsb.build.sandbox import GEOMETRY_TOOLS, HELPER_TOOLS, ScriptError, ScriptInputs, run_script
 from xpsb.jobs.models import AiRunInfo
+from xpsb.scene import PhotoTexture
 from xpsb.xplane.library import Catalog
 
 MAX_CALLS = 4  # writing incl. fixes, plus one review
@@ -31,7 +32,7 @@ EFFORT = "medium"
 MAX_SCRIPT_CHARS = 30_000
 # Rough token counts for the estimate (system prompt with the tool reference,
 # script, images, and a full script plus thinking as output).
-SYSTEM_TOKENS_EST = 4500
+SYSTEM_TOKENS_EST = 5500
 IMAGE_TOKENS_EST = 400
 OUTPUT_TOKENS_EST = 12000  # thinking + a detailed script
 # Output limit per answer (thinking + script); streamed, so long answers are fine.
@@ -46,8 +47,31 @@ TOO_LONG = (
 )
 
 
+class TextureSpec(BaseModel):
+    """A facade cut out of a photo by the AI (becomes a PhotoTexture of the item)."""
+
+    name: str = Field(description="Short lowercase name, e.g. front, side_east, stand_bays.")
+    photo_id: str = Field(description="id of the photo it is cut from.")
+    corners: list[list[float]] = Field(
+        description="Four corners of the facade in the photo as [x, y] fractions of the "
+        "photo's width and height from its top-left corner, in the order top-left, "
+        "top-right, bottom-right, bottom-left of the facade."
+    )
+    width_m: float = Field(description="Real width of the marked part in metres.")
+    height_m: float = Field(description="Real height of the marked part in metres.")
+    repeat: bool = Field(
+        description="True for a sample of a repeating facade (tiled at its real size), "
+        "false for a whole facade (fitted onto the face it is used on)."
+    )
+
+
 class ArchitectScript(BaseModel):
     script: str = Field(description="The complete Starlark build script (not a diff).")
+    textures: list[TextureSpec] = Field(
+        default_factory=list,
+        description="Photo textures the script uses as mat='photo:<name>' (empty if none). "
+        "Repeat ones you still need; textures already listed in the facts stay available.",
+    )
     summary: str = Field(
         description="One or two sentences for the user, in their language: what was built "
         "or changed."
@@ -59,6 +83,9 @@ class ArchitectReview(BaseModel):
     problems: str = Field(description="What does not match yet (empty if ok).")
     script: str | None = Field(
         default=None, description="If not ok: the complete improved script, else null."
+    )
+    textures: list[TextureSpec] = Field(
+        default_factory=list, description="New or changed photo textures of that script."
     )
     summary: str = Field(description="One or two sentences for the user, in their language.")
 
@@ -72,6 +99,7 @@ class DesignResult:
     calls: int = 0
     error_key: str | None = None
     error_detail: str | None = None
+    textures: list[PhotoTexture] = field(default_factory=list)  # made by the AI
 
 
 def tool_reference() -> str:
@@ -190,6 +218,27 @@ HOW TO BUILD COMMON THINGS (adapt to the facts and photos):
   own sake, and nothing outside the object's own plot.
 - Colours: take wall and roof colours from the photos if there are any (walls are rarely
   visible from above); without photos use the typical colours of the region and type.
+- Night (X-Plane shows it): windows light up by themselves (some rooms lit). Add what
+  the real object has: floodlight() for monuments, palaces, churches and bridges that
+  are lit at night, floodlight_mast() or light() along the roof edge for sports
+  grounds, lamp_post() for lamps on the object's own plot. Flags that are really there:
+  flag() with the real colours (it waves and turns with the wind).
+- Stadium stands: rows as "seats" treads and "seat_riser" risers (the seat backs seen
+  from the pitch), "stand_fascia" for the front of an upper tier, translucent inner roof
+  edges as "roof_clear", modern outer facades as "lamella" or a photo texture.
+
+PHOTO TEXTURES - the way hand-made sceneries get their look: simple shapes, real
+photos. If a photo shows a facade straight enough and unobstructed (no trees/cars over
+most of it) and the facts say it may be used as texture, cut it out: return it in
+`textures` (photo id, the four corners of the facade in the photo, its real width and
+height in metres) and use mat="photo:<name>" on the wall it shows - a quad() or face()
+for one wall, extrude() for all walls of a block. A whole facade (repeat=false) is
+fitted onto each face it is used on, so use it on faces of about its size. For
+repeating facades (stadium lamellas, office grids, arcades) mark a clean sample of a
+few bays (repeat=true) and use it on long walls: it tiles at its real size. Photo walls
+need no facade() windows (the photo shows them); keep facade() for walls no photo
+shows. Textures listed under "Photo textures" in the facts already exist and can be
+used as they are. In the check views photo walls look grey; that is expected.
 
 TOOLS:
 {tool_reference()}
@@ -246,7 +295,9 @@ def design(
     photos: list[tuple[str, bytes]] | None = None,
     library: Catalog | None = None,
     research: str | None = None,
+    photo_ids: dict[str, bool] | None = None,
 ) -> DesignResult:
+    """`photo_ids`: the item's photos -> may be used as texture (licence)."""
     result = DesignResult(info=AiRunInfo(model=cfg.model))
     budget = Budget(cfg.budget_usd, result.info, cfg.on_cost)
     system = system_prompt(cfg.language)
@@ -257,6 +308,8 @@ def design(
         f"path = {json.dumps(inputs.path)}\n"
         f"Triangle budget: {max_triangles}\n"
     )
+    if inputs.textures:
+        facts += "Photo textures (mat='photo:<name>'): " + json.dumps(inputs.textures) + "\n"
     if research:
         facts += (
             "What is known about the real object (Wikidata, Wikipedia, OSM; may be "
@@ -338,11 +391,42 @@ def design(
                 raise AiCallError("no valid answer", key="error.ai_bad_answer")
             return response.parsed
 
+    usable = {pid for pid, ok in (photo_ids or {}).items() if ok}
+    made: dict[str, PhotoTexture] = {}
+
+    def take_textures(specs) -> str | None:
+        """The AI's photo textures; an error text if one is unusable."""
+        for spec in specs or []:
+            if spec.photo_id not in usable:
+                return f"photo {spec.photo_id!r} cannot be used as texture"
+            try:
+                made[spec.name] = PhotoTexture(
+                    name=spec.name,
+                    photo_id=spec.photo_id,
+                    corners=spec.corners,
+                    width_m=spec.width_m,
+                    height_m=spec.height_m,
+                    repeat=spec.repeat,
+                    source="ai",
+                )
+            except ValueError as exc:
+                return f"texture {spec.name!r}: {str(exc)[:300]}"
+        return None
+
     def try_run(script: str) -> tuple[Mesh | None, str | None]:
         if len(script) > MAX_SCRIPT_CHARS:
             return None, f"script longer than {MAX_SCRIPT_CHARS} characters"
+        textures = dict(inputs.textures)
+        for t in made.values():
+            textures[t.name] = {"width": t.width_m, "height": t.height_m, "repeat": t.repeat}
         try:
-            mesh = run_script(script, inputs, max_triangles, name="architect.star", library=lib_set)
+            mesh = run_script(
+                script,
+                replace(inputs, textures=textures),
+                max_triangles,
+                name="architect.star",
+                library=lib_set,
+            )
             return mesh, None
         except ScriptError as exc:
             return None, str(exc)[:1500]
@@ -384,7 +468,10 @@ def design(
             script = _clean(out.script)  # type: ignore[attr-defined]
             result.summary = out.summary  # type: ignore[attr-defined]
             on_step("design.step.testing", {})
-            mesh, error = try_run(script)
+            error = take_textures(getattr(out, "textures", None))
+            mesh = None
+            if error is None:
+                mesh, error = try_run(script)
             if mesh is not None:
                 break
             on_step("design.step.fixing", {"attempt": result.calls + 1})
@@ -401,6 +488,7 @@ def design(
             result.error_detail = error
             return result
         result.script, result.mesh = script, mesh
+        result.textures = list(made.values())
 
         # Self-check: the model looks at its result once and may improve it.
         on_step("design.step.checking", {})
@@ -432,9 +520,16 @@ def design(
             if not review.ok and better:  # type: ignore[attr-defined]
                 on_step("design.step.improving", {})
                 better = _clean(better)
-                mesh2, _ = try_run(better)
+                kept = dict(made)
+                mesh2 = None
+                if take_textures(getattr(review, "textures", None)) is None:
+                    mesh2, _ = try_run(better)
                 if mesh2 is not None:  # otherwise keep the first working version
                     result.script, result.mesh = better, mesh2
+                    result.textures = list(made.values())
+                else:
+                    made.clear()
+                    made.update(kept)
     except AiAuthError:
         result.error_key = "error.ai_auth_failed"
     except AiCallError as exc:

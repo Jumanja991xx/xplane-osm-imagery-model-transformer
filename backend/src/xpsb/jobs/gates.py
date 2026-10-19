@@ -43,6 +43,7 @@ class GateContext:
     design: tuple = ()
     design_cut: int = 0  # left out because of the cost limit
     esri_key: str | None = None  # never shown or stored; only decides the source
+    blender: str | None = None  # version of the user's Blender, if it will be used
 
 
 def content_hash(payload: dict) -> str:
@@ -385,10 +386,26 @@ def _gate_c(job: Job, ctx: GateContext):
             params={"path": str(ctx.job_dir / "build" / p.package_name)},
         )
     )
+    meshes = sum(1 for o in p.objects if o.status == "ok" and o.has_mesh)
+    if ctx.blender and meshes:
+        items.append(
+            GateItem(
+                kind="action",
+                key="gate.c.blender",
+                params={"version": ctx.blender, "minutes": max(1, round(meshes * 15 / 60))},
+            )
+        )
+    elif ctx.settings.use_blender and meshes:
+        items.append(GateItem(kind="info", key="gate.c.no_blender"))
     blocked = ctx.dsftool is None
     if blocked:
         items.append(GateItem(kind="warning", key="gate.c.no_dsftool"))
-    payload = {"plan": p.model_dump(mode="json"), "dsftool": str(ctx.dsftool), "scripts": scripts}
+    payload = {
+        "plan": p.model_dump(mode="json"),
+        "dsftool": str(ctx.dsftool),
+        "scripts": scripts,
+        "blender": ctx.blender,
+    }
     return items, blocked, payload
 
 

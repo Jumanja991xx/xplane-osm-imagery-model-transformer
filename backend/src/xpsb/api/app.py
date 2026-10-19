@@ -38,7 +38,7 @@ from xpsb.jobs.manager import (
 from xpsb.jobs.models import Brief, GateId, JobState, JobView
 from xpsb.paths import AppPaths
 from xpsb.photos import MAPILLARY_ACCOUNT, SearchResult
-from xpsb.scene import ItemPatch, NewItem
+from xpsb.scene import ItemPatch, NewItem, PhotoTexture
 from xpsb.secrets import ANTHROPIC_ACCOUNT, SecretStore, normalize_api_key
 from xpsb.settings import Settings, SettingsStore
 from xpsb.xplane import dsftool
@@ -83,6 +83,7 @@ class SystemStatus(BaseModel):
     has_api_key: bool
     has_mapillary_token: bool = False
     has_esri_key: bool = False
+    blender: str | None = None  # version of the Blender the app would use
 
 
 class ApiKeyStatus(BaseModel):
@@ -119,6 +120,10 @@ class DesignOutcome(BaseModel):
     job: JobView
     summary: str
     cost_usd: float
+
+
+class TexturesBody(BaseModel):
+    textures: list[PhotoTexture] = Field(max_length=12)
 
 
 class PhotoUpload(BaseModel):
@@ -221,6 +226,7 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
             has_api_key=bool(ctx.secrets.get(ANTHROPIC_ACCOUNT)),
             has_mapillary_token=bool(ctx.secrets.get(MAPILLARY_ACCOUNT)),
             has_esri_key=bool(ctx.secrets.get(ESRI_ACCOUNT)),
+            blender=getattr(await asyncio.to_thread(ctx.jobs.blender), "version", None),
         )
 
     @app.get("/api/settings", dependencies=auth)
@@ -418,6 +424,20 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
     async def delete_photo(job_id: str, photo_id: str) -> JobView:
         ctx.jobs.delete_photo(job_id, photo_id)
         return ctx.jobs.view(job_id)
+
+    @app.put("/api/jobs/{job_id}/textures", dependencies=auth)
+    async def set_textures(job_id: str, item: str, body: TexturesBody) -> JobView:
+        await asyncio.to_thread(ctx.jobs.set_textures, job_id, item, body.textures)
+        return ctx.jobs.view(job_id)
+
+    @app.post(
+        "/api/jobs/{job_id}/texture-preview",
+        dependencies=auth,
+        responses={200: {"content": {"image/jpeg": {}}}},
+    )
+    async def texture_preview(job_id: str, item: str, body: PhotoTexture) -> Response:
+        data = await asyncio.to_thread(ctx.jobs.texture_preview, job_id, item, body)
+        return Response(content=data, media_type="image/jpeg")
 
     @app.get("/api/jobs/{job_id}/photo-search", dependencies=auth)
     async def search_photos(job_id: str, item: str) -> SearchResult:

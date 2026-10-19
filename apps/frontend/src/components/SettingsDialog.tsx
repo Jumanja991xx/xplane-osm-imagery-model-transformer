@@ -2,7 +2,7 @@ import { useState } from "react";
 import { api, ApiError, type ImagerySettings, type Settings, type XPlaneCheck } from "../api/client";
 import { useT } from "../i18n";
 import { useApp } from "../store";
-import { Alert, Button, inputClass, Section, Spinner } from "./ui";
+import { Alert, Button, Checkbox, inputClass, Section, Spinner } from "./ui";
 
 const MODELS = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"] as const;
 const IMAGERY_CHOICES: ImagerySettings["source"][] = ["auto", "bayern_dop40", "nrw_dop", "esri", "custom", "none"];
@@ -67,6 +67,11 @@ export function SettingsDialog() {
   const checkDsfTool = () =>
     run(async () => {
       await api.checkDsfTool(draft.dsftool_path ?? "");
+      setSystem(await api.system());
+    });
+  const checkBlender = () =>
+    run(async () => {
+      setSettings(await api.putSettings(draft));
       setSystem(await api.system());
     });
   const save = () =>
@@ -194,6 +199,38 @@ export function SettingsDialog() {
                   onChange={(e) => setDraft({ ...draft, dsftool_path: e.target.value || null })}
                 />
                 <Button onClick={checkDsfTool} disabled={busy}>
+                  {t("common.check")}
+                </Button>
+              </div>
+            </label>
+          </Section>
+
+          <Section title={t("settings.blender")}>
+            <p className="text-xs text-zinc-600 dark:text-zinc-300">{t("settings.blender_intro")}</p>
+            <p className="text-sm" data-testid="blender-status">
+              {system?.blender ? (
+                <span className="text-emerald-600">{t("settings.blender_found", { version: system.blender })}</span>
+              ) : draft.use_blender === false ? (
+                <span className="text-zinc-500">{t("settings.blender_off")}</span>
+              ) : (
+                <span className="text-zinc-500">{t("settings.blender_missing")}</span>
+              )}
+            </p>
+            <Checkbox
+              label={<span className="text-sm">{t("settings.blender_use")}</span>}
+              checked={draft.use_blender !== false}
+              onChange={(v) => setDraft({ ...draft, use_blender: v })}
+            />
+            <label className="block text-sm">
+              <span className="mb-1 block text-zinc-600 dark:text-zinc-300">{t("settings.blender_custom")}</span>
+              <div className="flex gap-2">
+                <input
+                  className={inputClass}
+                  value={draft.blender_path ?? ""}
+                  placeholder="C:\Program Files\Blender Foundation\Blender 4.2\blender.exe"
+                  onChange={(e) => setDraft({ ...draft, blender_path: e.target.value || null })}
+                />
+                <Button onClick={checkBlender} disabled={busy}>
                   {t("common.check")}
                 </Button>
               </div>

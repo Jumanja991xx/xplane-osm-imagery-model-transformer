@@ -9,6 +9,7 @@ import {
   type ItemAttrs,
   type JobView,
   type PreviewData,
+  type PreviewLight,
   type PreviewObject,
 } from "../api/client";
 import { useT } from "../i18n";
@@ -24,6 +25,30 @@ const ROOF_MATERIALS = ["solar", "metal", "membrane", "tiles", "flat", "glass"] 
 
 /** Interactive 3D view of everything the plan will build, before anything is written.
  *  While the plan is open (editable), single objects can be fine-tuned here. */
+const SPOTS_PER_OBJECT = 10;
+
+/** The object's X-Plane lights for the night view: a glowing point for each and
+ * real spot lights for the strongest few (a browser cannot draw hundreds). */
+function nightLights(lights: PreviewLight[]): THREE.Group {
+  const group = new THREE.Group();
+  group.userData.nightOnly = true;
+  group.visible = false;
+  if (!lights.length) return group;
+  const pts = new THREE.BufferGeometry();
+  pts.setAttribute("position", new THREE.Float32BufferAttribute(lights.flatMap((l) => [l.x, l.z, -l.y]), 3));
+  group.add(new THREE.Points(pts, new THREE.PointsMaterial({ color: 0xfff2d0, size: 1.2, sizeAttenuation: true })));
+  const strongest = [...lights].sort((a, b) => b.cd - a.cd);
+  const step = Math.max(1, Math.floor(strongest.length / SPOTS_PER_OBJECT));
+  for (let i = 0; i < strongest.length && group.children.length <= SPOTS_PER_OBJECT; i += step) {
+    const l = strongest[i];
+    const spot = new THREE.SpotLight(new THREE.Color(...l.color), (l.cd / 250) * step, 0, Math.acos(Math.max(-1, Math.min(1, l.cos))), 0.5, 1.2);
+    spot.position.set(l.x, l.z, -l.y);
+    spot.target.position.set(l.x + l.dir[0] * 10, l.z + l.dir[2] * 10, -(l.y + l.dir[1] * 10));
+    group.add(spot, spot.target);
+  }
+  return group;
+}
+
 export function PreviewDialog({
   jobId,
   onClose,
@@ -38,6 +63,9 @@ export function PreviewDialog({
   const focusRef = useRef<(o: PreviewObject) => void>(() => {});
   const reloadRef = useRef<(o: PreviewObject) => Promise<void>>(async () => {});
   const highlightRef = useRef<(stem: string | null) => void>(() => {});
+  const nightRef = useRef<(on: boolean) => void>(() => {});
+  const [night, setNight] = useState(false);
+  const nightOn = useRef(false);
   const [data, setData] = useState<PreviewData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -58,7 +86,8 @@ export function PreviewDialog({
     const camera = new THREE.PerspectiveCamera(45, el.clientWidth / el.clientHeight, 0.5, 20000);
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.maxPolarAngle = Math.PI * 0.49;
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x667755, 1.4));
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x667755, 1.4);
+    scene.add(hemi);
     const sun = new THREE.DirectionalLight(0xffffff, 2.2);
     sun.position.set(-300, 500, 250);
     sun.castShadow = true;
@@ -83,13 +112,36 @@ export function PreviewDialog({
       const mat = mesh.material as THREE.MeshStandardMaterial;
       mat.map?.dispose();
       mat.normalMap?.dispose();
+      (mesh.userData.lit as THREE.Texture | undefined)?.dispose();
       mat.dispose();
+    };
+
+    /** Night: dark sky, the night textures glow and the object's lights shine. */
+    const applyNight = (root: THREE.Object3D, on: boolean) => {
+      root.traverse((child) => {
+        if (child instanceof THREE.Mesh && !child.userData.library) {
+          const mat = child.material as THREE.MeshStandardMaterial;
+          const lit = child.userData.lit as THREE.Texture | undefined;
+          mat.emissiveMap = on && lit ? lit : null;
+          mat.emissive.setHex(on && lit ? 0xffffff : 0x000000);
+          mat.emissiveIntensity = on ? 1.4 : 1;
+          mat.needsUpdate = true;
+        }
+        if (child.userData.nightOnly) child.visible = on;
+      });
+    };
+    nightRef.current = (on) => {
+      nightOn.current = on;
+      (scene.background as THREE.Color).setHex(on ? 0x0a0e18 : 0xbcd4ea);
+      hemi.intensity = on ? 0.12 : 1.4;
+      sun.intensity = on ? 0 : 2.2;
+      applyNight(objects, on);
     };
 
     highlightRef.current = (stem) => {
       for (const group of objects.children) {
         group.traverse((child) => {
-          if (child instanceof THREE.Mesh && !child.userData.library) {
+          if (child instanceof THREE.Mesh && !child.userData.library && !nightOn.current) {
             (child.material as THREE.MeshStandardMaterial).emissive.setHex(group.name === stem ? 0x2a4a7a : 0x000000);
           }
         });
@@ -113,6 +165,7 @@ export function PreviewDialog({
           preview.textureUrl(jobId, o.stem),
           preview.normalUrl(jobId, o.stem),
         ]);
+        const litUrl = m.lit ? await preview.litUrl(jobId, o.stem) : null;
         if (disposed) return null;
         urls.push(texUrl);
         const pos: number[] = [];
@@ -138,11 +191,26 @@ export function PreviewDialog({
         }
         const mesh = new THREE.Mesh(
           geo,
-          new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85, ...(normalMap ? { normalMap } : {}) }),
+          new THREE.MeshStandardMaterial({
+            map: tex,
+            roughness: 0.85,
+            ...(normalMap ? { normalMap } : {}),
+            // see-through roofs and panels (alpha in the texture, as in X-Plane)
+            ...(m.alpha ? { transparent: true, alphaTest: 0.05, side: THREE.DoubleSide } : {}),
+          }),
         );
         mesh.castShadow = true;
         mesh.receiveShadow = true;
+        if (litUrl) {
+          urls.push(litUrl);
+          const lit = await loader.loadAsync(litUrl).catch(() => null);
+          if (lit) {
+            lit.colorSpace = THREE.SRGBColorSpace;
+            mesh.userData.lit = lit;
+          }
+        }
         group.add(mesh);
+        group.add(nightLights(m.lights ?? []));
       }
       // X-Plane library objects: X-Plane draws them; here simple stand-ins of their kind and size.
       for (const p of o.library ?? []) {
@@ -151,6 +219,7 @@ export function PreviewDialog({
         standIn.rotation.y = -(p.heading * Math.PI) / 180;
         group.add(standIn);
       }
+      applyNight(group, nightOn.current);
       objects.add(group);
       return group;
     };
@@ -305,6 +374,17 @@ export function PreviewDialog({
         <aside className="flex w-80 shrink-0 flex-col border-r border-zinc-200 dark:border-zinc-700">
           <div className="flex items-center justify-between border-b border-zinc-200 px-3 py-2 dark:border-zinc-700">
             <h2 className="text-sm font-semibold">{t("preview.title")}</h2>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                nightRef.current(!night);
+                setNight(!night);
+              }}
+              aria-pressed={night}
+              data-testid="preview-night"
+            >
+              {night ? "☀️" : "🌙"} {t("preview.night")}
+            </Button>
             <Button variant="ghost" onClick={onClose} data-testid="preview-close">
               {t("common.close")}
             </Button>

@@ -5,9 +5,10 @@ photos from open sources near the object (Wikimedia Commons, Panoramax and,
 with the user's own token, Mapillary - the open counterpart of Street View).
 Street-level photos carry the camera direction: those looking at the object come
 first, and of a 360° panorama only the view towards the object is kept.
-Photos are only ever sent to the AI as input; they never go into the scenery
-package. Stored re-encoded as JPEG (this also drops EXIF data such as GPS
-positions of private photos).
+Photos are input for the AI; one goes into the scenery package only when the user
+or the AI cuts a facade out of it as texture AND its licence allows sharing it
+(see redistributable; the authors are named in the README). Stored re-encoded as
+JPEG (this also drops EXIF data such as GPS positions of private photos).
 """
 
 from __future__ import annotations
@@ -28,7 +29,7 @@ from pathlib import Path
 from typing import Literal
 
 from PIL import Image, ImageOps, UnidentifiedImageError
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
 
 from xpsb.geo import METERS_PER_DEG_LAT, meters_per_deg_lon
 from xpsb.osm.overpass import USER_AGENT
@@ -56,6 +57,14 @@ class PhotoError(ValueError):
     pass
 
 
+# Licences that allow sharing changed copies (attribution / share-alike).
+_FREE = re.compile(
+    r"^(cc[-_ ]?0|cc[-_ ]?zero|pd|public[-_ ]?domain|cc[-_ ]?by([-_ ]?sa)?([-_ ]?[0-9.]+)?"
+    r"([-_ ]?[a-z]{2})?|etalab([-_ ]?[0-9.]+)?|licence[-_ ]?ouverte.*|odbl.*)$",
+    re.IGNORECASE,
+)
+
+
 class Photo(BaseModel):
     """A photo attached to a scene item (file: photos/<id>.jpg in the job folder)."""
 
@@ -65,6 +74,21 @@ class Photo(BaseModel):
     author: str | None = None
     license: str | None = None
     page_url: str | None = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def shareable(self) -> bool:
+        """May it go into a scenery package as a texture (see redistributable)?"""
+        return redistributable(self)
+
+
+def redistributable(photo: Photo) -> bool:
+    """May this photo go into a scenery package that people share? Own photos (the
+    user confirmed the rights), public domain, CC0, CC BY, CC BY-SA, Etalab."""
+    if photo.source == "user":
+        return True
+    lic = (photo.license or "").strip()
+    return bool(lic) and bool(_FREE.match(lic)) and "nc" not in lic.lower().split("-")
 
 
 class PhotoCandidate(BaseModel):

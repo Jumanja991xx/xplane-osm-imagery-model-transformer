@@ -13,8 +13,10 @@ from dataclasses import dataclass
 import numpy as np
 from PIL import Image
 
-from xpsb.build.materials import DEFAULT_GLOSS, MATERIALS, normal_map
+from xpsb.build import phototex
+from xpsb.build.materials import ALPHA, DEFAULT_GLOSS, base_material, emission, normal_map, painter
 from xpsb.build.mesh import Mesh, Patch
+from xpsb.build.phototex import PhotoMaterial
 
 PAD_PX = 6  # room for mipmaps: neighbours must not bleed into each other
 MIN_PX_PER_M = 3.0
@@ -28,6 +30,8 @@ class BakedMesh:
     uvs: list[list[tuple[float, float]]]
     # Same layout: normals (RGB) and gloss (alpha) for X-Plane 12's lighting.
     normal: Image.Image | None = None
+    # Night texture (TEXTURE_LIT); None when nothing glows.
+    lit: Image.Image | None = None
 
 
 def _shelf_pack(
@@ -54,7 +58,14 @@ def _shelf_pack(
     return pos  # type: ignore[return-value]
 
 
-def bake(mesh: Mesh, atlas_px: int = 2048, max_px_per_m: float = 24.0) -> BakedMesh:
+def bake(
+    mesh: Mesh,
+    atlas_px: int = 2048,
+    max_px_per_m: float = 24.0,
+    photos: dict[str, PhotoMaterial] | None = None,
+) -> BakedMesh:
+    """`photos`: the object's rectified photo textures (materials "photo:<name>")."""
+    photos = photos or {}
     bounds = [p.uv_bounds() for p in mesh.patches]
     extents = [(max(0.05, u1 - u0), max(0.05, v1 - v0)) for u0, v0, u1, v1 in bounds]
     area = sum(w * h for w, h in extents)
@@ -81,25 +92,48 @@ def bake(mesh: Mesh, atlas_px: int = 2048, max_px_per_m: float = 24.0) -> BakedM
     canvas[...] = (128, 128, 128)
     normals = np.zeros((ah, aw, 4), dtype=np.float32)
     normals[...] = (127.5, 127.5, 255.0, DEFAULT_GLOSS * 255.0)
+    lit = np.zeros((ah, aw, 3), dtype=np.float32)
+    alpha = np.full((ah, aw), 255.0, dtype=np.float32)
     uvs: list[list[tuple[float, float]]] = []
     for patch, (u0, _v0, _u1, v1), (x, y), (w, h) in zip(
         mesh.patches, bounds, positions, sizes, strict=True
     ):
+        photo = photos.get(patch.material[6:]) if patch.material.startswith("photo:") else None
         # Paint the whole padded rectangle so texture filtering never bleeds in grey.
         px = np.arange(w, dtype=np.float32) - PAD_PX + 0.5
         py = np.arange(h, dtype=np.float32) - PAD_PX + 0.5
         uu = u0 + px[None, :] / density + np.zeros((h, 1), dtype=np.float32)
         vv = v1 - py[:, None] / density + np.zeros((1, w), dtype=np.float32)
-        painted = MATERIALS[patch.material](uu, vv, patch.color)
+        if photo is not None:
+            painted = phototex.paint(photo, uu, vv, (u0, _v0, _u1, v1))
+        elif patch.material.startswith("photo:"):  # photo not available: neutral wall
+            painted = painter("plaster")(uu, vv, patch.color)
+        else:
+            painted = painter(patch.material)(uu, vv, patch.color)
         canvas[y : y + h, x : x + w] = painted
         normals[y : y + h, x : x + w] = normal_map(
             np.clip(painted, 0, 255), patch.material, density, uu, vv
         )
+        if photo is not None:
+            lit[y : y + h, x : x + w] = phototex.night(np.clip(painted, 0, 255), uu, vv)
+        elif not patch.material.startswith("photo:"):
+            upright = abs(patch.normals[0][2]) < 0.5 if patch.normals else True
+            lit[y : y + h, x : x + w] = emission(
+                patch.material, patch.glow, uu, vv, patch.color, upright
+            )
+        opacity = ALPHA.get(base_material(patch.material))
+        if opacity is not None:
+            alpha[y : y + h, x : x + w] = 255.0 * opacity
         uvs.append(_patch_uvs(patch, u0, v1, x, y, density, aw, ah))
 
     image = Image.fromarray(np.clip(canvas, 0, 255).astype(np.uint8), "RGB")
+    if alpha.min() < 255:  # see-through parts: X-Plane blends by the texture's alpha
+        image.putalpha(Image.fromarray(alpha.astype(np.uint8), "L"))
     normal = Image.fromarray(np.clip(normals, 0, 255).astype(np.uint8), "RGBA")
-    return BakedMesh(image=image, px_per_m=density, uvs=uvs, normal=normal)
+    glow = None
+    if lit.max() > 8:
+        glow = Image.fromarray(np.clip(lit, 0, 255).astype(np.uint8), "RGB")
+    return BakedMesh(image=image, px_per_m=density, uvs=uvs, normal=normal, lit=glow)
 
 
 def _compact_pack(sizes: list[tuple[int, int]], atlas: int) -> list[tuple[int, int]] | None:

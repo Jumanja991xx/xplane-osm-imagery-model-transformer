@@ -1408,6 +1408,121 @@
         }
       }
     },
+    "/api/jobs/{job_id}/textures": {
+      "put": {
+        "summary": "Set Textures",
+        "operationId": "set_textures_api_jobs__job_id__textures_put",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "item",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TexturesBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/texture-preview": {
+      "post": {
+        "summary": "Texture Preview",
+        "operationId": "texture_preview_api_jobs__job_id__texture_preview_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "item",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PhotoTexture"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "image/jpeg": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobs/{job_id}/photo-search": {
       "get": {
         "summary": "Search Photos",
@@ -2819,7 +2934,11 @@
                 "type": "string",
                 "enum": [
                   "windows",
+                  "windows_classic",
+                  "windows_arched",
+                  "windows_house",
                   "plaster",
+                  "stone",
                   "brick",
                   "glass",
                   "metal_sheet",
@@ -3382,11 +3501,18 @@
               }
             ],
             "title": "Page Url"
+          },
+          "shareable": {
+            "type": "boolean",
+            "title": "Shareable",
+            "description": "May it go into a scenery package as a texture (see redistributable)?",
+            "readOnly": true
           }
         },
         "type": "object",
         "required": [
-          "id"
+          "id",
+          "shareable"
         ],
         "title": "Photo",
         "description": "A photo attached to a scene item (file: photos/<id>.jpg in the job folder)."
@@ -3519,6 +3645,73 @@
         "title": "PhotoCandidate",
         "description": "A search hit; only its id goes back to the client for thumbnails and import."
       },
+      "PhotoTexture": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,23}$",
+            "title": "Name"
+          },
+          "photo_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9]{1,40}$",
+            "title": "Photo Id"
+          },
+          "corners": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "maxItems": 4,
+            "minItems": 4,
+            "title": "Corners"
+          },
+          "width_m": {
+            "type": "number",
+            "maximum": 400.0,
+            "minimum": 0.5,
+            "title": "Width M"
+          },
+          "height_m": {
+            "type": "number",
+            "maximum": 200.0,
+            "minimum": 0.5,
+            "title": "Height M"
+          },
+          "repeat": {
+            "type": "boolean",
+            "title": "Repeat",
+            "default": false
+          },
+          "walls": {
+            "type": "boolean",
+            "title": "Walls",
+            "default": false
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "ai",
+              "user"
+            ],
+            "title": "Source",
+            "default": "user"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "photo_id",
+          "corners",
+          "width_m",
+          "height_m"
+        ],
+        "title": "PhotoTexture",
+        "description": "A facade cut out of one of the item's photos (see build/phototex.py): the four\ncorners in the photo (fractions of its width/height, from the top left, in the\norder top-left, top-right, bottom-right, bottom-left) and its real size."
+      },
       "PhotoUpload": {
         "properties": {
           "data": {
@@ -3647,6 +3840,28 @@
           "designed": {
             "type": "boolean",
             "title": "Designed",
+            "default": false
+          },
+          "lit": {
+            "type": "boolean",
+            "title": "Lit",
+            "default": false
+          },
+          "lights": {
+            "type": "integer",
+            "title": "Lights",
+            "default": 0
+          },
+          "photo_textures": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Photo Textures"
+          },
+          "shaded": {
+            "type": "boolean",
+            "title": "Shaded",
             "default": false
           },
           "library": {
@@ -4017,6 +4232,13 @@
             "type": "array",
             "title": "Photos"
           },
+          "textures": {
+            "items": {
+              "$ref": "#/components/schemas/PhotoTexture"
+            },
+            "type": "array",
+            "title": "Textures"
+          },
           "research": {
             "anyOf": [
               {
@@ -4112,6 +4334,22 @@
             "type": "boolean",
             "title": "Update Check",
             "default": false
+          },
+          "use_blender": {
+            "type": "boolean",
+            "title": "Use Blender",
+            "default": true
+          },
+          "blender_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blender Path"
           }
         },
         "type": "object",
@@ -4226,6 +4464,17 @@
             "type": "boolean",
             "title": "Has Esri Key",
             "default": false
+          },
+          "blender": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blender"
           }
         },
         "type": "object",
@@ -4239,6 +4488,23 @@
           "has_api_key"
         ],
         "title": "SystemStatus"
+      },
+      "TexturesBody": {
+        "properties": {
+          "textures": {
+            "items": {
+              "$ref": "#/components/schemas/PhotoTexture"
+            },
+            "type": "array",
+            "maxItems": 12,
+            "title": "Textures"
+          }
+        },
+        "type": "object",
+        "required": [
+          "textures"
+        ],
+        "title": "TexturesBody"
       },
       "TokenBody": {
         "properties": {

@@ -43,6 +43,9 @@ class Settings(BaseModel):
     imagery: ImagerySettings = Field(default_factory=ImagerySettings)
     # Off until the user opts in (no network traffic without consent).
     update_check: bool = False
+    # Blender (installed by the user) bakes soft shading into the textures at build time.
+    use_blender: bool = True
+    blender_path: str | None = None
 
 
 class SettingsStore:

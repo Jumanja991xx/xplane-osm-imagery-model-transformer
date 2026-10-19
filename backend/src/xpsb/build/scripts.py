@@ -13,6 +13,8 @@ Inputs available to every script:
              tags of the object), detail ("low"|"medium"|"high"), min_height
              (raised blocks), parts (OSM building parts: list of dicts with
              footprint, height, min_height, roof_shape, wall_color, roof_color, part)
+  textures   photo textures of the object: name -> {width, height, repeat, walls};
+             used as mat="photo:<name>"
 """
 
 from __future__ import annotations
@@ -29,6 +31,13 @@ def segs(n_medium):
     if d == "high":
         return n_medium * 2
     return n_medium
+
+def photo_walls():
+    # A photo texture the user (or the AI) marked for all walls, else None.
+    for name in sorted(textures):
+        if textures[name].get("walls"):
+            return "photo:" + name
+    return None
 
 def frame(r):
     # helpers to place points in the oriented rectangle: a along the long side
@@ -108,8 +117,8 @@ def main():
         colors.append(g("seat_color", None))
         if i < rows - 1:
             prof.append([(i + 1) * row_d, z + row_h])
-            mats.append("steps")
-            colors.append(None)
+            mats.append("seat_riser")
+            colors.append(g("seat_color", None))
     z_last = front_wall + (rows - 1) * row_h
     prof.append([D, z_last])
     mats.append("concrete")
@@ -140,6 +149,14 @@ def main():
             x = fx + tx * a - nx * across
             y = fy + ty * a - ny * across
             cylinder(x, y, 0, 0.14, height, mat="steel", segments=segs(8))
+    # Floodlights under the front edge of the roof, aimed at the field.
+    k = max(1, int(L / 12))
+    for i in range(k):
+        a = -L / 2 + L * (i + 0.5) / k
+        x = fx + tx * a + nx * (over - 0.5)
+        y = fy + ty * a + ny * (over - 0.5)
+        light(x, y, roof_h - 1.3, nx * 30, ny * 30, -roof_h, color="white", intensity=40000,
+              beam=50)
 
 main()
 """
@@ -198,46 +215,110 @@ STYLES = {
     "generic": (8.0, 3.0, "windows", None, "flat", "roof_tiles", "roof_flat", 0.35, 6.0),
 }
 
-def stadium():
-    ring = footprint
-    if len(ring) > 90:  # very detailed outlines: even points every few metres
-        ring = resample(ring + [ring[0]], 5.0)[:-1]
-    r = oriented_rect(ring)
-    W = r["width"]
-    depth = clamp(W * 0.22, 10, min(42, W * 0.3))
-    H = g("height", clamp(W * 0.17, 10, 42))
-    facade = g("wall_material", "metal_sheet")
-    steps = {"low": 6, "medium": 14, "high": 24}.get(params.get("detail"), 14)
-    z_top = H - 2.5
-    z_bot = 1.5
-    x0 = depth * 0.08
-    prof = [[0, 0], [0, H], [x0, H], [x0, z_top]]
-    mats = [facade, "concrete", "concrete"]
-    colors = [g("wall_color", "#DADADA"), None, None]
-    for i in range(steps):
-        xb = x0 + (depth - x0) * (i + 1) / steps
-        za = z_top - (z_top - z_bot) * i / steps
-        zb = z_top - (z_top - z_bot) * (i + 1) / steps
+def tier(prof, mats, colors, a0, z0, a1, z1, row_d, seat):
+    # Rows of seats falling from (a0, z0) at the back to (a1, z1) at the front:
+    # a riser and a tread per row (the seat texture shows a row every 0.8 m).
+    n = max(1, int((a1 - a0) / row_d + 0.5))
+    for i in range(n):
+        za = z0 - (z0 - z1) * i / n
+        zb = z0 - (z0 - z1) * (i + 1) / n
+        xb = a0 + (a1 - a0) * (i + 1) / n
         prof.append([xb, za])
         mats.append("seats")
-        colors.append(g("seat_color", None))
+        colors.append(seat)
         prof.append([xb, zb])
-        mats.append("steps")
+        mats.append("seat_riser")
+        colors.append(seat)
+
+def stadium():
+    ring = footprint
+    if len(ring) > 60:  # very detailed outlines: even points every few metres
+        ring = resample(ring + [ring[0]], 6.0)[:-1]
+    r = oriented_rect(ring)
+    W = r["width"]
+    depth = clamp(W * 0.22, 10, min(48, W * 0.3))
+    H = g("height", clamp(W * 0.17, 10, 48))
+    facade = photo_walls() or g("wall_material", "lamella")
+    seat = g("seat_color", None)
+    row_d = {"low": 2.4, "medium": 1.6, "high": 0.8}.get(params.get("detail"), 1.6)
+    z_top = H - 2.5
+    z_bot = 1.2
+    x0 = 2.5  # walkway behind the top row
+    # Glazed entrance level, the facade above, a walkway behind the top row.
+    prof = [[0, 0], [0, 4.5], [0, H], [x0, H], [x0, z_top]]
+    mats = ["glass", facade, "concrete", "concrete"]
+    colors = [None, g("wall_color", "#DADADA"), None, None]
+    if depth >= 22:
+        # Two tiers: the upper one steeper, a fascia and a concourse with the
+        # vomitories (the openings to the stairs) in between.
+        split = x0 + (depth - x0) * 0.45
+        z_mid = z_bot + (z_top - z_bot) * 0.42
+        tier(prof, mats, colors, x0, z_top, split, z_mid + 2.4, row_d, seat)
+        prof.append([split, z_mid])  # fascia of the upper tier (advertising band)
+        mats.append("stand_fascia")
         colors.append(None)
-    prof.append([depth, 0])
+        prof.append([split + 3.0, z_mid])  # concourse walkway
+        mats.append("concrete")
+        colors.append(None)
+        prof.append([split + 3.0, z_mid - 0.3])
+        mats.append("concrete")
+        colors.append(None)
+        tier(prof, mats, colors, split + 3.0, z_mid - 0.3, depth, z_bot, row_d, seat)
+    else:
+        tier(prof, mats, colors, x0, z_top, depth, z_bot, row_d, seat)
+    prof.append([depth, 0])  # front wall to the pitch
     mats.append("concrete")
     colors.append(None)
     mats.append("concrete")  # closing edge along the ground
     colors.append(None)
     line = [[p[0], p[1], 0] for p in ring]
     sweep(line, prof, mats=mats, colors=colors, closed_path=True, caps=True)
-    # Roof ring over the stands, falling slightly towards the pitch.
+
+    # Roof ring: solid outer part, translucent inner edge (polycarbonate/ETFE),
+    # cantilever girders underneath and floodlights along its inner edge.
     roof_mat = params.get("roof_material") or "membrane"
-    reach = depth * 0.8
-    sweep(line, [[-1.5, H + 3.0], [reach, H + 1.2], [reach, H + 1.6], [-1.5, H + 3.4]],
-          mats=[roof_mat, "steel", roof_mat, "steel"],  # underside, inner edge, top, outer edge
+    reach = depth * 0.85
+    solid = reach * 0.6
+    zo = H + 3.0  # outer edge
+    zi = H + 1.2  # inner edge
+    zs = zo + (zi - zo) * (solid + 1.5) / (reach + 1.5)
+    sweep(line, [[-1.5, zo], [solid, zs], [solid, zs + 0.4], [-1.5, zo + 0.4]],
+          mats=[roof_mat, "steel", roof_mat, "steel"],
           colors=[g("roof_color", None), None, g("roof_color", None), None],
           closed_path=True, caps=True)
+    sweep(line, [[solid, zs + 0.2], [reach, zi + 0.2]], mat="roof_clear", closed_path=True,
+          two_sided=True)
+    sweep(line, [[reach, zi - 0.4], [reach, zi + 0.4]], mat="steel", closed_path=True,
+          two_sided=True)  # compression ring at the inner edge
+    cx = r["x"]
+    cy = r["y"]
+    n = len(ring)
+    perimeter = 0.0
+    for i in range(n):
+        perimeter += hypot(ring[(i + 1) % n][0] - ring[i][0], ring[(i + 1) % n][1] - ring[i][1])
+    every = max(1, int(14.0 / (perimeter / n) + 0.5))  # a girder every ~14 m
+    for i in range(0, n, every):
+        p = ring[i]
+        q = ring[(i + 1) % n]
+        o = ring[i - 1]
+        tx = q[0] - o[0]
+        ty = q[1] - o[1]
+        tl = hypot(tx, ty)
+        if tl < 0.01:
+            continue
+        lx = -ty / tl  # left of the walking direction = towards the pitch
+        ly = tx / tl
+        outer = [p[0] - lx * 1.0, p[1] - ly * 1.0, zo - 0.3]
+        inner = [p[0] + lx * reach, p[1] + ly * reach, zi - 0.4]
+        tube(outer, inner, 0.25, mat="steel", segments=4)
+        tube([p[0] + lx * 1.5, p[1] + ly * 1.5, zo - 1.8], inner, 0.15, mat="steel", segments=4)
+        light(inner[0], inner[1], inner[2] - 0.3, cx - inner[0], cy - inner[1], -inner[2],
+              color="white", intensity=70000, beam=45)
+        # under the roof: light falling on the stands
+        light(p[0] + lx * reach * 0.6, p[1] + ly * reach * 0.6, zs - 1.0, lx * 0.3, ly * 0.3, -1,
+              color="white", intensity=15000, beam=110, glow=False)
+    # The facade lit from below at night.
+    floodlight(ring, 0, H, spacing=16, color="white", intensity=6000)
 
 # Facades with real windows (facade() tool) per wall material, and which plain
 # materials still get windows cut into them.
@@ -336,6 +417,10 @@ def main():
     fstyle = FACADE_OF.get(wall_mat)
     if fstyle == None and wall_mat in WINDOWED:
         fstyle = STYLE_FACADE.get(st)
+    if photo_walls() != None:  # real facade photos instead of painted/modelled windows
+        wall_mat = photo_walls()
+        fstyle = None
+        gable_mat = "plaster"
     roof_color = g("roof_color", None)
     roof_mat = params.get("roof_material")
     look = (wall, wall_mat, gable_mat, roof_color, roof_mat or pitched_def, roof_mat or flat_def,
@@ -356,6 +441,11 @@ def main():
     shape = g("roof_shape", shape_def)
     block(footprint, g("min_height", 0), H, shape, look, g("flip", False), fstyle, courtyards,
           levels, chimney)
+    tags = params.get("tags") or {}
+    landmark = (tags.get("historic") or tags.get("heritage") or tags.get("tourism")
+                or tags.get("wikidata") or tags.get("site:main") == "yes")
+    if st in ("historic", "church") and landmark and g("min_height", 0) < 0.5:
+        floodlight(footprint, 0, H, spacing=11)  # landmarks are lit at night
 
 main()
 """
@@ -434,6 +524,11 @@ def main():
     if g("flip", False):
         heading += 180
     box(0, 0, H - 1.2, 3.0, 0.5, 1.2, heading=heading, mat="lamp")
+    if f != None:  # aimed at the field, 40 m away and down
+        d = -1 if g("flip", False) else 1
+        for k in range(3):
+            light((k - 1) * 1.0, 0, H - 0.6, f[0] * 40 * d, f[1] * 40 * d, -H, color="white",
+                  intensity=60000, beam=40)
 
 main()
 """

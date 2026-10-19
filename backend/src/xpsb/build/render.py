@@ -12,7 +12,7 @@ from functools import lru_cache
 import numpy as np
 from PIL import Image, ImageDraw
 
-from xpsb.build.materials import MATERIALS
+from xpsb.build.materials import MATERIALS, painter
 from xpsb.build.mesh import Mesh
 
 SKY = (205, 222, 238)
@@ -30,7 +30,10 @@ VIEWS = (
 @lru_cache(maxsize=256)
 def _base_color(material: str, color: tuple[int, int, int] | None) -> np.ndarray:
     u, v = np.meshgrid(np.linspace(0, 4, 24), np.linspace(0, 4, 24))
-    img = MATERIALS.get(material, MATERIALS["concrete"])(u, v, color)
+    try:
+        img = painter(material)(u, v, color)
+    except KeyError:
+        img = MATERIALS["concrete"](u, v, color)
     return np.clip(img.reshape(-1, 3).mean(axis=0), 0, 255)
 
 
@@ -125,6 +128,8 @@ def render(
             _raster(img, depth, q[list(tri)], np.array(GROUND, dtype=np.float32), bias=1e-3)
 
     for patch in mesh.patches:
+        if patch.lod == "far":  # the close-up version is what we look at
+            continue
         base = _base_color(patch.material, patch.color)
         p = project(np.array(patch.positions, dtype=np.float64))
         normals = np.array(patch.normals, dtype=np.float64)

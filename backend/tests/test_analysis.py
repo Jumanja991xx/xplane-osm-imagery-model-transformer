@@ -562,6 +562,30 @@ def test_photos_upload_search_import_and_use(client, fake_ai, app_ctx):
     assert [p["source"] for p in item["photos"]] == ["user", "wikimedia"]
     assert item["photos"][1]["author"] == "Max Muster"
 
+    # A facade cut out of the own photo becomes a texture on all walls of the model.
+    own = item["photos"][0]["id"]
+    tex = {
+        "name": "front",
+        "photo_id": own,
+        "corners": [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]],
+        "width_m": 20,
+        "height_m": 10,
+        "walls": True,
+    }
+    prev = client.post(f"/api/jobs/{jid}/texture-preview?item={item_id}", json=tex, headers=AUTH)
+    assert prev.status_code == 200 and prev.content[:2] == b"\xff\xd8"
+    crossed = {**tex, "corners": [[0.1, 0.1], [0.9, 0.9], [0.9, 0.1], [0.1, 0.9]]}
+    r = client.post(f"/api/jobs/{jid}/texture-preview?item={item_id}", json=crossed, headers=AUTH)
+    assert r.status_code == 409 and r.json()["detail"]["key"] == "error.texture_corners"
+    job = client.put(
+        f"/api/jobs/{jid}/textures?item={item_id}", json={"textures": [tex]}, headers=AUTH
+    ).json()
+    planned_obj = next(o for o in job["plan"]["objects"] if o["item_id"] == item_id)
+    assert planned_obj["photo_textures"] == [own]
+    assert "photo_textures" in [i["kind"] for i in job["plan"]["items"]]
+    item = next(i for i in job["analysis"]["items"] if i["id"] == item_id)
+    assert item["photos"][0]["shareable"] is True and item["textures"][0]["name"] == "front"
+
     # The architect gets the photos (and the estimate accounts for them).
     est = client.get(f"/api/jobs/{jid}/design/{item_id}", headers=AUTH).json()
     assert est["estimate_usd"] > est_before["estimate_usd"]
@@ -577,10 +601,15 @@ def test_photos_upload_search_import_and_use(client, fake_ai, app_ctx):
     assert len(jpegs) == 2
     assert "Wikimedia Commons" in "".join(b.get("text", "") for b in first)
 
-    # Removing a photo deletes the file too.
+    assert "id=" + own in "".join(b.get("text", "") for b in first)  # photos have ids
+    assert "may be used as texture" in "".join(b.get("text", "") for b in first)
+
+    # Removing a photo deletes the file and its textures too.
     pid = item["photos"][0]["id"]
     job = client.delete(f"/api/jobs/{jid}/photos/{pid}", headers=AUTH).json()
     assert client.get(f"/api/jobs/{jid}/photos/{pid}", headers=AUTH).status_code == 404
+    item = next(i for i in job["analysis"]["items"] if i["id"] == item_id)
+    assert item["textures"] == []
 
 
 # ---- research ----------------------------------------------------------------------

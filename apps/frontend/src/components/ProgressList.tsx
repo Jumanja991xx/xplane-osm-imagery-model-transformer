@@ -102,7 +102,7 @@ export function ProgressList({
                 </div>
                 {active && HINTED.has(stage) && (
                   <p className="text-xs text-zinc-500" data-testid="progress-hint">
-                    {t(`progress.hint.${stage}`)}
+                    {t(e.key === "stage.write_blender" ? "progress.hint.write_blender" : `progress.hint.${stage}`)}
                   </p>
                 )}
                 {active && took > SLOW_AFTER_MS && (

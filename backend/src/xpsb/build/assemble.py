@@ -19,6 +19,7 @@ from shapely.geometry import Polygon, shape
 from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
 
+from xpsb.build import phototex
 from xpsb.build.bake import bake
 from xpsb.build.objexport import to_obj8, to_preview
 from xpsb.build.sandbox import ScriptError, ScriptInputs, run_script
@@ -105,6 +106,10 @@ class ItemResult:
     triangles: int = 0
     has_mesh: bool = True  # False: only X-Plane library objects
     designed: bool = False  # built from an own script of the AI architect
+    lit: bool = False  # has a night texture
+    lights: int = 0
+    photo_textures: list[str] = field(default_factory=list)  # ids of photos painted on it
+    shaded: bool = False  # ambient occlusion baked in by Blender
     # X-Plane library objects: path, x/y in metres from the anchor, heading, size
     library: list[dict] = field(default_factory=list)
 
@@ -149,11 +154,16 @@ def _script_inputs(item: SceneItem, items: list[SceneItem], detail: str) -> Scri
         ]
     elif geom.geom_type == "LineString":
         path = [local(x, y) for x, y in geom.coords]
+    textures = {
+        t.name: {"width": t.width_m, "height": t.height_m, "repeat": t.repeat, "walls": t.walls}
+        for t in item.textures
+    }
     return ScriptInputs(
         footprint=footprint,
         path=path,
         params=_params(item, items, local, detail),
         courtyards=courtyards,
+        textures=textures,
     )
 
 
@@ -264,8 +274,15 @@ def buildable(item: SceneItem) -> bool:
     return item.kind == "object" and item.included and not item.proposal
 
 
-def generate(item: SceneItem, items: list[SceneItem], detail: str, library: Catalog | None = None):
-    """Runs the item's build script. Returns (mesh, baked or None) or raises ScriptError."""
+def generate(
+    item: SceneItem,
+    items: list[SceneItem],
+    detail: str,
+    library: Catalog | None = None,
+    photo_dir: Path | None = None,
+):
+    """Runs the item's build script. Returns (mesh, baked or None, ids of the photos
+    painted onto it) or raises ScriptError."""
     script = item.script or DEFAULT_SCRIPTS.get(str(item.category))
     if script is None:
         raise LookupError("no generator yet")
@@ -276,13 +293,24 @@ def generate(item: SceneItem, items: list[SceneItem], detail: str, library: Cata
     name = f"{item.id}.star" if item.script else f"{item.category}.star"
     lib = frozenset(library.objects) if library else None
     mesh = run_script(script, inputs, budget, name=name, library=lib)
-    return mesh, bake(mesh, atlas, max_ppm) if mesh.patches else None
+    photos = phototex.load(item.textures, item.photos, photo_dir) if item.textures else {}
+    used = {p.material[6:] for p in mesh.patches if p.material.startswith("photo:")}
+    photo_ids = sorted({t.photo_id for t in item.textures if t.name in used and t.name in photos})
+    baked = bake(mesh, atlas, max_ppm, photos) if mesh.patches else None
+    return mesh, baked, photo_ids
 
 
 def _lod(mesh) -> float:
     (x0, y0, z0), (x1, y1, z1) = mesh.bounds()
     size = max(x1 - x0, y1 - y0, z1 - z0)
     return min(8000.0, max(1500.0, size * 40))
+
+
+def _near(mesh, lod: float) -> float:
+    """Up to here the close-up level (real windows, small parts) is drawn."""
+    (x0, y0, z0), (x1, y1, z1) = mesh.bounds()
+    size = max(x1 - x0, y1 - y0, z1 - z0)
+    return min(lod * 0.5, max(300.0, size * 4))
 
 
 def generate_one(
@@ -293,19 +321,28 @@ def generate_one(
     stem: str,
     preview: bool,
     library: Catalog | None = None,
+    photo_dir: Path | None = None,
+    blender_exe: str | None = None,
 ) -> ItemResult:
     res = ItemResult(item.id, stem, str(item.category), item.name, _anchor(item), "ok")
     res.designed = bool(item.script)
-    for name in (f"{stem}.png", f"{stem}.json", f"{stem}.obj", f"{stem}_nml.png"):
+    for name in (
+        f"{stem}.png",
+        f"{stem}.json",
+        f"{stem}.obj",
+        f"{stem}_nml.png",
+        f"{stem}_lit.png",
+    ):
         (out_dir / name).unlink(missing_ok=True)
     try:
-        mesh, baked = generate(item, items, detail, library)
+        mesh, baked, photo_ids = generate(item, items, detail, library, photo_dir)
     except LookupError as exc:
         res.status, res.message = "skipped", str(exc)
     except (ScriptError, ValueError) as exc:
         res.status, res.message = "error", str(exc)[:2000]
     else:
         res.triangles = mesh.triangle_count
+        res.photo_textures = photo_ids
         res.library = [
             {
                 "path": p.path,
@@ -321,16 +358,30 @@ def generate_one(
         if baked is None:
             res.has_mesh = False
             return res
+        if blender_exe and not preview:  # soft shading baked in by Blender
+            from xpsb import blender
+
+            ao = blender.bake_ao(blender_exe, mesh, baked)
+            if ao is not None:
+                blender.apply_ao(baked, ao)
+                res.shaded = True
         baked.image.save(out_dir / f"{stem}.png", optimize=False)
         normal = None
         if baked.normal is not None:
             normal = f"{stem}_nml.png"
             baked.normal.save(out_dir / normal, optimize=False)
+        lit = None
+        res.lights = len(mesh.lights)
+        if baked.lit is not None:
+            res.lit = True
+            lit = f"{stem}_lit.png"
+            baked.lit.save(out_dir / lit, optimize=True)
         if preview:
             data = to_preview(mesh, baked)
             (out_dir / f"{stem}.json").write_text(json.dumps(data), encoding="utf-8")
         else:
-            obj = to_obj8(mesh, baked, f"{stem}.png", _lod(mesh), normal)
+            lod = _lod(mesh)
+            obj = to_obj8(mesh, baked, f"{stem}.png", lod, normal, lit, _near(mesh, lod))
             obj.comment = f"xpsb {item.category} {item.id}"
             (out_dir / f"{stem}.obj").write_text(obj.to_text(), encoding="ascii", newline="\n")
     return res
@@ -343,6 +394,8 @@ def generate_all(
     preview: bool,
     progress: Callable[[float], None] | None = None,
     library: Catalog | None = None,
+    photo_dir: Path | None = None,
+    blender_exe: str | None = None,
 ) -> list[ItemResult]:
     """Writes OBJ8 + PNG (package) or preview JSON + PNG (job folder) per object."""
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -350,7 +403,17 @@ def generate_all(
     results: list[ItemResult] = []
     for n, item in enumerate(todo, start=1):
         results.append(
-            generate_one(item, items, detail, out_dir, f"xpsb_obj_{n:03d}", preview, library)
+            generate_one(
+                item,
+                items,
+                detail,
+                out_dir,
+                f"xpsb_obj_{n:03d}",
+                preview,
+                library,
+                photo_dir,
+                blender_exe,
+            )
         )
         if progress:
             progress(n / max(1, len(todo)))
@@ -504,10 +567,14 @@ def write_package(
     ortho: Ortho | None = None,
     progress: Callable[[float], None] | None = None,
     library: Catalog | None = None,
+    photo_dir: Path | None = None,
+    blender_exe: str | None = None,
 ) -> PackageResult:
     objects_dir = package / "objects"
     polygons_dir = package / "polygons"
-    results = generate_all(items, detail, objects_dir, False, progress, library)
+    results = generate_all(
+        items, detail, objects_dir, False, progress, library, photo_dir, blender_exe
+    )
 
     dsf = DsfText(tile=tile)
     for kind, bounds in exclusions:

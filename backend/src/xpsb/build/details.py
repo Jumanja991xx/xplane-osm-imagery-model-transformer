@@ -18,6 +18,7 @@ from shapely import constrained_delaunay_triangles
 from shapely.geometry import Point, Polygon
 from shapely.geometry.polygon import orient
 
+from xpsb.build.materials import lit_window
 from xpsb.build.mesh import (
     GeometryError,
     Mesh,
@@ -136,11 +137,16 @@ class Facade:
     def __init__(self, mesh: Mesh, wall_mat: str, wall_color, trim_color, pane_color):
         self.mesh = mesh
         self.wall_mat, self.wall_color = wall_mat, wall_color
-        self.reveals = Patch(wall_mat, wall_color)
-        self.panes = Patch("glass_pane", pane_color)
-        self.doors = Patch("door", None)
-        self.trim = Patch("stone", trim_color)
-        self.trim_sides = Patch("stone", trim_color)
+        # Everything with real depth is the close-up level; from further away a
+        # painted stand-in takes over (see facade()).
+        self.reveals = Patch(wall_mat, wall_color, lod="near")
+        self.panes = Patch("glass_pane", pane_color, lod="near")
+        self.panes_lit = Patch("glass_pane", pane_color, lod="near", glow="window")
+        self.doors = Patch("door", None, lod="near")
+        self.trim = Patch("stone", trim_color, lod="near")
+        self.trim_sides = Patch("stone", trim_color, lod="near")
+        for p in (self.reveals, self.panes, self.panes_lit, self.doors, self.trim, self.trim_sides):
+            p.shared_uv = True
 
     def wall_band(self, origin, d, n, length, zb, zt, holes, mat, u_off):
         """Wall from zb to zt along one edge, with window holes (s, z outlines)."""
@@ -149,7 +155,7 @@ class Facade:
         if not poly.is_valid:
             poly = Polygon(shell)  # never lose the wall over a bad opening
             holes = []
-        patch = Patch(mat, self.wall_color)
+        patch = Patch(mat, self.wall_color, lod="near")
         index: dict[tuple[float, float], int] = {}
 
         def vertex(s: float, z: float) -> int:
@@ -190,7 +196,12 @@ class Facade:
         z0 = min(z for _, z in outline)
         w = max(s for s, _ in outline) - s0
         h = max(z for _, z in outline) - z0
-        back = self.doors if door else self.panes
+        if door:
+            back = self.doors
+        else:  # some rooms have the light on at night (the same ones every build)
+            cx, cy = origin[0] + d[0] * s0, origin[1] + d[1] * s0
+            seed = int(round(cx * 10)) * 73856093 ^ int(round(cy * 10)) * 19349663 ^ int(z0 * 10)
+            back = self.panes_lit if lit_window(seed) else self.panes
         base = len(back.positions)
         for s, z in outline:
             back.add_vertex(
@@ -241,11 +252,26 @@ class Facade:
             patch.tris += [(base, base + 1, base + 2), (base, base + 2, base + 3)]
 
     def finish(self):
-        for patch in (self.reveals, self.panes, self.doors, self.trim, self.trim_sides):
+        for patch in (
+            self.reveals,
+            self.panes,
+            self.panes_lit,
+            self.doors,
+            self.trim,
+            self.trim_sides,
+        ):
             self.mesh.add(patch)
 
 
-def band(mesh: Mesh, ring: list[Vec2], z: float, profile: list[Vec2], mat: str, color) -> None:
+def band(
+    mesh: Mesh,
+    ring: list[Vec2],
+    z: float,
+    profile: list[Vec2],
+    mat: str,
+    color,
+    lod: str = "all",
+) -> None:
     """A moulding along a closed ring: profile points (out, up) with out < 0 meaning
     into the open air (the right-hand side of the ring), running from the wall at
     the bottom round to the wall at the top, so every face looks outwards. Mitred
@@ -254,7 +280,7 @@ def band(mesh: Mesh, ring: list[Vec2], z: float, profile: list[Vec2], mat: str, 
 
     frames = _frames([(x, y, z) for x, y in ring], True)
     count = len(frames)
-    patch = Patch(mat, color)
+    patch = Patch(mat, color, lod=lod, shared_uv=True)
     for e in range(len(profile) - 1):
         (a0, b0), (a1, b1) = profile[e], profile[e + 1]
         seg = math.hypot(a1 - a0, b1 - b0)
@@ -342,6 +368,7 @@ def chimney_spots(rings: list[list[Vec2]], count: int, inset: float) -> list[Vec
 def _shared_quad(patch: Patch, corners: list[Vec3], w: float, h: float) -> None:
     """Adds a quad whose texture is the shared (0..w, 0..h) piece of its patch."""
     q = quad_face(corners, patch.material, None)
+    patch.shared_uv = True
     base = len(patch.positions)
     for p, uv in zip(q.positions, [(0, 0), (w, 0), (w, h), (0, h)], strict=True):
         patch.add_vertex(p, q.normals[0], uv)
@@ -387,18 +414,14 @@ def facade(
         sill = max(0.5, 0.3 * sh)
         win_h = min(st.win_h, sh - sill - margin)
     wall = wall_mat or st.wall
+    # painted stand-in: the style's windows on this wall material
+    if wall.startswith("photo:"):
+        flat = wall  # the photo already shows the windows
+    else:
+        flat = st.flat if wall == "plaster" else f"{st.flat}+{wall}"
     budget = mesh.max_triangles - mesh.triangle_count
     if win_h < 0.6 or estimate_triangles(rings, height, st) > budget * 0.85:
-        for ring in rings:
-            for origin, d, _n, length in _edges(ring):
-                a, b = origin, (origin[0] + d[0] * length, origin[1] + d[1] * length)
-                mesh.add(
-                    quad_face(
-                        [(a[0], a[1], z0), (b[0], b[1], z0), (b[0], b[1], z1), (a[0], a[1], z1)],
-                        st.flat,
-                        color,
-                    )
-                )
+        _painted_walls(mesh, rings, z0, z1, flat, color, "all")
         if top:
             flat_top(mesh, rings, z1, top, top_color)
         return "flat"
@@ -442,11 +465,68 @@ def facade(
     if st.cornices:
         for ring in rings:
             for k in range(1, n_st):
-                band(mesh, ring, z0 + k * sh - 0.14, STRING_COURSE, "moulding", trim_color)
+                band(mesh, ring, z0 + k * sh - 0.14, STRING_COURSE, "moulding", trim_color, "near")
             band(mesh, ring, z1 - 0.65, MAIN_CORNICE, "moulding", trim_color)
+    # From further away: the same walls with painted windows (a few triangles).
+    _painted_walls(mesh, rings, z0, z1, flat, color, "far")
     if top:
         flat_top(mesh, rings, z1, top, top_color)
     return "detailed"
+
+
+# Window grid of the painted facade materials (bay, storey), see materials.py.
+PAINTED_GRID = {
+    "windows": (2.6, 3.0),
+    "windows_classic": (4.2, 4.8),
+    "windows_arched": (4.6, 5.5),
+    "windows_house": (3.6, 2.8),
+}
+
+
+def _painted_walls(mesh: Mesh, rings, z0: float, z1: float, mat: str, color, lod: str) -> None:
+    """Walls with painted windows, built from tiles that all share one piece of the
+    texture (a few bays by a few storeys): a big building costs no more texture
+    than a small one."""
+    bay, storey = PAINTED_GRID.get(mat.split("+", 1)[0], (4.0, 4.0))
+    tw = bay * max(1, round(12.0 / bay))
+    th = storey * max(1, round(10.0 / storey))
+    if mat.startswith("photo:"):  # a photo is fitted onto each whole wall
+        for ring in rings:
+            for origin, d, _n, length in _edges(ring):
+                a, b = origin, (origin[0] + d[0] * length, origin[1] + d[1] * length)
+                q = quad_face(
+                    [(a[0], a[1], z0), (b[0], b[1], z0), (b[0], b[1], z1), (a[0], a[1], z1)],
+                    mat,
+                    color,
+                )
+                q.lod = lod
+                mesh.add(q)
+        return
+    patch = Patch(mat, color, lod=lod)
+    for ring in rings:
+        for origin, d, _n, length in _edges(ring):
+            s = 0.0
+            while s < length - 1e-6:
+                w = min(tw, length - s)
+                z = z0
+                while z < z1 - 1e-6:
+                    h = min(th, z1 - z)
+                    a = (origin[0] + d[0] * s, origin[1] + d[1] * s)
+                    b = (origin[0] + d[0] * (s + w), origin[1] + d[1] * (s + w))
+                    _shared_quad(
+                        patch,
+                        [
+                            (a[0], a[1], z),
+                            (b[0], b[1], z),
+                            (b[0], b[1], z + h),
+                            (a[0], a[1], z + h),
+                        ],
+                        w,
+                        h,
+                    )
+                    z += h
+                s += w
+    mesh.add(patch)
 
 
 def parapet(
@@ -462,7 +542,7 @@ def parapet(
     outer = rings[0]
     perimeter = sum(length for _, _, _, length in _edges(outer))
     step = perimeter / statues
-    figures = Patch("stone", color)
+    figures = Patch("stone", color, lod="near")
     walked, k = 0.0, 0
     for origin, d, _n, length in _edges(outer):
         while k < statues and k * step + step / 2 < walked + length:

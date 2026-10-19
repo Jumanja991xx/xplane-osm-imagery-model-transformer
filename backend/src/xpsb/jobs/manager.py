@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import logging
 import os
 import shutil
@@ -14,10 +15,12 @@ from PIL import Image
 from pydantic import BaseModel
 from shapely.geometry import Polygon
 
+from xpsb import blender as blender_mod
 from xpsb import photos, research
 from xpsb.ai import analyze as ai
 from xpsb.ai import detect
 from xpsb.ai.usage import UsageLedger
+from xpsb.build import phototex
 from xpsb.catalog import category_label
 from xpsb.geo import MAX_AOI_AREA_KM2, GeoJsonPolygon, ring_area_m2, ring_centroid
 from xpsb.imagery.sources import ESRI_ACCOUNT
@@ -38,7 +41,7 @@ from xpsb.jobs.models import (
     utcnow,
 )
 from xpsb.paths import AppPaths
-from xpsb.scene import ItemAttrs, ItemPatch, NewItem, SceneItem, validate_item
+from xpsb.scene import ItemAttrs, ItemPatch, NewItem, PhotoTexture, SceneItem, validate_item
 from xpsb.secrets import ANTHROPIC_ACCOUNT, SecretStore
 from xpsb.settings import SettingsStore
 from xpsb.xplane import dsftool, library
@@ -46,6 +49,14 @@ from xpsb.xplane.library import Catalog
 from xpsb.xplane_detect import is_xplane_running
 
 log = logging.getLogger(__name__)
+
+
+def _take_textures(item: SceneItem, made: list[PhotoTexture]) -> None:
+    """The AI architect's photo textures replace its earlier ones; the user's own
+    (marked in the photo panel) stay unless the AI made one with the same name."""
+    names = {t.name for t in made}
+    item.textures = [t for t in item.textures if t.source == "user" and t.name not in names]
+    item.textures += made
 
 
 class JobConflict(Exception):
@@ -133,6 +144,7 @@ class JobManager:
         self._candidates: dict[str, dict[str, tuple[str, photos.PhotoCandidate]]] = {}
         self._thumbs: dict[str, dict[str, bytes]] = {}
         self._library: tuple[str | None, Catalog] | None = None
+        self._blender: tuple[str, blender_mod.BlenderInfo | None] | None = None
         self._side_tasks: set[asyncio.Task] = set()
         self.ledger = UsageLedger(paths.root / "ai_usage.json")
         self._jobs: dict[str, Job] = {}
@@ -208,8 +220,16 @@ class JobManager:
             job_dir=self.job_dir(job.id),
             has_mapillary=bool(self._secrets.get(photos.MAPILLARY_ACCOUNT)),
             esri_key=self._secrets.get(ESRI_ACCOUNT),
+            blender=self._blender_version(job),
             **self._design_choice(job),
         )
+
+    def _blender_version(self, job: Job) -> str | None:
+        """Only looked up where approval C needs it (starts a program once)."""
+        if job.state is not JobState.PLANNED:
+            return None
+        info = self.blender()
+        return info.version if info else None
 
     def view(self, job_id: str) -> JobView:
         job = self.get(job_id)
@@ -678,6 +698,7 @@ class JobManager:
             job.plan.objects[idx].stem,
             preview=True,
             library=self.library(),
+            photo_dir=self.job_dir(job.id) / "photos",
         )
         job.plan.objects[idx] = PlanObject(**res.__dict__)
         items = job.plan.items
@@ -685,12 +706,7 @@ class JobManager:
         rest = [it for it in items if it.kind not in pipeline.OBJECT_ITEM_KINDS]
         job.plan.items = rest[:at] + pipeline.object_items(job.plan.objects) + rest[at:]
         files = [f for f in job.plan.files if not f.startswith("objects/")]
-        files += [
-            f"objects/{o.stem}.{ext}"
-            for o in job.plan.objects
-            if o.status == "ok" and o.has_mesh
-            for ext in ("obj", "png")
-        ]
+        files += pipeline.object_files(job.plan.objects)
         job.plan.files = sorted(files)
         return job.plan.objects[idx]
 
@@ -787,6 +803,7 @@ class JobManager:
                 result.error_key or "error.architect_failed", detail=result.error_detail or ""
             )
         item.script = result.script
+        _take_textures(item, result.textures)
         item.script_request = (
             f"{item.script_request} | {request}" if item.script_request else request
         )[-2000:]
@@ -834,6 +851,7 @@ class JobManager:
             photos=self._photos_for_ai(job, item),
             library=self.library(),
             research=item.research.facts if item.research else None,
+            photo_ids={p.id: phototex.redistributable(p) for p in item.photos},
         )
 
     def _design_choice(self, job: Job) -> dict:
@@ -945,6 +963,7 @@ class JobManager:
                     cost = round(result.info.cost_usd, 4)
                     if result.script is not None:
                         item.script = result.script
+                        _take_textures(item, result.textures)
                         item.script_request = "auto"
                         designed += 1
                         status(
@@ -999,7 +1018,12 @@ class JobManager:
             if path is None:
                 continue
             source = "own photo" if p.source == "user" else photos.SOURCE_NAMES[p.source]
-            caption = f"Photo ({source}{', ' + p.title if p.title else ''}):"
+            usable = (
+                "may be used as texture"
+                if phototex.redistributable(p)
+                else ("NOT usable as texture (licence)")
+            )
+            caption = f"Photo id={p.id} ({source}{', ' + p.title if p.title else ''}; {usable}):"
             out.append((caption, photos.for_ai(path)))
         return out
 
@@ -1050,10 +1074,56 @@ class JobManager:
                     return item, p
         raise JobConflict("error.photo_not_found")
 
+    def _checked_texture(self, job: Job, item: SceneItem, tex: PhotoTexture) -> Path:
+        photo = next((p for p in item.photos if p.id == tex.photo_id), None)
+        path = self.photo_file(job.id, tex.photo_id)
+        if photo is None or path is None:
+            raise JobConflict("error.photo_not_found")
+        if not phototex.redistributable(photo):
+            raise JobConflict("error.texture_licence", license=photo.license or "?")
+        return path
+
+    def texture_preview(self, job_id: str, item_id: str, tex: PhotoTexture) -> bytes:
+        """The straightened facade as it would go onto the model (JPEG)."""
+        job = self._photo_job(job_id)
+        item = self._item(job, item_id)
+        path = self._checked_texture(job, item, tex)
+        try:
+            img = phototex.rectify(path, tex)
+        except ValueError:
+            raise JobConflict("error.texture_corners") from None
+        img.thumbnail((1024, 1024))
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=85)
+        return buf.getvalue()
+
+    def set_textures(self, job_id: str, item_id: str, textures: list[PhotoTexture]) -> Job:
+        """The item's photo textures as edited in the photo panel (the whole list)."""
+        job = self._photo_job(job_id)
+        item = self._item(job, item_id)
+        names: set[str] = set()
+        for tex in textures:
+            path = self._checked_texture(job, item, tex)
+            if tex.name in names:
+                raise JobConflict("error.texture_duplicate", name=tex.name)
+            names.add(tex.name)
+            try:
+                phototex.rectify(path, tex)
+            except ValueError:
+                raise JobConflict("error.texture_corners", name=tex.name) from None
+        item.textures = textures
+        item.edited = True
+        planned = job.plan.objects if job.state is JobState.PLANNED and job.plan else []
+        if any(o.item_id == item.id for o in planned):
+            self.regenerate_object(job, item)
+        self._save(job)
+        return job
+
     def delete_photo(self, job_id: str, photo_id: str) -> Job:
         job = self._photo_job(job_id)
         item, photo = self._photo_owner(job, photo_id)
         item.photos.remove(photo)
+        item.textures = [t for t in item.textures if t.photo_id != photo_id]
         (self.job_dir(job_id) / "photos" / f"{photo_id}.jpg").unlink(missing_ok=True)
         self._save(job)
         return job
@@ -1201,7 +1271,18 @@ class JobManager:
             job.analysis = analysis
             self._set_state(job, JobState.ANALYZED)
 
+    def blender(self) -> blender_mod.BlenderInfo | None:
+        """The user's Blender if it is to be used (looked up once per path)."""
+        s = self._settings.load()
+        if not s.use_blender:
+            return None
+        key = s.blender_path or ""
+        if self._blender is None or self._blender[0] != key:
+            self._blender = (key, blender_mod.find(s.blender_path))
+        return self._blender[1]
+
     async def _do_build(self, job: Job, exe: Path) -> None:
+        info = await asyncio.to_thread(self.blender)
         job.build = await asyncio.to_thread(
             pipeline.build_package,
             job,
@@ -1209,6 +1290,7 @@ class JobManager:
             exe,
             self.events(job.id),
             self.library(),
+            info.path if info else None,
         )
         self._set_state(job, JobState.BUILT)
 
