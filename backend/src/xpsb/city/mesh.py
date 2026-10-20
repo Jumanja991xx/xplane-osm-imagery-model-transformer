@@ -280,6 +280,79 @@ class _Builder:
 # ---- generated roofs (no official 3D data) --------------------------------------------
 
 
+PITCHED = ("gabled", "hipped", "mansard", "mixed", "pyramid")
+RING_ROOF_DEPTH_M = 6.0  # how far the slopes reach in from the walls
+
+
+def _inset_ring(ring: list[tuple[float, float]], d: float) -> list[tuple[float, float]] | None:
+    """Every edge moved `d` to its left (into the building for an outer ring that runs
+    counter-clockwise and for courtyards that run clockwise), corners mitred."""
+    n = len(ring)
+    lines = []
+    for i in range(n):
+        (x1, y1), (x2, y2) = ring[i], ring[(i + 1) % n]
+        length = math.hypot(x2 - x1, y2 - y1)
+        if length < 1e-6:
+            return None
+        nx, ny = -(y2 - y1) / length, (x2 - x1) / length
+        lines.append(((x1 + nx * d, y1 + ny * d), ((x2 - x1) / length, (y2 - y1) / length)))
+    out = []
+    for i in range(n):
+        (p, u), (q, v) = lines[i - 1], lines[i]
+        den = u[0] * v[1] - u[1] * v[0]
+        if abs(den) < 1e-6:  # straight on: just shift the corner
+            out.append(q)
+            continue
+        t = ((q[0] - p[0]) * v[1] - (q[1] - p[1]) * v[0]) / den
+        x, y = p[0] + u[0] * t, p[1] + u[1] * t
+        if math.hypot(x - ring[i][0], y - ring[i][1]) > 3 * d:  # spike at a sharp corner
+            return None
+        out.append((x, y))
+    return out
+
+
+def sloped_ring_roof(outline: Polygon, eave: float) -> list[list[Vec3]] | None:
+    """A pitched roof that follows any footprint, also around courtyards (the city
+    block of the 19th century): slopes rise from every wall inwards, a flat top
+    (or the ridge) in between. None if the shape does not allow it."""
+    poly = orient(outline.simplify(0.3), 1.0)
+    if poly.geom_type != "Polygon" or poly.is_empty:
+        return None
+    rings = [list(poly.exterior.coords)[:-1]] + [list(r.coords)[:-1] for r in poly.interiors]
+    rise_per_m = math.tan(math.radians(ROOF_PITCH_DEG + 5))
+    for d in (RING_ROOF_DEPTH_M, RING_ROOF_DEPTH_M * 0.65, RING_ROOF_DEPTH_M * 0.4):
+        insets = [_inset_ring(r, d) for r in rings]
+        if any(i is None or len(i) < 3 for i in insets):
+            continue
+        top = Polygon(insets[0], insets[1:])
+        if not top.is_valid or top.area < 1.0 or not poly.buffer(0.01).contains(top):
+            continue
+        # every inset ring must keep its direction (else it turned inside out)
+        if any(
+            (Polygon(i).exterior.is_ccw) != (Polygon(r).exterior.is_ccw)
+            for i, r in zip(insets, rings, strict=True)
+        ):
+            continue
+        z1 = eave + d * rise_per_m
+        faces: list[list[Vec3]] = []
+        for ring, inset in zip(rings, insets, strict=True):
+            n = len(ring)
+            for i in range(n):
+                j = (i + 1) % n
+                faces.append(
+                    [
+                        (*ring[i], eave),
+                        (*ring[j], eave),
+                        (*inset[j], z1),
+                        (*inset[i], z1),
+                    ]
+                )
+        for tri in shapely.constrained_delaunay_triangles(top).geoms:
+            faces.append([(x, y, z1) for x, y in list(tri.exterior.coords)[:3]])
+        return faces
+    return None
+
+
 def generated_faces(
     outline: Polygon, eave: float, roof_type: str
 ) -> tuple[list[list[Vec3]], list[list[Vec3]]]:
@@ -292,6 +365,10 @@ def generated_faces(
         and outline.area / max(rect.area, 1e-6) > 0.85
         and len(outline.interiors) == 0
     )
+    if not simple and roof_type in PITCHED:
+        ring_roof = sloped_ring_roof(outline, eave)
+        if ring_roof:
+            return [], ring_roof
     if not simple:
         rings = [list(orient(outline, 1.0).exterior.coords)[:-1]]
         rings += [list(r.coords)[:-1] for r in orient(outline, 1.0).interiors]

@@ -339,7 +339,159 @@ CENTRAL_EUROPE = RegionPreset(
     ],
 )
 
-PRESETS = {p.id: p for p in (CENTRAL_EUROPE,)}
+_ECLECTIC = [
+    (214, 192, 150),  # ochre
+    (196, 186, 170),  # grey-beige
+    (226, 210, 170),  # sand
+    (176, 168, 158),  # weathered grey
+    (222, 200, 178),  # pale pink
+    (232, 220, 186),  # pale yellow
+    (190, 170, 140),  # darker ochre
+    (206, 202, 192),  # light grey
+]
+_TIN_SLATE = [(84, 86, 90), (104, 104, 102), (70, 74, 80), (122, 92, 76)]
+
+# Historic city centre of Central Europe (Budapest, Vienna, Prague): perimeter
+# blocks of the late 19th century with courtyards, interwar houses, some modern.
+CENTRAL_EUROPE_CITY = RegionPreset(
+    id="central_europe_city",
+    name="Mitteleuropa (historische Innenstadt)",
+    styles=[
+        _entry(  # eclectic / Gruenderzeit apartment house, shops on the ground floor
+            dict(
+                id="eclectic",
+                colors=_ECLECTIC,
+                window="tall",
+                storey_m=3.9,
+                ground_m=4.6,
+                bay_m=3.5,
+                win_w_m=1.3,
+                win_h_m=2.3,
+                sill_m=0.9,
+                ground="shop",
+                bands=True,
+                trim=(232, 224, 206),
+            ),
+            dict(material="slate", colors=_TIN_SLATE + _RED_TILES[:2]),
+            dict(uses=["residential", "commercial"], min_levels=3, max_levels=8, weight=5),
+        ),
+        _entry(  # richer stone facade, round-arched windows (banks, palaces, hotels)
+            dict(
+                id="eclectic_stone",
+                colors=[(206, 198, 180), (190, 182, 166), (220, 212, 192)],
+                wall="stone",
+                window="arched",
+                storey_m=4.4,
+                ground_m=5.0,
+                bay_m=4.0,
+                win_w_m=1.5,
+                win_h_m=2.8,
+                sill_m=1.0,
+                ground="plinth",
+                bands=True,
+                trim=(226, 220, 204),
+            ),
+            dict(material="slate", colors=_TIN_SLATE),
+            dict(
+                uses=["residential", "commercial", "public"],
+                min_levels=3,
+                max_levels=8,
+                min_area_m2=400,
+                weight=1.2,
+            ),
+        ),
+        _entry(  # 1930s modern apartment house (Bauhaus influence): wide windows, balconies
+            dict(
+                id="interwar",
+                colors=[(232, 228, 220), (220, 216, 206), (214, 206, 190), (200, 200, 196)],
+                window="punched",
+                storey_m=3.2,
+                ground_m=3.6,
+                bay_m=3.3,
+                win_w_m=1.7,
+                win_h_m=1.5,
+                sill_m=0.9,
+                balconies="some",
+                balcony_color=(210, 206, 198),
+                ground="shop",
+            ),
+            dict(material="gravel", colors=_FLAT_ROOF),
+            dict(uses=["residential"], min_levels=4, max_levels=9, weight=1.3),
+        ),
+        _entry(  # small older house (2 storeys) in the old town
+            dict(
+                id="oldtown_house",
+                colors=_ECLECTIC[:6],
+                window="punched",
+                storey_m=3.4,
+                ground_m=3.6,
+                bay_m=3.2,
+                win_w_m=1.1,
+                win_h_m=1.7,
+                sill_m=1.0,
+                shutters=None,
+                bands=True,
+            ),
+            dict(material="tiles", colors=_RED_TILES + _TIN_SLATE[:1]),
+            dict(uses=["residential", "commercial"], max_levels=2, weight=2),
+        ),
+        _entry(  # public building / ministry / university, stone
+            dict(
+                id="civic",
+                colors=[(214, 206, 188), (198, 190, 172), (224, 216, 198)],
+                wall="stone",
+                window="tall",
+                storey_m=4.8,
+                ground_m=5.2,
+                bay_m=4.2,
+                win_w_m=1.6,
+                win_h_m=2.8,
+                sill_m=1.0,
+                ground="plinth",
+                bands=True,
+                lit_share=0.25,
+            ),
+            dict(material="slate", colors=_TIN_SLATE + [(80, 112, 96)]),
+            dict(uses=["public"], weight=3),
+        ),
+        _entry(
+            dict(
+                id="modern_office",
+                colors=[(90, 110, 124), (110, 126, 132), (70, 92, 104)],
+                wall="glass",
+                window="curtain",
+                storey_m=3.6,
+                ground_m=4.4,
+                bay_m=3.0,
+                ground="lobby",
+                glass=(80, 100, 116),
+                lit_share=0.45,
+            ),
+            dict(material="gravel", colors=_FLAT_ROOF),
+            dict(uses=["commercial"], min_levels=3, roofs=["flat"], weight=1),
+        ),
+        _entry(  # socialist-era block between the old houses
+            dict(
+                id="block_60s",
+                colors=[(206, 202, 194), (190, 186, 178), (214, 206, 186)],
+                wall="panel",
+                window="band",
+                storey_m=2.9,
+                ground_m=3.4,
+                bay_m=3.4,
+                win_w_m=2.5,
+                win_h_m=1.4,
+                ground="shop",
+                balconies="some",
+            ),
+            dict(material="gravel", colors=_FLAT_ROOF),
+            dict(uses=["residential"], min_levels=5, roofs=["flat"], weight=1),
+        ),
+        *[s for s in CENTRAL_EUROPE.styles if s.facade.id in ("church", "garage", "hall")],
+    ],
+)
+
+PRESETS = {p.id: p for p in (CENTRAL_EUROPE, CENTRAL_EUROPE_CITY)}
 
 
 # ---- assignment ---------------------------------------------------------------------
