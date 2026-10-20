@@ -178,9 +178,13 @@ export function MapView() {
       // Lets browser tests move the map without a place search (arrives in M2).
       (window as unknown as { __xpsbMap?: MapLibreMap }).__xpsbMap = map;
     }
+    // Only a style that never loads is replaced. Later errors (a tile that fails while
+    // others are still loading) must not: the new style would drop the drawing layers.
     let fellBack = false;
+    let loaded = false;
+    map.once("load", () => (loaded = true));
     map.on("error", () => {
-      if (!fellBack && !map.isStyleLoaded()) {
+      if (!fellBack && !loaded) {
         fellBack = true;
         map.setStyle(BLANK_STYLE);
       }
@@ -243,8 +247,11 @@ export function MapView() {
 
   useSceneSync(map);
 
+  // Terra Draw writes into its own map sources without checking that they exist.
+  const drawable = () => (map?.getSource("td-polygon") ? drawRef.current : null);
+
   useEffect(() => {
-    const draw = drawRef.current;
+    const draw = drawable();
     if (!draw) return;
     if (drawMode === "none") {
       draw.setMode("static");
@@ -255,7 +262,7 @@ export function MapView() {
   }, [drawMode]);
 
   useEffect(() => {
-    drawRef.current?.clear();
+    drawable()?.clear();
   }, [clearRequest]);
 
   const { t } = useT();
