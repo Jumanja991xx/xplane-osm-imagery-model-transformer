@@ -459,6 +459,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/jobs/{job_id}/skip-blender": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Skip Blender */
+        post: operations["skip_blender_api_jobs__job_id__skip_blender_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs/{job_id}/textures": {
         parameters: {
             query?: never;
@@ -842,6 +859,13 @@ export interface components {
              * @default 0
              */
             detailed: number;
+            /**
+             * Blender Problem
+             * @default
+             */
+            blender_problem: string;
+            /** Blender Log */
+            blender_log?: string | null;
             /** Shaded Stems */
             shaded_stems?: string[];
             /**
@@ -2781,6 +2805,37 @@ export interface operations {
             path: {
                 job_id: string;
                 photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    skip_blender_api_jobs__job_id__skip_blender_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
             };
             cookie?: never;
         };

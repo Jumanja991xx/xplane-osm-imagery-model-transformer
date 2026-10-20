@@ -89,6 +89,12 @@ export function InstallStep({ onInstall }: { onInstall: () => void }) {
           ) : (
             <span className="text-zinc-500">{t("install.blender_none")}</span>
           )}
+          {job.build.blender && job.build.blender_problem && (
+            <span className="mt-1 block text-zinc-500" data-testid="blender-problem">
+              {t("install.blender_problem", { problem: job.build.blender_problem })}
+              {job.build.blender_log && <code className="block break-all">{job.build.blender_log}</code>}
+            </span>
+          )}
         </p>
       )}
       <div className="flex justify-end gap-2">

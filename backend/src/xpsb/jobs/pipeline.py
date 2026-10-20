@@ -571,6 +571,7 @@ def build_package(
     library: Catalog | None = None,
     blender_exe: str | None = None,
     blender_version: str | None = None,
+    blender_stop: Callable[[], bool] = lambda: False,
 ) -> BuildResult:
     """Runs in a worker thread."""
     plan = job.plan
@@ -595,6 +596,7 @@ def build_package(
         library=library,
         photo_dir=job_dir / "photos",
         blender_exe=blender_exe,
+        blender_stop=blender_stop,
         blender_progress=lambda done, total, device, left: log.publish_threadsafe(
             type="progress",
             stage="blender",
@@ -656,6 +658,8 @@ def build_package(
         blender=blender_version if blender_exe else None,
         shaded=shaded,
         detailed=detailed,
+        blender_problem=next((o.blender_problem for o in meshes if o.blender_problem), ""),
+        blender_log=str(build_root / "blender.log") if blender_exe else None,
         shaded_stems=[o.stem for o in meshes if o.shaded],
         meshes=len(meshes),
     )

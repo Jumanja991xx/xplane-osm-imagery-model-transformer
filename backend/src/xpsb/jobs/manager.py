@@ -145,6 +145,7 @@ class JobManager:
         self._thumbs: dict[str, dict[str, bytes]] = {}
         self._library: tuple[str | None, Catalog] | None = None
         self._blender: tuple[str, blender_mod.BlenderInfo | None] | None = None
+        self._skip_blender: set[str] = set()  # jobs whose build goes on without Blender
         self._side_tasks: set[asyncio.Task] = set()
         self.ledger = UsageLedger(paths.root / "ai_usage.json")
         self._jobs: dict[str, Job] = {}
@@ -223,6 +224,15 @@ class JobManager:
             blender=self._blender_version(job),
             **self._design_choice(job),
         )
+
+    def skip_blender(self, job_id: str) -> Job:
+        """The user does not want to wait: Blender stops, the package is finished
+        with the objects shaded so far."""
+        job = self.get(job_id)
+        if job.state is not JobState.BUILDING:
+            raise JobConflict("error.wrong_state", state=job.state.value)
+        self._skip_blender.add(job_id)
+        return job
 
     def _blender_version(self, job: Job) -> str | None:
         """Only looked up where approval C needs it (starts a program once)."""
@@ -1292,7 +1302,9 @@ class JobManager:
             self.library(),
             info.path if info else None,
             info.version if info else None,
+            lambda: job.id in self._skip_blender,
         )
+        self._skip_blender.discard(job.id)
         self._set_state(job, JobState.BUILT)
 
     async def _do_install(self, job: Job, target: Path) -> None:

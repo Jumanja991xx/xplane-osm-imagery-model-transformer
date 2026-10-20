@@ -29,7 +29,7 @@ SCRIPT = Path(__file__).with_name("ao_bake.py")
 OBJECT_TIMEOUT_S = 240  # no object finished for this long: Blender is stopped
 SAMPLES = 16
 DISTANCE_M = 4.0
-MAX_BAKE_PX = 1024  # shading is soft: a smaller bake is enough and much faster
+MAX_BAKE_PX = 512  # shading is soft and blurry: a small bake is enough and much faster
 MAX_DETAIL_PX = 2048  # fine relief needs the texture's own resolution
 DETAIL_STRENGTH = 0.75  # how strongly the baked relief tilts the surface
 STRENGTH = 0.7  # how dark a fully occluded spot gets (1 = black)
@@ -143,19 +143,44 @@ def prepare(mesh: Mesh, baked: BakedMesh, path: Path) -> bool:
     return True
 
 
+def _work(npz: Path) -> float:
+    """Rough amount of work for one object (pixels to bake and geometry)."""
+    try:
+        with np.load(npz) as d:
+            w, h = (int(v) for v in d["size"])
+            tris = len(d["receivers"]) + len(d["occluders"])
+            if "high_tris" in d:
+                dw, dh = (int(v) for v in d["detail_size"])
+                tris += len(d["high_tris"])
+                w, h = w + dw // 2, h + dh // 2  # the relief bake is cheaper per pixel
+    except (OSError, KeyError, ValueError):
+        return 1.0
+    return w * h * (1.0 + tris / 50_000)
+
+
 def bake_batch(
     exe: str,
     jobs: list[tuple[Path, Path, Path]],
     on_progress: Callable[[int, int, str, float | None], None] = lambda *a: None,
     popen=subprocess.Popen,
+    should_stop: Callable[[], bool] = lambda: False,
+    log: list[str] | None = None,
 ) -> set[int]:
     """One Blender run for all objects: (input .npz, AO .png, normal .png) per object.
-    Returns the indices that were baked. Stops Blender if it hangs. on_progress gets
-    (done, total, device, seconds left or None) - estimated from the objects so far."""
+    Returns the indices that were baked. Small objects go first, so the time left
+    (estimated from the work done so far) is known after a few seconds. Stops
+    Blender if it hangs or `should_stop()` says so (the rest stays unshaded).
+    on_progress gets (done, total, device, seconds left or None). Blender's output
+    goes into `log` (for the build log and the reason when nothing worked)."""
+    log = log if log is not None else []
     if not jobs:
         return set()
+    work = [_work(job[0]) for job in jobs]
+    order = sorted(range(len(jobs)), key=lambda i: work[i])  # line number -> job index
     list_file = jobs[0][0].parent / "jobs.txt"
-    list_file.write_text("".join("\t".join(map(str, job)) + "\n" for job in jobs), encoding="utf-8")
+    list_file.write_text(
+        "".join("\t".join(map(str, jobs[i])) + "\n" for i in order), encoding="utf-8"
+    )
     cmd = [
         exe,
         "--background",
@@ -175,7 +200,8 @@ def bake_batch(
             text=True,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
-    except OSError:
+    except OSError as exc:
+        log.append(f"Blender could not be started: {exc}")
         return set()
     lines: queue.Queue[str | None] = queue.Queue()
 
@@ -189,36 +215,58 @@ def bake_batch(
     started = time.monotonic()
 
     def report() -> None:
-        nonlocal started
         left = None
         if done:
-            per = (time.monotonic() - started) / len(done)
-            left = per * (len(jobs) - len(done))
+            spent = sum(work[i] for i in done)
+            rest = sum(work) - spent
+            left = (time.monotonic() - started) / max(spent, 1e-9) * rest
         on_progress(len(done), len(jobs), device, left)
 
     report()
+    quiet = 0.0
     while True:
-        try:
-            line = lines.get(timeout=OBJECT_TIMEOUT_S)
-        except queue.Empty:
+        if should_stop():
+            log.append("XPSB_STOPPED by the user")
             proc.kill()
             break
+        try:
+            line = lines.get(timeout=1.0)
+        except queue.Empty:
+            quiet += 1.0
+            if quiet >= OBJECT_TIMEOUT_S:
+                log.append(f"XPSB_TIMEOUT no object finished for {OBJECT_TIMEOUT_S} s")
+                proc.kill()
+                break
+            continue
+        quiet = 0.0
         if line is None:
             break
+        log.append(line.rstrip("\n"))
         if line.startswith("XPSB_DEVICE "):
             device = line.split(" ", 1)[1].strip()
             started = time.monotonic()  # Blender's own start-up does not count per object
             report()
         elif line.startswith("XPSB_FAILED "):
-            failed.add(int(line.split()[1]))
+            failed.add(order[int(line.split()[1])])
         elif line.startswith("XPSB_DONE "):
-            done.add(int(line.split()[1]))
+            done.add(order[int(line.split()[1])])
             report()
     try:
         proc.wait(timeout=30)
     except subprocess.TimeoutExpired:
         proc.kill()
+    if proc.returncode not in (0, None):
+        log.append(f"XPSB_EXIT {proc.returncode}")
     return {i for i in done - failed if jobs[i][1].is_file()}
+
+
+def problem(log: list[str]) -> str:
+    """The most telling line of a Blender run that went wrong (for the user)."""
+    for key in ("XPSB_FAILED", "Error", "Traceback", "XPSB_TIMEOUT", "XPSB_EXIT"):
+        for line in reversed(log):
+            if key in line:
+                return line.strip()[:300]
+    return (log[-1].strip() if log else "no output")[:300]
 
 
 def ao_from(npz: Path, png: Path) -> np.ndarray:

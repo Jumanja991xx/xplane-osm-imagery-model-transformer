@@ -18,6 +18,7 @@ AO: greyscale PNG (white = open, dark = occluded). NORMAL: RGB PNG, flat
 Prints "XPSB_DEVICE <kind> <name>" once and "XPSB_DONE <line number>" per object.
 """
 
+import contextlib
 import sys
 
 import bpy
@@ -27,25 +28,34 @@ GPU_KINDS = ("OPTIX", "CUDA", "HIP", "ONEAPI", "METAL")
 
 
 def _use_gpu(scene) -> str:
-    """Switches Cycles to the graphics card if there is a supported one."""
+    """Switches Cycles to the graphics card if there is a supported one; says
+    which, or why not (for the progress line)."""
     try:
         prefs = bpy.context.preferences.addons["cycles"].preferences
-    except (KeyError, AttributeError):
-        return "CPU"
+    except (KeyError, AttributeError) as exc:
+        return f"CPU (Cycles settings not available: {exc})"
+    tried = []
     for kind in GPU_KINDS:
         try:
             prefs.compute_device_type = kind
+        except (TypeError, ValueError):
+            continue  # not built into this Blender / this system
+        with contextlib.suppress(AttributeError):
+            prefs.refresh_devices()
+        try:
+            devices = list(prefs.get_devices_for_type(kind))
+        except (AttributeError, TypeError, ValueError):
             prefs.get_devices()
-        except (TypeError, ValueError, AttributeError):
-            continue
-        gpus = [d for d in prefs.devices if d.type == kind]
+            devices = [d for d in prefs.devices if d.type == kind]
+        gpus = [d for d in devices if d.type == kind]
+        tried.append(f"{kind}:{len(gpus)}")
         if gpus:
             for d in prefs.devices:
                 d.use = d.type == kind
             scene.cycles.device = "GPU"
             return f"{kind} {gpus[0].name}"
     scene.cycles.device = "CPU"
-    return "CPU"
+    return "CPU (no graphics card Cycles can use: " + (", ".join(tried) or "none") + ")"
 
 
 def _mesh(name, positions, tris, uvs=None):

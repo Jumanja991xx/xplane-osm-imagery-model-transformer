@@ -38,6 +38,7 @@ class FakeProc:
             Image.new("L", (w, h), 64).save(dst)
             out.append(f"XPSB_DONE {n}\n")
         self.stdout = io.StringIO("".join(out))
+        self.returncode = 0
 
     def kill(self):
         pass
@@ -128,3 +129,27 @@ def test_fine_detail_is_never_drawn_but_goes_to_blender(tmp_path):
     after = np.asarray(Image.open(nml))
     assert (after[..., 0] > before[..., 0] + 20).any()  # tilted where detail was hit
     assert (after[..., 3] == before[..., 3]).all()  # gloss untouched
+
+
+def test_small_objects_first_and_the_user_can_stop(tmp_path):
+    small = run_script(
+        "extrude(footprint, 0, 3)",
+        ScriptInputs(footprint=[[0, 0], [4, 0], [4, 4], [0, 4]], path=None, params={}),
+        1000,
+    )
+    big = _mesh()
+    jobs = []
+    for name, mesh in (("big", big), ("small", small)):
+        npz = tmp_path / f"{name}.npz"
+        blender.prepare(mesh, bake(mesh), npz)
+        jobs.append((npz, tmp_path / f"{name}_ao.png", tmp_path / f"{name}_d.png"))
+    done = blender.bake_batch("blender", jobs, popen=lambda cmd, **kw: FakeProc(cmd, **kw))
+    assert done == {0, 1}
+    first = (tmp_path / "jobs.txt").read_text(encoding="utf-8").splitlines()[0]
+    assert first.startswith(str(jobs[1][0]))  # the small one is baked first
+    for _, ao, _ in jobs:
+        ao.unlink()
+    stopped = blender.bake_batch(
+        "blender", jobs, popen=lambda cmd, **kw: FakeProc(cmd, **kw), should_stop=lambda: True
+    )
+    assert stopped == set()

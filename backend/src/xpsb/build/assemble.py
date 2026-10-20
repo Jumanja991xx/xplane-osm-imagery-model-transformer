@@ -113,6 +113,7 @@ class ItemResult:
     shaded: bool = False  # ambient occlusion baked in by Blender
     detailed: bool = False  # fine detail (surrounds, dentils) baked into its normal map
     blender_input: str | None = None  # prepared for Blender (package build only)
+    blender_problem: str = ""  # why Blender did not shade it (package build only)
     # X-Plane library objects: path, x/y in metres from the anchor, heading, size
     library: list[dict] = field(default_factory=list)
 
@@ -562,6 +563,7 @@ def _shade_with_blender(
     objects_dir: Path,
     blender_exe: str,
     progress: Callable[[int, int, str, float | None], None] | None,
+    should_stop: Callable[[], bool] = lambda: False,
 ) -> None:
     """One Blender run bakes the soft shading of all prepared objects, which is then
     multiplied into their colour textures."""
@@ -569,12 +571,16 @@ def _shade_with_blender(
 
     todo = [r for r in results if r.blender_input]
     work = objects_dir / BLENDER_DIR
+    log: list[str] = []
+    problems: list[str] = []
     try:
         jobs = [
             (Path(r.blender_input), work / f"{r.stem}_ao.png", work / f"{r.stem}_detail.png")  # type: ignore[arg-type]
             for r in todo
         ]
-        done = blender.bake_batch(blender_exe, jobs, progress or (lambda *a: None))
+        done = blender.bake_batch(
+            blender_exe, jobs, progress or (lambda *a: None), should_stop=should_stop, log=log
+        )
         for i in sorted(done):
             res = todo[i]
             try:
@@ -584,11 +590,20 @@ def _shade_with_blender(
                 nml = objects_dir / f"{res.stem}_nml.png"
                 if nml.is_file():
                     res.detailed = blender.detail_normals(jobs[i][0], jobs[i][2], nml)
-            except (OSError, ValueError):
+            except (OSError, ValueError) as exc:
+                problems.append(f"{res.stem}: {exc}")
                 continue
+        if len(done) < len(todo):
+            problems.append(blender.problem(log))
     finally:
+        # Kept next to the package (not in it) to find out what went wrong.
+        (objects_dir.parent.parent / "blender.log").write_text(
+            "\n".join(log + problems) + "\n", encoding="utf-8"
+        )
         for r in todo:
             r.blender_input = None
+            if not r.shaded and problems:
+                r.blender_problem = problems[-1]
         shutil.rmtree(work, ignore_errors=True)
 
 
@@ -611,6 +626,7 @@ def write_package(
     photo_dir: Path | None = None,
     blender_exe: str | None = None,
     blender_progress: Callable[[int, int, str, float | None], None] | None = None,
+    blender_stop: Callable[[], bool] = lambda: False,
 ) -> PackageResult:
     objects_dir = package / "objects"
     polygons_dir = package / "polygons"
@@ -618,7 +634,7 @@ def write_package(
         items, detail, objects_dir, False, progress, library, photo_dir, blender_exe
     )
     if blender_exe:
-        _shade_with_blender(results, objects_dir, blender_exe, blender_progress)
+        _shade_with_blender(results, objects_dir, blender_exe, blender_progress, blender_stop)
 
     dsf = DsfText(tile=tile)
     for kind, bounds in exclusions:

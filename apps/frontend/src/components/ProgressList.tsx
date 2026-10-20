@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useT } from "../i18n";
 import { useApp } from "../store";
+import { api } from "../api/client";
 import { Spinner } from "./ui";
 
 /** Steps that usually take long enough that a word about the expected time helps. */
@@ -39,6 +40,8 @@ export function ProgressList({
   const { t } = useT();
   const events = useApp((s) => s.events);
   const running = useApp((s) => s.job?.state === runningState);
+  const jobId = useApp((s) => s.job?.id);
+  const [skipping, setSkipping] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!running) return;
@@ -105,6 +108,20 @@ export function ProgressList({
                   <p className="text-xs text-zinc-500" data-testid="progress-hint">
                     {t(e.key === "stage.write_blender" ? "progress.hint.write_blender" : `progress.hint.${stage}`)}
                   </p>
+                )}
+                {active && stage === "blender" && jobId && (
+                  <button
+                    type="button"
+                    className="mt-1 rounded-md border border-zinc-300 px-2 py-0.5 text-xs hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-600 dark:hover:bg-zinc-800"
+                    disabled={skipping}
+                    onClick={() => {
+                      setSkipping(true);
+                      api.skipBlender(jobId).catch(() => setSkipping(false));
+                    }}
+                    data-testid="skip-blender"
+                  >
+                    {t(skipping ? "progress.blender_skipping" : "progress.blender_skip")}
+                  </button>
                 )}
                 {active && took > SLOW_AFTER_MS && (
                   <p className="text-xs text-amber-600" data-testid="progress-slow">

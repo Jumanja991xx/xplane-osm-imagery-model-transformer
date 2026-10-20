@@ -229,6 +229,8 @@ class BuildResult(BaseModel):
     blender: str | None = None  # Blender version used for the soft shading
     shaded: int = 0  # objects Blender shaded
     detailed: int = 0  # of them with fine facade detail baked into the normal map
+    blender_problem: str = ""  # why Blender left objects unshaded (see build/blender.log)
+    blender_log: str | None = None
     shaded_stems: list[str] = Field(default_factory=list)  # their file names (xpsb_obj_003)
     meshes: int = 0  # objects with an own 3D model
 

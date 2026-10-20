@@ -175,6 +175,7 @@ export const api = {
     request<S["SearchResult"]>("GET", `/api/jobs/${id}/photo-search?item=${encodeURIComponent(itemId)}`),
   importPhoto: (id: string, candidateId: string) =>
     request<JobView>("POST", `/api/jobs/${id}/photo-search/${candidateId}/import`),
+  skipBlender: (id: string) => request<JobView>("POST", `/api/jobs/${id}/skip-blender`),
   setTextures: (id: string, itemId: string, textures: PhotoTexture[]) =>
     request<JobView>("PUT", `/api/jobs/${id}/textures?item=${encodeURIComponent(itemId)}`, { textures }),
   adjustObject: (id: string, itemId: string, attrs: Partial<ItemAttrs>) =>

@@ -425,6 +425,11 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
         ctx.jobs.delete_photo(job_id, photo_id)
         return ctx.jobs.view(job_id)
 
+    @app.post("/api/jobs/{job_id}/skip-blender", dependencies=auth)
+    async def skip_blender(job_id: str) -> JobView:
+        ctx.jobs.skip_blender(job_id)
+        return ctx.jobs.view(job_id)
+
     @app.put("/api/jobs/{job_id}/textures", dependencies=auth)
     async def set_textures(job_id: str, item: str, body: TexturesBody) -> JobView:
         await asyncio.to_thread(ctx.jobs.set_textures, job_id, item, body.textures)

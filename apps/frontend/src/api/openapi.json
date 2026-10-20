@@ -1408,6 +1408,45 @@
         }
       }
     },
+    "/api/jobs/{job_id}/skip-blender": {
+      "post": {
+        "summary": "Skip Blender",
+        "operationId": "skip_blender_api_jobs__job_id__skip_blender_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobs/{job_id}/textures": {
       "put": {
         "summary": "Set Textures",
@@ -2279,6 +2318,22 @@
             "type": "integer",
             "title": "Detailed",
             "default": 0
+          },
+          "blender_problem": {
+            "type": "string",
+            "title": "Blender Problem",
+            "default": ""
+          },
+          "blender_log": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blender Log"
           },
           "shaded_stems": {
             "items": {
