@@ -143,6 +143,21 @@ def tile_bytes(source: ImagerySource, z: int, x: int, y: int) -> tuple[bytes, st
     return data, ctype
 
 
+def check_at(
+    source: ImagerySource, lon: float, lat: float, zoom: int = 15
+) -> tuple[bool, str | None]:
+    """Fetches the tile over a place (regional sources have nothing over the sea):
+    (True, None) or (False, what the server said)."""
+    z = min(zoom, source.max_zoom)
+    x = int(_merc_x(lon, z) // TILE)
+    y = int(_merc_y(lat, z) // TILE)
+    try:
+        tile_bytes(source, z, x, y)
+    except WmsError as exc:
+        return False, str(exc)[:300]
+    return True, None
+
+
 # A tile over Europe at a low zoom: enough to know whether the service takes the key.
 CHECK_TILE = (3, 4, 2)
 

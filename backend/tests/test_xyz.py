@@ -226,3 +226,28 @@ def test_a_server_that_answers_with_text_is_an_error(client, monkeypatch):
     client.put("/api/settings", json=settings, headers=AUTH)
     r = client.get("/api/basemap/3/4/2", headers=AUTH)
     assert r.status_code == 502 and r.json()["detail"]["key"] == "error.basemap"
+
+
+def test_an_own_source_can_be_tried_before_saving(client, monkeypatch):
+    calls = []
+
+    def fake_get(url, timeout=60):
+        calls.append(url)
+        return _png(), "image/png"
+
+    monkeypatch.setattr(xyz, "_http_get", fake_get)
+    imagery = {
+        **XYZ_IMAGERY,
+        "custom_url": "https://{s}.example.test/ortho/{z}/{y}/{x}.jpeg",
+        "custom_subdomains": "maps,maps1",
+        "custom_max_zoom": 19,
+    }
+    r = client.post(
+        "/api/imagery/test", json={"imagery": imagery, "lon": 16.37, "lat": 48.21}, headers=AUTH
+    )
+    assert r.json() == {"ok": True, "detail": None}
+    z, y, x = (int(v) for v in calls[0].removesuffix(".jpeg").split("/")[-3:])
+    assert z == 15 and 17000 < x < 18500 and 11000 < y < 11500  # Vienna, rows and columns kept
+    bad = {**imagery, "custom_subdomains": ""}
+    r = client.post("/api/imagery/test", json={"imagery": bad}, headers=AUTH)
+    assert r.json()["ok"] is False and "subdomains" in r.json()["detail"]

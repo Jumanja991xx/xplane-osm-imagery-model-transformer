@@ -362,6 +362,45 @@
         }
       }
     },
+    "/api/imagery/test": {
+      "post": {
+        "summary": "Test Source",
+        "description": "Tries the own XYZ source as entered (before saving) with one tile.",
+        "operationId": "test_source_api_imagery_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceTestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceTest"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/secrets/esri/check": {
       "post": {
         "summary": "Check Esri Key",
@@ -4558,6 +4597,56 @@
         ],
         "title": "SimilarEstimate",
         "description": "What \"find similar\" would do; shown to the user before anything is sent."
+      },
+      "SourceTest": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "title": "SourceTest"
+      },
+      "SourceTestBody": {
+        "properties": {
+          "imagery": {
+            "$ref": "#/components/schemas/ImagerySettings"
+          },
+          "lon": {
+            "type": "number",
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "title": "Lon",
+            "default": 11.5
+          },
+          "lat": {
+            "type": "number",
+            "maximum": 85.0,
+            "minimum": -85.0,
+            "title": "Lat",
+            "default": 48.1
+          }
+        },
+        "type": "object",
+        "required": [
+          "imagery"
+        ],
+        "title": "SourceTestBody"
       },
       "SurfaceMode": {
         "type": "string",

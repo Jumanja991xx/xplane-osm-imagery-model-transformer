@@ -133,6 +133,8 @@ export const api = {
     request<{ has_api_key: boolean }>("PUT", "/api/secrets/anthropic", { api_key: apiKey }),
   setEsriKey: (token: string) => request<S["KeyCheck"]>("PUT", "/api/secrets/esri", { token }),
   checkEsriKey: () => request<S["KeyCheck"]>("POST", "/api/secrets/esri/check"),
+  testImagery: (imagery: ImagerySettings, lon?: number, lat?: number) =>
+    request<S["SourceTest"]>("POST", "/api/imagery/test", { imagery, lon, lat }),
   deleteEsriKey: () => request<unknown>("DELETE", "/api/secrets/esri"),
   setMapillaryToken: (token: string) => request<unknown>("PUT", "/api/secrets/mapillary", { token }),
   deleteMapillaryToken: () => request<unknown>("DELETE", "/api/secrets/mapillary"),

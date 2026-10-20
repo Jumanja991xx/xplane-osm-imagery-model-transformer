@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 from xpsb import __version__
 from xpsb.geo import GeoJsonPolygon
 from xpsb.imagery import basemap, xyz
-from xpsb.imagery.sources import ESRI_ACCOUNT, esri_source, map_source
+from xpsb.imagery.sources import ESRI_ACCOUNT, custom_from_settings, esri_source, map_source
 from xpsb.imagery.wms import WmsError
 from xpsb.jobs.manager import (
     DesignEstimate,
@@ -41,7 +41,7 @@ from xpsb.paths import AppPaths
 from xpsb.photos import MAPILLARY_ACCOUNT, SearchResult
 from xpsb.scene import ItemPatch, NewItem, PhotoTexture
 from xpsb.secrets import ANTHROPIC_ACCOUNT, SecretStore, normalize_api_key
-from xpsb.settings import Settings, SettingsStore
+from xpsb.settings import ImagerySettings, Settings, SettingsStore
 from xpsb.xplane import dsftool
 from xpsb.xplane_detect import XPlaneCheck, check_xplane_path, detect_xplane_installs
 
@@ -142,6 +142,18 @@ class TokenBody(BaseModel):
     def clean(self) -> str:
         """Without spaces and line breaks picked up when copying from a web page."""
         return "".join(self.token.split())
+
+
+class SourceTestBody(BaseModel):
+    imagery: ImagerySettings
+    # where to fetch the test tile (a regional source covers only its region)
+    lon: float = Field(default=11.5, ge=-180, le=180)
+    lat: float = Field(default=48.1, ge=-85, le=85)
+
+
+class SourceTest(BaseModel):
+    ok: bool
+    detail: str | None = None
 
 
 class KeyCheck(BaseModel):
@@ -287,6 +299,17 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
             raise HTTPException(409, detail={"key": "error.keyring_unavailable"})
         ctx.secrets.set(ESRI_ACCOUNT, body.clean)
         return await check_esri()
+
+    @app.post("/api/imagery/test", dependencies=auth)
+    async def test_source(body: SourceTestBody) -> SourceTest:
+        """Tries the own XYZ source as entered (before saving) with one tile."""
+        if body.imagery.custom_type != "xyz":
+            return SourceTest(ok=False, detail="only XYZ sources can be tested here")
+        source = custom_from_settings(body.imagery)
+        if source is None:
+            return SourceTest(ok=False, detail="incomplete URL ({z}, {x}, {y}; subdomains for {s})")
+        ok, detail = await asyncio.to_thread(xyz.check_at, source, body.lon, body.lat)
+        return SourceTest(ok=ok, detail=detail)
 
     @app.post("/api/secrets/esri/check", dependencies=auth)
     async def check_esri_key() -> KeyCheck:

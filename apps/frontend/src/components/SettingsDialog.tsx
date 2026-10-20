@@ -2,6 +2,7 @@ import { useState } from "react";
 import { api, ApiError, type ImagerySettings, type Settings, type XPlaneCheck } from "../api/client";
 import { useT } from "../i18n";
 import { useApp } from "../store";
+import { IMAGERY_PRESETS } from "../imagery/presets";
 import { Alert, Button, Checkbox, inputClass, Section, Spinner } from "./ui";
 
 const MODELS = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"] as const;
@@ -88,6 +89,20 @@ export function SettingsDialog() {
       setApiKey("");
       setSystem(await api.system());
       setMessage({ kind: "success", text: t("settings.saved") });
+    });
+  const [presetId, setPresetId] = useState("");
+  const [sourceTest, setSourceTest] = useState<{ ok: boolean; detail?: string | null } | null>(null);
+  const loadPreset = (id: string) => {
+    setPresetId(id);
+    setSourceTest(null);
+    const preset = IMAGERY_PRESETS.find((p) => p.id === id);
+    // rights stay unconfirmed: the user reads the terms and ticks the box
+    if (preset) setImagery({ ...preset.settings, custom_rights_confirmed: false });
+  };
+  const testSource = () =>
+    run(async () => {
+      const preset = IMAGERY_PRESETS.find((p) => p.id === presetId);
+      setSourceTest(await api.testImagery(imagery, preset?.test[0], preset?.test[1]));
     });
   const [esriCheck, setEsriCheck] = useState<{ ok?: boolean | null; detail?: string | null } | null>(null);
   const saveEsri = () =>
@@ -398,6 +413,28 @@ export function SettingsDialog() {
                 <p className="text-xs text-zinc-500">{t("settings.esri_hint")}</p>
               </div>
             )}
+            {(imagery.source === "custom" || imagery.source === "esri") && (
+              <div className="flex items-center gap-2">
+                <select
+                  className={`${inputClass} w-auto`}
+                  value={presetId}
+                  onChange={(e) => loadPreset(e.target.value)}
+                  data-testid="imagery-preset"
+                >
+                  <option value="">{t("settings.imagery_preset")}</option>
+                  {IMAGERY_PRESETS.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.label} – {p.region}
+                    </option>
+                  ))}
+                </select>
+                {presetId && (
+                  <span className="text-xs text-zinc-500">
+                    {IMAGERY_PRESETS.find((p) => p.id === presetId)?.license}
+                  </span>
+                )}
+              </div>
+            )}
             {imagery.source === "custom" && (
               <div className="space-y-2">
                 <div className="flex gap-2">
@@ -441,6 +478,21 @@ export function SettingsDialog() {
                       data-testid="imagery-subdomains"
                     />
                     <p className="text-xs text-zinc-500">{t("settings.imagery_xyz_hint")}</p>
+                    <div className="flex items-center gap-2">
+                      <Button variant="ghost" onClick={testSource} disabled={busy} data-testid="imagery-test">
+                        {t("settings.imagery_test")}
+                      </Button>
+                      {sourceTest?.ok === true && (
+                        <span className="text-sm text-green-700" data-testid="imagery-test-ok">
+                          {t("settings.imagery_test_ok")}
+                        </span>
+                      )}
+                      {sourceTest?.ok === false && (
+                        <span className="min-w-0 break-all text-sm text-amber-700" data-testid="imagery-test-failed">
+                          {t("settings.imagery_test_failed", { detail: sourceTest.detail ?? "" })}
+                        </span>
+                      )}
+                    </div>
                     <label className="flex items-center gap-2 text-sm">
                       <input
                         type="checkbox"
