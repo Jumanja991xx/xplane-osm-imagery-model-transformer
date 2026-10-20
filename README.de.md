@@ -73,7 +73,7 @@ Backend mit PyInstaller, Smoke-Test des fertigen Pakets, Tauri-NSIS-Installer
 
 ## Analyse und Editor testen (Meilenstein 2)
 
-1. *Einstellungen*: Luftbildquelle „Automatisch“ lassen (eingebaut: 14 von 16 Bundesländern, Schweiz,
+1. *Einstellungen*: Luftbildquelle „Automatisch“ lassen (eingebaut: alle 16 Bundesländer, Schweiz,
    Österreich, Niederlande, Frankreich, Spanien, USA, Japan – nur Erkennung) oder eine
    eigene WMS-/XYZ-Quelle eintragen und die Nutzungsrechte bestätigen. API-Key und Monatslimit prüfen.
 2. Ein Gebiet in Bayern oder NRW zeichnen (z. B. ein Stadion), Kategorien wählen, bei

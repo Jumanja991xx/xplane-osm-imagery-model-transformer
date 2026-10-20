@@ -328,6 +328,10 @@ def test_german_states_have_their_own_open_imagery():
         (13.74, 51.05): "sn_dop20",  # Dresden
         (11.63, 52.13): "st_dop20",  # Magdeburg
         (11.03, 50.98): "th_dop20",  # Erfurt
+        (10.13, 54.32): "sh_dop20",  # Kiel
+        (10.69, 53.87): "sh_dop20",  # Lübeck
+        (8.81, 53.08): "hb_dop10",  # Bremen, not Lower Saxony around it
+        (8.58, 53.55): "hb_dop10",  # Bremerhaven
         (6.96, 50.94): "nrw_dop",  # Cologne
         (11.57, 48.14): "bayern_dop40",
     }
@@ -337,3 +341,23 @@ def test_german_states_have_their_own_open_imagery():
     states = ImagerySettings(source="de_states")
     assert candidates(states, 9.18, 48.78)[0].id == "bw_dop20"
     assert candidates(states, 2.35, 48.86) == []  # Paris is not in Germany
+
+
+def test_year_named_layers_take_the_newest_flight():
+    from xpsb.imagery.sources import BUILTIN_SOURCES
+    from xpsb.imagery.wms import choose_layer
+
+    bremen = next(s for s in BUILTIN_SOURCES if s.id == "hb_dop10")
+    available = [
+        "dop10_2023_HB",
+        "dop10_2025_HB",
+        "dop10_cir_2025_HB",
+        "dop10_2024_BHV",
+        "dop10_2025_BHV",
+        "luftbild_1945",
+    ]
+    assert choose_layer(bremen, available) == "dop10_2025_HB,dop10_2025_BHV"
+    # a year without Bremerhaven: the city alone still works
+    assert choose_layer(bremen, ["dop10_2026_HB", "dop10_2025_BHV"]) == (
+        "dop10_2026_HB,dop10_2025_BHV"
+    )

@@ -88,10 +88,10 @@ There is no official release yet. Every push builds a Windows installer automati
 - **Map data** © OpenStreetMap contributors, [ODbL](https://www.openstreetmap.org/copyright) –
   credited in every package.
 - **Aerial imagery built in:** open government imagery, chosen automatically by the area's
-  real borders and credited in the package – Germany (state orthophotos of 14 of 16 states:
-  Baden-Württemberg, Bavaria, Berlin/Brandenburg, Hamburg, Hesse, Mecklenburg-Western
+  real borders and credited in the package – Germany (state orthophotos of all 16 states:
+  Baden-Württemberg, Bavaria, Berlin/Brandenburg, Bremen, Hamburg, Hesse, Mecklenburg-Western
   Pomerania, Lower Saxony, North Rhine-Westphalia, Rhineland-Palatinate, Saarland, Saxony,
-  Saxony-Anhalt, Thuringia), Switzerland (swisstopo SWISSIMAGE), Austria (basemap.at), Netherlands (PDOK), France
+  Saxony-Anhalt, Schleswig-Holstein, Thuringia), Switzerland (swisstopo SWISSIMAGE), Austria (basemap.at), Netherlands (PDOK), France
   (IGN BD ORTHO), Spain (IGN PNOA), USA (USGS NAIP Plus, public domain) and Japan (GSI,
   recognition only – its terms do not allow passing the imagery on). If a server fails,
   the next matching source is tried. You can add your own WMS/XYZ source if you have the

@@ -12,6 +12,7 @@ import json
 import logging
 import math
 import os
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -139,9 +140,24 @@ def capabilities_layers(xml_bytes: bytes) -> list[str]:
     return names
 
 
+def _pick(wanted: str, available: list[str]) -> str | None:
+    """`wanted` is a layer name, or one with {year} for services that name each
+    flight year (the newest is taken)."""
+    if "{year}" not in wanted:
+        return wanted if wanted in available else None
+    pattern = re.compile("^" + re.escape(wanted).replace(re.escape("{year}"), r"(\d{4})") + "$")
+    years = {m.group(1): name for name in available if (m := pattern.match(name))}
+    return years[max(years)] if years else None
+
+
 def choose_layer(source: ImagerySource, available: list[str]) -> str:
-    if source.layer and source.layer in available:
-        return source.layer
+    """Comma-separated layers are drawn together (one city, one port...)."""
+    if source.layer:
+        picked = [
+            name for part in source.layer.split(",") if (name := _pick(part.strip(), available))
+        ]
+        if picked:
+            return ",".join(picked)
     # Skip metadata/greyscale layers when guessing.
     for name in available:
         low = name.lower()

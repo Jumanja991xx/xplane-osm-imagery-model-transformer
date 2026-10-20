@@ -67,19 +67,26 @@ NRW_DOP = ImagerySource(
 
 
 def _de_state(
-    ident: str, name: str, url: str, layer: str, attribution: str, license: str, region: str
+    ident: str,
+    name: str,
+    url: str,
+    layer: str,
+    attribution: str,
+    license: str,
+    region: str,
+    gsd_cm: int = 20,
 ) -> ImagerySource:
-    """Open orthophotos (20 cm) of a German state's survey office (WMS, EPSG:4326)."""
+    """Open orthophotos of a German state's survey office (WMS, EPSG:4326)."""
     return ImagerySource(
         id=ident,
-        name=f"{name} – Digitale Orthophotos 20 cm (OpenData)",
+        name=f"{name} – Digitale Orthophotos {gsd_cm} cm (OpenData)",
         url=url,
         layer=layer,
         attribution=attribution,
         license=license,
         region=region,
         group="de",
-        max_gsd_m=0.2,
+        max_gsd_m=gsd_cm / 100,
     )
 
 
@@ -102,6 +109,17 @@ DE_STATES = [
         "© GeoBasis-DE/LGB, dl-de/by-2-0, Daten geändert",
         "dl-de/by-2-0",
         "DE-BB,DE-BE",
+    ),
+    # Bremen names its layers by flight year; the city and Bremerhaven are separate.
+    _de_state(
+        "hb_dop10",
+        "Bremen",
+        "https://geodienste.bremen.de/wms_dop_lb",
+        "dop10_{year}_HB,dop10_{year}_BHV",
+        "© Landesamt GeoInformation Bremen, CC BY",
+        "CC BY",
+        "DE-HB",
+        gsd_cm=10,
     ),
     _de_state(
         "hh_dop20",
@@ -166,6 +184,15 @@ DE_STATES = [
         "Landesamt für Geobasisinformation Sachsen (GeoSN), dl-de/by-2-0, Daten geändert",
         "dl-de/by-2-0",
         "DE-SN",
+    ),
+    _de_state(
+        "sh_dop20",
+        "Schleswig-Holstein",
+        "https://service.gdi-sh.de/WMS_SH_DOP20col_OpenGBD",
+        "sh_dop20_rgb",
+        "© GeoBasis-DE/LVermGeo SH/CC BY 4.0",
+        "CC BY 4.0",
+        "DE-SH",
     ),
     _de_state(
         "st_dop20",
