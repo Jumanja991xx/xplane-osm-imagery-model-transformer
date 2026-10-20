@@ -28,7 +28,8 @@ class ImagerySource(BaseModel):
     coverage: tuple[float, float, float, float] | None = None
     # Exact coverage: a country or state in coverage.json (borders from Overture Maps,
     # ODbL, simplified, 2 km wider). Wins over `coverage`.
-    region: str | None = None
+    region: str | None = None  # several: "DE-BB,DE-BE"
+    group: str = ""  # "de": German state imagery (one choice in the settings for all states)
     max_gsd_m: float = Field(default=0.4, gt=0)  # finest ground resolution worth requesting
     builtin: bool = True
     max_zoom: int = Field(default=19, ge=1, le=23)  # XYZ only
@@ -47,6 +48,7 @@ BAYERN_DOP40 = ImagerySource(
     license="CC BY 4.0",
     coverage=(8.9, 47.2, 13.9, 50.6),
     region="DE-BY",
+    group="de",
     max_gsd_m=0.4,
 )
 
@@ -59,8 +61,131 @@ NRW_DOP = ImagerySource(
     license="dl-de/zero-2-0",
     coverage=(5.8, 50.3, 9.5, 52.6),
     region="DE-NW",
+    group="de",
     max_gsd_m=0.2,
 )
+
+
+def _de_state(
+    ident: str, name: str, url: str, layer: str, attribution: str, license: str, region: str
+) -> ImagerySource:
+    """Open orthophotos (20 cm) of a German state's survey office (WMS, EPSG:4326)."""
+    return ImagerySource(
+        id=ident,
+        name=f"{name} – Digitale Orthophotos 20 cm (OpenData)",
+        url=url,
+        layer=layer,
+        attribution=attribution,
+        license=license,
+        region=region,
+        group="de",
+        max_gsd_m=0.2,
+    )
+
+
+# dl-de/by-2-0 asks to say that the data was changed (the package holds a crop).
+DE_STATES = [
+    _de_state(
+        "bw_dop20",
+        "Baden-Württemberg",
+        "https://owsproxy.lgl-bw.de/owsproxy/ows/WMS_LGL-BW_ATKIS_DOP_20_C",
+        "IMAGES_DOP_20_RGB",
+        "© LGL-BW, www.lgl-bw.de, dl-de/by-2-0, Daten geändert",
+        "dl-de/by-2-0",
+        "DE-BW",
+    ),
+    _de_state(
+        "bb_dop20",
+        "Brandenburg und Berlin",
+        "https://isk.geobasis-bb.de/mapproxy/dop20c/service/wms",
+        "bebb_dop20c",
+        "© GeoBasis-DE/LGB, dl-de/by-2-0, Daten geändert",
+        "dl-de/by-2-0",
+        "DE-BB,DE-BE",
+    ),
+    _de_state(
+        "hh_dop20",
+        "Hamburg",
+        "https://geodienste.hamburg.de/wms_dop_zeitreihe_unbelaubt",
+        "dop_zeitreihe_unbelaubt",
+        "Freie und Hansestadt Hamburg, Landesbetrieb Geoinformation und Vermessung (LGV), "
+        "dl-de/by-2-0, Daten geändert",
+        "dl-de/by-2-0",
+        "DE-HH",
+    ),
+    _de_state(
+        "he_dop20",
+        "Hessen",
+        "https://www.gds-srv.hessen.de/cgi-bin/lika-services/ogc-free-images.ows",
+        "he_dop20_rgb",
+        "Geobasisdaten © Hessische Verwaltung für Bodenmanagement und Geoinformation",
+        "dl-de/zero-2-0",
+        "DE-HE",
+    ),
+    _de_state(
+        "mv_dop20",
+        "Mecklenburg-Vorpommern",
+        "https://www.geodaten-mv.de/dienste/adv_dop",
+        "mv_dop",
+        "© GeoBasis-DE/M-V",
+        "CC BY 4.0",
+        "DE-MV",
+    ),
+    _de_state(
+        "ni_dop20",
+        "Niedersachsen",
+        "https://opendata.lgln.niedersachsen.de/doorman/noauth/dop_wms",
+        "ni_dop20",
+        "© GeoBasis-DE/LGLN, CC BY 4.0",
+        "CC BY 4.0",
+        "DE-NI",
+    ),
+    _de_state(
+        "rp_dop20",
+        "Rheinland-Pfalz",
+        "https://geo4.service24.rlp.de/wms/rp_dop20.fcgi",
+        "rp_dop20",
+        "© GeoBasis-DE / LVermGeoRP, dl-de/by-2-0, www.lvermgeo.rlp.de, Daten geändert",
+        "dl-de/by-2-0",
+        "DE-RP",
+    ),
+    _de_state(
+        "sl_dop20",
+        "Saarland",
+        "https://geoportal.saarland.de/freewms/truedop",
+        "sl_dop20_rgb",
+        "© GeoBasis DE/LVGL-SL, dl-de/by-2-0, Daten geändert",
+        "dl-de/by-2-0",
+        "DE-SL",
+    ),
+    _de_state(
+        "sn_dop20",
+        "Sachsen",
+        "https://geodienste.sachsen.de/wms_geosn_dop-rgb/guest",
+        "sn_dop_020",
+        "Landesamt für Geobasisinformation Sachsen (GeoSN), dl-de/by-2-0, Daten geändert",
+        "dl-de/by-2-0",
+        "DE-SN",
+    ),
+    _de_state(
+        "st_dop20",
+        "Sachsen-Anhalt",
+        "https://www.geodatenportal.sachsen-anhalt.de/wss/service/ST_LVermGeo_DOP_WMS_OpenData/guest",
+        "lsa_lvermgeo_dop20_2",
+        "© GeoBasis-DE / LVermGeo LSA, dl-de/by-2-0, Daten geändert",
+        "dl-de/by-2-0",
+        "DE-ST",
+    ),
+    _de_state(
+        "th_dop20",
+        "Thüringen",
+        "https://www.geoproxy.geoportal-th.de/geoproxy/services/DOP",
+        "th_dop",
+        "© GDI-Th, dl-de/by-2-0, Daten geändert",
+        "dl-de/by-2-0",
+        "DE-TH",
+    ),
+]
 
 # Further open aerial imagery of countries popular in flight simulation. All may be
 # used for analysis and in a shared scenery with the attribution, except Japan's
@@ -167,6 +292,7 @@ GSI_JP = ImagerySource(
 BUILTIN_SOURCES = [
     BAYERN_DOP40,
     NRW_DOP,
+    *DE_STATES,
     SWISSIMAGE,
     BASEMAP_AT,
     PDOK_NL,
@@ -276,9 +402,30 @@ def covers(source: ImagerySource, lon: float, lat: float) -> bool:
         if not (w <= lon <= e and s <= lat <= n):
             return False
     if source.region is not None:
-        region = _regions().get(source.region)
-        return region is None or region.contains(Point(lon, lat))
+        regions = [_regions().get(code.strip()) for code in source.region.split(",")]
+        if all(r is None for r in regions):
+            return True
+        return any(r is not None and r.contains(Point(lon, lat)) for r in regions)
     return True
+
+
+def _depth(source: ImagerySource, lon: float, lat: float) -> float:
+    """How far inside its area a place is (degrees). At a border both neighbours
+    cover it (the areas are 2 km wider than the real border): the deeper one wins."""
+    if source.region is None:
+        return 0.0
+    pt = Point(lon, lat)
+    best = 0.0
+    for code in source.region.split(","):
+        region = _regions().get(code.strip())
+        if region is not None and region.contains(pt):
+            best = max(best, region.boundary.distance(pt))
+    return best
+
+
+def _covering(sources: list[ImagerySource], lon: float, lat: float) -> list[ImagerySource]:
+    found = [s for s in sources if covers(s, lon, lat)]
+    return sorted(found, key=lambda s: -min(_depth(s, lon, lat), 0.05))
 
 
 def candidates(
@@ -292,7 +439,7 @@ def candidates(
         return []
     if settings.source != "auto":
         return [first]
-    out = [s for s in BUILTIN_SOURCES if covers(s, lon, lat)]
+    out = _covering(BUILTIN_SOURCES, lon, lat)
     if esri_key:
         out.append(esri_source(esri_key))
     return out
@@ -311,12 +458,14 @@ def resolve_source(
     if choice == "custom":
         source = custom_from_settings(settings)
         return (source, None) if source else (None, "imagery.custom_missing")
-    candidates = (
-        BUILTIN_SOURCES if choice == "auto" else [s for s in BUILTIN_SOURCES if s.id == choice]
-    )
-    for source in candidates:
-        if covers(source, lon, lat):
-            return source, None
+    if choice == "auto":
+        candidates = BUILTIN_SOURCES
+    elif choice == "de_states":
+        candidates = [s for s in BUILTIN_SOURCES if s.group == "de"]
+    else:
+        candidates = [s for s in BUILTIN_SOURCES if s.id == choice]
+    for source in _covering(candidates, lon, lat):
+        return source, None
     if choice == "auto" and esri_key:
         return esri_source(esri_key), None
     return None, "imagery.not_covered"

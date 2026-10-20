@@ -8,6 +8,7 @@ import { Alert, Button, Checkbox, inputClass, Section, Spinner } from "./ui";
 const MODELS = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"] as const;
 const IMAGERY_CHOICES: ImagerySettings["source"][] = [
   "auto",
+  "de_states",
   "bayern_dop40",
   "nrw_dop",
   "swissimage",

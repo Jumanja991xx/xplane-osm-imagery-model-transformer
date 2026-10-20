@@ -22,6 +22,7 @@ class AiSettings(BaseModel):
 
 ImagerySourceChoice = Literal[
     "auto",
+    "de_states",
     "bayern_dop40",
     "nrw_dop",
     "swissimage",

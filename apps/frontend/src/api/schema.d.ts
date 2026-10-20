@@ -1078,7 +1078,7 @@ export interface components {
              * @default auto
              * @enum {string}
              */
-            source: "auto" | "bayern_dop40" | "nrw_dop" | "swissimage" | "basemap_at" | "pdok_nl" | "ign_fr" | "pnoa_es" | "usgs_naip" | "gsi_jp" | "esri" | "custom" | "none";
+            source: "auto" | "de_states" | "bayern_dop40" | "nrw_dop" | "swissimage" | "basemap_at" | "pdok_nl" | "ign_fr" | "pnoa_es" | "usgs_naip" | "gsi_jp" | "esri" | "custom" | "none";
             /**
              * Custom Type
              * @default wms

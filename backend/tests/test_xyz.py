@@ -308,3 +308,32 @@ def test_when_a_server_fails_the_next_source_is_tried(tmp_path, monkeypatch):
     info = pipeline._imagery_stage(job, deps, log, notes)
     assert tried == ["ign_fr", "esri"] and info.source_id == "esri"
     assert notes[0].key == "imagery.failed" and "503" in notes[0].params["detail"]
+
+
+def test_german_states_have_their_own_open_imagery():
+    from xpsb.imagery.sources import candidates
+    from xpsb.settings import ImagerySettings
+
+    auto = ImagerySettings()
+    places = {
+        (9.18, 48.78): "bw_dop20",  # Stuttgart
+        (13.40, 52.52): "bb_dop20",  # Berlin (Brandenburg's service covers it)
+        (13.06, 52.40): "bb_dop20",  # Potsdam
+        (9.99, 53.55): "hh_dop20",  # Hamburg, not Lower Saxony around it
+        (8.68, 50.11): "he_dop20",  # Frankfurt
+        (12.10, 54.09): "mv_dop20",  # Rostock
+        (9.73, 52.37): "ni_dop20",  # Hanover
+        (8.27, 50.00): "rp_dop20",  # Mainz
+        (7.00, 49.23): "sl_dop20",  # Saarbrücken
+        (13.74, 51.05): "sn_dop20",  # Dresden
+        (11.63, 52.13): "st_dop20",  # Magdeburg
+        (11.03, 50.98): "th_dop20",  # Erfurt
+        (6.96, 50.94): "nrw_dop",  # Cologne
+        (11.57, 48.14): "bayern_dop40",
+    }
+    for (lon, lat), expected in places.items():
+        assert candidates(auto, lon, lat)[0].id == expected, (lon, lat)
+    # one choice for all states: still the state's own service
+    states = ImagerySettings(source="de_states")
+    assert candidates(states, 9.18, 48.78)[0].id == "bw_dop20"
+    assert candidates(states, 2.35, 48.86) == []  # Paris is not in Germany

@@ -2890,6 +2890,7 @@
             "type": "string",
             "enum": [
               "auto",
+              "de_states",
               "bayern_dop40",
               "nrw_dop",
               "swissimage",
