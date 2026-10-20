@@ -13,6 +13,7 @@ import shutil
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 from PIL import Image, ImageEnhance
@@ -30,6 +31,9 @@ from xpsb.scene import SceneItem
 from xpsb.xplane.dsf_text import DsfText, Tile
 from xpsb.xplane.library import Catalog
 from xpsb.xplane.pol import DrapedPolygonDef
+
+if TYPE_CHECKING:
+    from xpsb.blender import Status as BlenderStatus
 
 DETAIL = {
     # triangle budget per object, atlas size, max texels per metre
@@ -562,7 +566,7 @@ def _shade_with_blender(
     results: list[ItemResult],
     objects_dir: Path,
     blender_exe: str,
-    progress: Callable[[int, int, str, float | None], None] | None,
+    progress: Callable[[BlenderStatus], None] | None,
     should_stop: Callable[[], bool] = lambda: False,
 ) -> None:
     """One Blender run bakes the soft shading of all prepared objects, which is then
@@ -573,13 +577,20 @@ def _shade_with_blender(
     work = objects_dir / BLENDER_DIR
     log: list[str] = []
     problems: list[str] = []
+    # Kept next to the package (not in it) to find out what went wrong.
+    log_path = objects_dir.parent.parent / "blender.log"
     try:
         jobs = [
             (Path(r.blender_input), work / f"{r.stem}_ao.png", work / f"{r.stem}_detail.png")  # type: ignore[arg-type]
             for r in todo
         ]
         done = blender.bake_batch(
-            blender_exe, jobs, progress or (lambda *a: None), should_stop=should_stop, log=log
+            blender_exe,
+            jobs,
+            progress or (lambda s: None),
+            should_stop=should_stop,
+            log=log,
+            log_file=log_path,  # written as Blender works: can be watched while it runs
         )
         for i in sorted(done):
             res = todo[i]
@@ -596,10 +607,7 @@ def _shade_with_blender(
         if len(done) < len(todo):
             problems.append(blender.problem(log))
     finally:
-        # Kept next to the package (not in it) to find out what went wrong.
-        (objects_dir.parent.parent / "blender.log").write_text(
-            "\n".join(log + problems) + "\n", encoding="utf-8"
-        )
+        log_path.write_text("\n".join(log + problems) + "\n", encoding="utf-8")
         for r in todo:
             r.blender_input = None
             if not r.shaded and problems:
@@ -625,7 +633,7 @@ def write_package(
     library: Catalog | None = None,
     photo_dir: Path | None = None,
     blender_exe: str | None = None,
-    blender_progress: Callable[[int, int, str, float | None], None] | None = None,
+    blender_progress: Callable[[BlenderStatus], None] | None = None,
     blender_stop: Callable[[], bool] = lambda: False,
 ) -> PackageResult:
     objects_dir = package / "objects"

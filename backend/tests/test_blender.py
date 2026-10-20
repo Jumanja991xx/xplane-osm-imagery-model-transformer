@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import sys
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -27,7 +28,7 @@ class FakeProc:
     def __init__(self, cmd, hang_after=None, **kw):
         assert "--python" in cmd and Path(cmd[cmd.index("--python") + 1]) == blender.SCRIPT
         assert "--factory-startup" in cmd
-        out = ["XPSB_DEVICE OPTIX NVIDIA RTX\n"]
+        out = ["XPSB_START 5.2.2\n", "XPSB_DEVICE OPTIX NVIDIA RTX\n"]
         jobs = Path(cmd[-1]).read_text(encoding="utf-8").splitlines()
         for n, line in enumerate(jobs):
             if hang_after is not None and n >= hang_after:
@@ -36,6 +37,7 @@ class FakeProc:
             with np.load(src) as d:  # closed again: Windows cannot delete open files
                 w, h = (int(v) for v in d["size"])
             Image.new("L", (w, h), 64).save(dst)
+            out.append(f"XPSB_BEGIN {n}\n")
             out.append(f"XPSB_DONE {n}\n")
         self.stdout = io.StringIO("".join(out))
         self.returncode = 0
@@ -63,9 +65,15 @@ def test_one_run_for_all_objects_shades_only_own_texture_pieces(tmp_path):
         calls.append(cmd)
         return FakeProc(cmd, **kw)
 
-    done = blender.bake_batch("blender", jobs, lambda *a: seen.append(a), popen=popen)
+    log_file = tmp_path / "blender.log"
+    done = blender.bake_batch("blender", jobs, seen.append, popen=popen, log_file=log_file)
     assert done == {0, 1, 2} and len(calls) == 1  # Blender started once
-    assert seen[-1][:3] == (3, 3, "OPTIX NVIDIA RTX") and seen[-1][3] is not None
+    assert [s.phase for s in seen[:3]] == ["launch", "gpu", "gpu"]
+    last = seen[-1]
+    assert (last.done, last.total, last.device) == (3, 3, "OPTIX NVIDIA RTX")
+    assert last.left is not None
+    assert any(s.phase == "object" and s.current == 2 for s in seen)
+    assert "XPSB_DONE 2" in log_file.read_text(encoding="utf-8")
     ao = blender.ao_from(*jobs[0][:2])
     assert ao.min() < 0.3 and ao.max() == 1.0  # dark only where receivers are
     before = np.asarray(Image.open(texture)).astype(int).sum()
@@ -153,3 +161,43 @@ def test_small_objects_first_and_the_user_can_stop(tmp_path):
         "blender", jobs, popen=lambda cmd, **kw: FakeProc(cmd, **kw), should_stop=lambda: True
     )
     assert stopped == set()
+
+
+class HangingGpuSearch(FakeProc):
+    """Blender whose graphics card search never answers (unless started with --cpu)."""
+
+    def __init__(self, cmd, **kw):
+        super().__init__(cmd, **kw)
+        if "--cpu" not in cmd:
+            self.killed = threading.Event()
+
+            def lines():
+                yield "XPSB_START 5.2.2\n"
+                self.killed.wait(30)
+
+            self.stdout = lines()
+
+    def kill(self):
+        if hasattr(self, "killed"):
+            self.killed.set()
+
+
+def test_a_hanging_graphics_card_search_starts_blender_again_on_the_cpu(tmp_path, monkeypatch):
+    monkeypatch.setattr(blender, "GPU_TIMEOUT_S", 2)
+    mesh = _mesh()
+    npz = tmp_path / "o.npz"
+    blender.prepare(mesh, bake(mesh), npz)
+    jobs = [(npz, tmp_path / "o_ao.png", tmp_path / "o_d.png")]
+    calls, seen = [], []
+
+    def popen(cmd, **kw):
+        calls.append(cmd)
+        return HangingGpuSearch(cmd, **kw)
+
+    exe = str(tmp_path / "blender-gpu-hangs")
+    assert blender.bake_batch(exe, jobs, seen.append, popen=popen) == {0}
+    assert len(calls) == 2 and "--cpu" in calls[1] and "--cpu" not in calls[0]
+    assert "retry_cpu" in [s.phase for s in seen]
+    # remembered: the next build skips the search right away
+    blender.bake_batch(exe, jobs, popen=popen)
+    assert "--cpu" in calls[2]

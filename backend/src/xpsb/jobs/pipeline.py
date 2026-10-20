@@ -600,16 +600,19 @@ def build_package(
         photo_dir=job_dir / "photos",
         blender_exe=blender_exe,
         blender_stop=blender_stop,
-        blender_progress=lambda done, total, device, left: log.publish_threadsafe(
+        blender_progress=lambda s: log.publish_threadsafe(
             type="progress",
             stage="blender",
-            progress=done / max(1, total),
-            key="stage.blender" if left is not None else "stage.blender_start",
+            progress=s.done / max(1, s.total),
+            key=f"stage.blender_{s.phase}",
             params={
-                "done": done,
-                "total": total,
-                "device": device,
-                "left": f"{int(left) // 60}:{int(left) % 60:02d}" if left is not None else "",
+                "done": s.done,
+                "total": s.total,
+                "current": s.current,
+                "device": s.device,
+                "left": f"{int(s.left) // 60}:{int(s.left) % 60:02d}"
+                if s.left is not None
+                else "?",
             },
         ),
         progress=lambda p, n=0, total=0, name="": log.publish_threadsafe(

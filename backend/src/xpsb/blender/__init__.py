@@ -16,7 +16,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -30,6 +30,9 @@ SCRIPT = Path(__file__).with_name("ao_bake.py")
 # the current object should take judging by the ones before (big stadiums on a
 # slow CPU can take minutes; stopping them would lose everything).
 OBJECT_TIMEOUT_S = 600
+LAUNCH_TIMEOUT_S = 180  # Blender itself does not answer
+GPU_TIMEOUT_S = 90  # the graphics card search hangs: start again on the CPU
+_GPU_SEARCH_HANGS: set[str] = set()
 SAMPLES = 16
 DISTANCE_M = 4.0
 MAX_BAKE_PX = 512  # shading is soft and blurry: a small bake is enough and much faster
@@ -161,29 +164,19 @@ def _work(npz: Path) -> float:
     return w * h * (1.0 + tris / 50_000)
 
 
-def bake_batch(
-    exe: str,
-    jobs: list[tuple[Path, Path, Path]],
-    on_progress: Callable[[int, int, str, float | None], None] = lambda *a: None,
-    popen=subprocess.Popen,
-    should_stop: Callable[[], bool] = lambda: False,
-    log: list[str] | None = None,
-) -> set[int]:
-    """One Blender run for all objects: (input .npz, AO .png, normal .png) per object.
-    Returns the indices that were baked. Small objects go first, so the time left
-    (estimated from the work done so far) is known after a few seconds. Stops
-    Blender if it hangs or `should_stop()` says so (the rest stays unshaded).
-    on_progress gets (done, total, device, seconds left or None). Blender's output
-    goes into `log` (for the build log and the reason when nothing worked)."""
-    log = log if log is not None else []
-    if not jobs:
-        return set()
-    work = [_work(job[0]) for job in jobs]
-    order = sorted(range(len(jobs)), key=lambda i: work[i])  # line number -> job index
-    list_file = jobs[0][0].parent / "jobs.txt"
-    list_file.write_text(
-        "".join("\t".join(map(str, jobs[i])) + "\n" for i in order), encoding="utf-8"
-    )
+@dataclass
+class Status:
+    """What Blender is doing right now (for the progress line)."""
+
+    phase: str  # launch | gpu | object | relief | retry_cpu
+    done: int
+    total: int
+    device: str = ""
+    current: int = 0  # 1-based number of the object being baked
+    left: float | None = None  # seconds
+
+
+def _start(exe: str, list_file: Path, cpu: bool, popen):
     cmd = [
         exe,
         "--background",
@@ -193,21 +186,18 @@ def bake_batch(
         "--python",
         str(SCRIPT),
         "--",
+        *(["--cpu"] if cpu else []),
         str(list_file),
     ]
-    try:
-        proc = popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",  # Blender's messages must never stop the reading
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
-    except OSError as exc:
-        log.append(f"Blender could not be started: {exc}")
-        return set()
+    proc = popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",  # Blender's messages must never stop the reading
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
     lines: queue.Queue[str | None] = queue.Queue()
 
     def pump() -> None:
@@ -218,30 +208,115 @@ def bake_batch(
             lines.put(None)
 
     threading.Thread(target=pump, daemon=True).start()
-    device, done, failed = "CPU", set(), set()
+    return proc, lines
+
+
+def bake_batch(
+    exe: str,
+    jobs: list[tuple[Path, Path, Path]],
+    on_progress: Callable[[Status], None] = lambda s: None,
+    popen=subprocess.Popen,
+    should_stop: Callable[[], bool] = lambda: False,
+    log: list[str] | None = None,
+    log_file: Path | None = None,
+) -> set[int]:
+    """One Blender run for all objects: (input .npz, AO .png, normal .png) per object.
+    Returns the indices that were baked. Small objects go first, so the time left
+    (estimated from the work done so far) is known after a few seconds. Stops
+    Blender if it hangs or `should_stop()` says so (the rest stays unshaded); if
+    only the search for a graphics card hangs, Blender starts again without it.
+    Blender's output goes into `log` and, line by line as it comes, `log_file`
+    (to look at while it runs, and for the reason when nothing worked)."""
+    log = log if log is not None else []
+    if not jobs:
+        return set()
+    sink = None
+    if log_file is not None:
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        sink = log_file.open("w", encoding="utf-8", buffering=1)
+
+    def note(line: str) -> None:
+        log.append(line)
+        if sink is not None:
+            sink.write(line + "\n")
+
+    work = [_work(job[0]) for job in jobs]
+    order = sorted(range(len(jobs)), key=lambda i: work[i])  # line number -> job index
+    list_file = jobs[0][0].parent / "jobs.txt"
+    list_file.write_text(
+        "".join("\t".join(map(str, jobs[i])) + "\n" for i in order), encoding="utf-8"
+    )
+    done: set[int] = set()
+    failed: set[int] = set()
+    try:
+        cpu = exe in _GPU_SEARCH_HANGS
+        while True:
+            retry = _run(
+                exe,
+                list_file,
+                cpu,
+                popen,
+                jobs,
+                work,
+                order,
+                done,
+                failed,
+                on_progress,
+                should_stop,
+                note,
+            )
+            if not retry:
+                break
+            _GPU_SEARCH_HANGS.add(exe)  # not again in this session
+            cpu = True
+    finally:
+        if sink is not None:
+            sink.close()
+    return {i for i in done - failed if jobs[i][1].is_file()}
+
+
+def _run(
+    exe, list_file, cpu, popen, jobs, work, order, done, failed, on_progress, should_stop, note
+) -> bool:
+    """One Blender process. True: start again without the graphics card search."""
+    total = len(jobs)
+    try:
+        proc, lines = _start(exe, list_file, cpu, popen)
+    except OSError as exc:
+        note(f"Blender could not be started: {exc}")
+        return False
+    status = Status("launch", len(done), total)
+    on_progress(replace(status))
     started = time.monotonic()
-
-    def report() -> None:
-        left = None
-        if done:
-            spent = sum(work[i] for i in done)
-            rest = sum(work) - spent
-            left = (time.monotonic() - started) / max(spent, 1e-9) * rest
-        on_progress(len(done), len(jobs), device, left)
-
-    report()
     quiet = 0.0
+    skip = len(done)  # objects already baked by a run before (the list starts again)
+
+    def left() -> float | None:
+        new = [i for i in done if i not in before]
+        if not new:
+            return None
+        spent = sum(work[i] for i in new)
+        rest = sum(work[i] for i in range(total) if i not in done)
+        return (time.monotonic() - started) / max(spent, 1e-9) * rest
+
+    before = set(done)
 
     def limit() -> float:
-        if not done or len(done) >= len(jobs):
+        if status.phase == "launch":
+            return LAUNCH_TIMEOUT_S
+        if status.phase == "gpu":
+            return GPU_TIMEOUT_S
+        new = [i for i in done if i not in before]
+        if not new or len(done) >= total:
             return OBJECT_TIMEOUT_S
-        rate = (time.monotonic() - started) / max(sum(work[i] for i in done), 1e-9)
-        current = work[order[len(done)]]
+        rate = (time.monotonic() - started) / max(sum(work[i] for i in new), 1e-9)
+        current = work[order[min(len(done), total - 1)]]
         return max(OBJECT_TIMEOUT_S, 4 * rate * current)
 
+    retry = False
     while True:
         if should_stop():
-            log.append("XPSB_STOPPED by the user")
+            note("XPSB_STOPPED by the user")
             proc.kill()
             break
         try:
@@ -249,35 +324,49 @@ def bake_batch(
         except queue.Empty:
             quiet += 1.0
             if quiet >= limit():
-                log.append(f"XPSB_TIMEOUT no object finished for {quiet:.0f} s")
+                if status.phase == "gpu" and not cpu:
+                    note(f"XPSB_TIMEOUT the graphics card search did not answer for {quiet:.0f} s")
+                    retry = True
+                    on_progress(Status("retry_cpu", len(done), total))
+                else:
+                    note(f"XPSB_TIMEOUT no answer from Blender for {quiet:.0f} s ({status.phase})")
                 proc.kill()
                 break
             continue
         if line is None:
             break
-        log.append(line.rstrip("\n"))
+        note(line.rstrip("\n"))
         # Our markers may share a line with Blender's own output.
-        m = re.search(r"XPSB_(DEVICE|DONE|FAILED) ?(.*)", line)
+        m = re.search(r"XPSB_(START|DEVICE|BEGIN|RELIEF|DONE|FAILED) ?(.*)", line)
         if not m:
             continue  # Blender's own messages do not count as progress
         quiet = 0.0
         kind, rest = m.group(1), m.group(2).strip()
-        if kind == "DEVICE":
-            device = rest
+        n = int(rest.split()[0]) if kind in ("BEGIN", "RELIEF", "DONE", "FAILED") else -1
+        if kind == "START":
+            status.phase = "gpu"
+        elif kind == "DEVICE":
+            status.device = rest
             started = time.monotonic()  # Blender's own start-up does not count per object
-            report()
+        elif n < skip:
+            continue  # baked in the run before
+        elif kind in ("BEGIN", "RELIEF"):
+            status.phase = "object" if kind == "BEGIN" else "relief"
+            status.current = n + 1
         elif kind == "FAILED":
-            failed.add(order[int(rest.split()[0])])
+            failed.add(order[n])
+            continue
         elif kind == "DONE":
-            done.add(order[int(rest.split()[0])])
-            report()
+            done.add(order[n])
+        status.done, status.left = len(done), left()
+        on_progress(replace(status))
     try:
         proc.wait(timeout=30)
     except subprocess.TimeoutExpired:
         proc.kill()
-    if proc.returncode not in (0, None):
-        log.append(f"XPSB_EXIT {proc.returncode}")
-    return {i for i in done - failed if jobs[i][1].is_file()}
+    if proc.returncode not in (0, None) and not retry:
+        note(f"XPSB_EXIT {proc.returncode}")
+    return retry
 
 
 def problem(log: list[str]) -> str:

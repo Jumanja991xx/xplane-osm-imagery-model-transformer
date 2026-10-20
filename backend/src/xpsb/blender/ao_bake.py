@@ -6,7 +6,8 @@ inside window reveals and near the ground) of objects into images laid out like
 their texture atlases. One Blender start for all objects of a package; the
 graphics card is used when Cycles supports it (OptiX/CUDA, HIP, oneAPI, Metal).
 
-LIST: a text file, one "IN.npz<TAB>AO.png<TAB>NORMAL.png" per line.
+LIST: a text file, one "IN.npz<TAB>AO.png<TAB>NORMAL.png" per line. "--cpu" before
+it skips the search for a graphics card (used when that search hangs).
 IN: positions (N, 3; metres, z up), uvs (N, 2; atlas coordinates, t up), receivers
 (M, 3; triangles that own their piece of the atlas), occluders (K, 3; everything
 else that casts shadow), size (2,), samples (), distance ().
@@ -15,7 +16,8 @@ whose relief is baked onto the receivers as a tangent-space normal map
 (high-to-low, "selected to active").
 AO: greyscale PNG (white = open, dark = occluded). NORMAL: RGB PNG, flat
 (128, 128, 255) where no detail was hit; only written when there is detail.
-Prints "XPSB_DEVICE <kind> <name>" once and "XPSB_DONE <line number>" per object.
+Prints "XPSB_START" first, "XPSB_DEVICE <kind> <name>" once, then per object
+"XPSB_BEGIN <n>", "XPSB_RELIEF <n>" (when the detail bake starts) and "XPSB_DONE <n>".
 """
 
 import contextlib
@@ -80,7 +82,7 @@ def _clear(scene) -> None:
             coll.remove(block)
 
 
-def bake_one(scene, src: str, dst: str, dst_normal: str | None = None) -> None:
+def bake_one(scene, src: str, dst: str, dst_normal: str | None = None, n: int = 0) -> None:
     with np.load(src) as d:
         positions = d["positions"].astype(np.float64)
         uvs, receivers, occluders = d["uvs"], d["receivers"], d["occluders"]
@@ -129,6 +131,7 @@ def bake_one(scene, src: str, dst: str, dst_normal: str | None = None) -> None:
 
     if high is None or not dst_normal:
         return
+    print("XPSB_RELIEF", n, flush=True)
     # High-to-low: the relief of the fine detail onto the walls behind it.
     normal = bpy.data.images.new("normal", dw, dh, alpha=False)
     normal.generated_color = (0.5, 0.5, 1.0, 1.0)  # flat where nothing is hit
@@ -148,18 +151,24 @@ def bake_one(scene, src: str, dst: str, dst_normal: str | None = None) -> None:
     normal.save()
 
 
-def main(list_file: str) -> None:
+def main(list_file: str, cpu: bool = False) -> None:
+    print("XPSB_START", bpy.app.version_string, flush=True)
     bpy.ops.wm.read_factory_settings(use_empty=True)
     scene = bpy.context.scene
     scene.render.engine = "CYCLES"
     scene.cycles.use_denoising = False
     scene.world = bpy.data.worlds.new("world")
-    print("XPSB_DEVICE", _use_gpu(scene), flush=True)
+    if cpu:
+        scene.cycles.device = "CPU"
+        print("XPSB_DEVICE CPU (graphics card search skipped: it did not answer)", flush=True)
+    else:
+        print("XPSB_DEVICE", _use_gpu(scene), flush=True)
     with open(list_file, encoding="utf-8") as f:
         jobs = [line.rstrip("\n").split("\t") for line in f if line.strip()]
     for n, job in enumerate(jobs):
+        print("XPSB_BEGIN", n, flush=True)
         try:
-            bake_one(scene, job[0], job[1], job[2] if len(job) > 2 else None)
+            bake_one(scene, job[0], job[1], job[2] if len(job) > 2 else None, n)
         except Exception as exc:  # one broken object must not stop the others
             print("XPSB_FAILED", n, exc, flush=True)
         print("XPSB_DONE", n, flush=True)
@@ -167,4 +176,4 @@ def main(list_file: str) -> None:
 
 if __name__ == "__main__":
     args = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else sys.argv[1:]
-    main(args[0])
+    main(args[-1], cpu="--cpu" in args)
