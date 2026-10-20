@@ -26,7 +26,10 @@ from xpsb.build.bake import BakedMesh
 from xpsb.build.mesh import Mesh
 
 SCRIPT = Path(__file__).with_name("ao_bake.py")
-OBJECT_TIMEOUT_S = 240  # no object finished for this long: Blender is stopped
+# Blender is stopped when no object finishes for this long - or for 4x the time
+# the current object should take judging by the ones before (big stadiums on a
+# slow CPU can take minutes; stopping them would lose everything).
+OBJECT_TIMEOUT_S = 600
 SAMPLES = 16
 DISTANCE_M = 4.0
 MAX_BAKE_PX = 512  # shading is soft and blurry: a small bake is enough and much faster
@@ -198,6 +201,8 @@ def bake_batch(
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            encoding="utf-8",
+            errors="replace",  # Blender's messages must never stop the reading
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
     except OSError as exc:
@@ -206,9 +211,11 @@ def bake_batch(
     lines: queue.Queue[str | None] = queue.Queue()
 
     def pump() -> None:
-        for line in proc.stdout:
-            lines.put(line)
-        lines.put(None)
+        try:
+            for line in proc.stdout:
+                lines.put(line)
+        finally:
+            lines.put(None)
 
     threading.Thread(target=pump, daemon=True).start()
     device, done, failed = "CPU", set(), set()
@@ -224,6 +231,14 @@ def bake_batch(
 
     report()
     quiet = 0.0
+
+    def limit() -> float:
+        if not done or len(done) >= len(jobs):
+            return OBJECT_TIMEOUT_S
+        rate = (time.monotonic() - started) / max(sum(work[i] for i in done), 1e-9)
+        current = work[order[len(done)]]
+        return max(OBJECT_TIMEOUT_S, 4 * rate * current)
+
     while True:
         if should_stop():
             log.append("XPSB_STOPPED by the user")
@@ -233,23 +248,28 @@ def bake_batch(
             line = lines.get(timeout=1.0)
         except queue.Empty:
             quiet += 1.0
-            if quiet >= OBJECT_TIMEOUT_S:
-                log.append(f"XPSB_TIMEOUT no object finished for {OBJECT_TIMEOUT_S} s")
+            if quiet >= limit():
+                log.append(f"XPSB_TIMEOUT no object finished for {quiet:.0f} s")
                 proc.kill()
                 break
             continue
-        quiet = 0.0
         if line is None:
             break
         log.append(line.rstrip("\n"))
-        if line.startswith("XPSB_DEVICE "):
-            device = line.split(" ", 1)[1].strip()
+        # Our markers may share a line with Blender's own output.
+        m = re.search(r"XPSB_(DEVICE|DONE|FAILED) ?(.*)", line)
+        if not m:
+            continue  # Blender's own messages do not count as progress
+        quiet = 0.0
+        kind, rest = m.group(1), m.group(2).strip()
+        if kind == "DEVICE":
+            device = rest
             started = time.monotonic()  # Blender's own start-up does not count per object
             report()
-        elif line.startswith("XPSB_FAILED "):
-            failed.add(order[int(line.split()[1])])
-        elif line.startswith("XPSB_DONE "):
-            done.add(order[int(line.split()[1])])
+        elif kind == "FAILED":
+            failed.add(order[int(rest.split()[0])])
+        elif kind == "DONE":
+            done.add(order[int(rest.split()[0])])
             report()
     try:
         proc.wait(timeout=30)
