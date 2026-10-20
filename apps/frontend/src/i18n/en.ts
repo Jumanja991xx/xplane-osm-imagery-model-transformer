@@ -576,4 +576,5 @@ export const en: Record<MessageKey, string> = {
   "stage.blender_start": "Blender is refining the objects (soft shading) – {total} objects, device: {device}. Time left is estimated after the first object …",
   "stage.blender": "Blender is refining the objects: {done} of {total} done · about {left} min. left · device: {device}",
   "progress.hint.blender": "With a graphics card (OPTIX/CUDA/HIP/ONEAPI/METAL) it is much faster than on the CPU. If an object takes longer than 4 minutes, Blender is stopped and the remaining objects stay without shading – the package is finished anyway.",
+  "preview.crashed": "The 3D preview ran into an error. Close it and open it again; if it happens again, please send the text below.",
 };

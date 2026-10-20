@@ -574,6 +574,7 @@ export const de = {
   "stage.blender_start": "Blender veredelt die Objekte (weiche Schatten) – {total} Objekte, Gerät: {device}. Restzeit wird nach dem ersten Objekt geschätzt …",
   "stage.blender": "Blender veredelt die Objekte: {done} von {total} fertig · noch ca. {left} Min. · Gerät: {device}",
   "progress.hint.blender": "Mit Grafikkarte (OPTIX/CUDA/HIP/ONEAPI/METAL) geht es deutlich schneller als mit CPU. Hängt ein Objekt länger als 4 Minuten, wird Blender gestoppt und die übrigen Objekte bleiben ohne Schatten – das Paket wird trotzdem fertig.",
+  "preview.crashed": "Die 3D-Vorschau ist auf einen Fehler gestoßen. Schließe sie und öffne sie neu; wenn es wieder passiert, schick mir bitte den Text unten.",
 } as const;
 
 export type MessageKey = keyof typeof de;

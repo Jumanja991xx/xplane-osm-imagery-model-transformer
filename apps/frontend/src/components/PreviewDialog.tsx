@@ -15,6 +15,7 @@ import {
 import { useT } from "../i18n";
 import { CATEGORY_COLORS, categoryLabelKey } from "../scene";
 import { useApp } from "../store";
+import { ErrorBoundary } from "./ErrorBoundary";
 import { PhotoPanel } from "./PhotoPanel";
 import { Alert, Button, Checkbox, Spinner } from "./ui";
 
@@ -26,6 +27,7 @@ const ROOF_MATERIALS = ["solar", "metal", "membrane", "tiles", "flat", "glass"] 
 /** Interactive 3D view of everything the plan will build, before anything is written.
  *  While the plan is open (editable), single objects can be fine-tuned here. */
 const SPOTS_PER_OBJECT = 10;
+const NO_STEMS: string[] = [];
 
 /** The object's X-Plane lights for the night view: a glowing point for each and
  * real spot lights for the strongest few (a browser cannot draw hundreds). */
@@ -49,7 +51,26 @@ function nightLights(lights: PreviewLight[]): THREE.Group {
   return group;
 }
 
-export function PreviewDialog({
+/** The 3D preview, protected: Escape always closes it, and if anything in it fails
+ * the user sees why and can close it instead of being stuck on a dark screen. */
+export function PreviewDialog(props: { jobId: string; onClose: () => void; editable?: boolean }) {
+  const { t } = useT();
+  const { onClose } = props;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return (
+    <ErrorBoundary title={t("preview.crashed")} closeLabel={t("common.close")} onClose={onClose}>
+      <PreviewDialogInner {...props} />
+    </ErrorBoundary>
+  );
+}
+
+function PreviewDialogInner({
   jobId,
   onClose,
   editable = false,
@@ -359,7 +380,8 @@ export function PreviewDialog({
     o.name || t(categoryLabelKey({ kind: "object", category: o.category as never }));
   const problems = data?.objects.filter((o) => o.status !== "ok") ?? [];
   const built = data?.objects.filter((o) => o.status === "ok") ?? [];
-  const shadedStems = useApp((s) => s.job?.build?.shaded_stems ?? []);
+  // No new array per call: a fresh [] from a selector re-renders without end.
+  const shadedStems = useApp((s) => s.job?.build?.shaded_stems) ?? NO_STEMS;
   const current = data?.objects.find((o) => o.stem === selected) ?? null;
 
   /** After an adjustment: take the new plan entry and show the rebuilt object. */
