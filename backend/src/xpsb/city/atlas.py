@@ -21,6 +21,7 @@ BAYS = 4  # window axes per cell
 FLOOR_ROWS = 4  # upper floors per cell (a taller house repeats them)
 PLINTH_M = 0.6
 ATTIC_M = 3.0
+CORNICE_M = 0.8  # the moulded band under the eaves (3D cornice of historic houses)
 PX_PER_M = 20.0
 MAX_CELL_PX = 900
 ATLAS_W = 4096
@@ -54,7 +55,7 @@ class Atlas:
 def _rows(f: FacadeStyle) -> list[tuple[str, float]]:
     rows = [("plinth", PLINTH_M), ("ground", f.ground_m)]
     rows += [(f"floor{k}", f.storey_m) for k in range(FLOOR_ROWS)]
-    return rows + [("attic", ATTIC_M)]
+    return rows + [("cornice", CORNICE_M), ("attic", ATTIC_M)]
 
 
 def _cell_size(f: FacadeStyle) -> tuple[float, int, int]:
@@ -117,6 +118,15 @@ def _paint_row(
         return img, lit
     if kind == "attic":
         return img, lit
+    if kind == "cornice":  # mouldings, a row of dentils, the shadow line below
+        img = materials.plaster(u, v, f.trim)
+        img[v > h - 0.14] *= 1.06
+        img[(v > h - 0.24) & (v <= h - 0.14)] *= 0.86
+        dent = (v > 0.22) & (v < 0.42) & ((u % 0.24) < 0.13)
+        img[dent] *= 1.05
+        img[(v > 0.22) & (v < 0.42) & ~dent] *= 0.8
+        img[v < 0.1] *= 0.75
+        return img, lit
 
     def window(w, sill, top, arched=False):
         rect = (np.abs(du) < w / 2) & (v > sill) & (v < (top - w / 2 if arched else top))
@@ -151,10 +161,7 @@ def _paint_row(
             img[shop] = _glass(f, u, v, g)[shop] * 1.1
             sign = (v > g - 0.75) & (v < g - 0.3) & (np.abs(du) < f.bay_m / 2 - 0.25)
             img[sign] = (48, 52, 60)
-            letters = sign & (np.abs(du) < f.bay_m * 0.3) & (_noise(u, v, 0.12, 21) > 0.2)
-            img[letters] = (230, 226, 210)
-            lit[shop & (_hash(cell_id, seed) < 0.8)] = SHOP_LIGHT * 0.65
-            lit[letters] = (255, 240, 220)
+            img[sign & (np.abs(du) < f.bay_m * 0.3)] = (64, 68, 76)  # board (real names: life.py)
         elif f.ground in ("garage", "hall_door"):
             if f.ground == "garage":
                 door = (np.abs(du) < min(1.25, f.bay_m / 2 - 0.2)) & (v < min(2.1, g - 0.3))

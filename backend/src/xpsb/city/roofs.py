@@ -50,6 +50,12 @@ def _material(face: RoofFace, u: np.ndarray, v: np.ndarray) -> np.ndarray:
         seam = (u % 0.55) < 0.05
         img *= 1.0 + 0.03 * _noise(u, v, 2.0, 5)[..., None]
         img[seam] *= 1.12
+    elif face.material == "deck":  # roof terrace: planks, planters along the edge
+        board = np.floor(u / 0.14)
+        img *= 1.0 + 0.1 * _noise(board, board * 0, 1.0, 19)[..., None]
+        img[(u % 0.14) < 0.015] *= 0.6
+        planters = (np.floor(u / 1.6) % 3 == 0) & ((v % 6.0) < 0.9)
+        img[planters] = (70, 104, 52)
     elif face.material == "green":
         img *= 1.0 + 0.15 * _noise(u, v, 0.3, 11)[..., None]
     else:  # gravel / membrane
