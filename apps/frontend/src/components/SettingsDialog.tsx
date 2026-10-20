@@ -35,6 +35,8 @@ export function SettingsDialog() {
     custom_layer: "",
     custom_attribution: "",
     custom_rights_confirmed: false,
+    custom_subdomains: "",
+    custom_on_map: true,
     ...draft.imagery,
   };
   const setImagery = (change: Partial<ImagerySettings>) =>
@@ -430,7 +432,25 @@ export function SettingsDialog() {
                   data-testid="imagery-url"
                 />
                 {imagery.custom_type === "xyz" && (
-                  <p className="text-xs text-zinc-500">{t("settings.imagery_xyz_hint")}</p>
+                  <>
+                    <input
+                      className={inputClass}
+                      placeholder={t("settings.imagery_subdomains")}
+                      value={imagery.custom_subdomains}
+                      onChange={(e) => setImagery({ custom_subdomains: e.target.value })}
+                      data-testid="imagery-subdomains"
+                    />
+                    <p className="text-xs text-zinc-500">{t("settings.imagery_xyz_hint")}</p>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={imagery.custom_on_map}
+                        onChange={(e) => setImagery({ custom_on_map: e.target.checked })}
+                        data-testid="imagery-on-map"
+                      />
+                      {t("settings.imagery_on_map")}
+                    </label>
+                  </>
                 )}
                 <div className="grid grid-cols-2 gap-2">
                   <input

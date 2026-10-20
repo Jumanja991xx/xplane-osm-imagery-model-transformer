@@ -161,3 +161,68 @@ def test_long_arcgis_key_is_stored_cleaned_and_checked(client, app_ctx, monkeypa
         "ok": None,
         "detail": None,
     }
+
+
+def test_subdomains_rotate_and_are_required_for_s():
+    from xpsb.imagery.sources import xyz_template_ok
+
+    t = "https://{s}.tiles.example.test/{z}/{x}/{y}.png"
+    subs = ["a", "b", "c"]
+    urls = {xyz.tile_url(t, 5, x, 7, subs) for x in range(6)}
+    assert {u.split(".")[0] for u in urls} == {"https://a", "https://b", "https://c"}
+    assert xyz.tile_url(t, 5, 1, 7, subs) == xyz.tile_url(
+        t, 5, 1, 7, subs
+    )  # same tile, same server
+    assert xyz_template_ok(t, subs) and not xyz_template_ok(t, [])
+    assert not xyz_template_ok("https://t/{z}/{x}.png", [])
+
+
+def _png(color=(10, 200, 30)) -> bytes:
+    import io as _io
+
+    buf = _io.BytesIO()
+    Image.new("RGB", (256, 256), color).save(buf, "PNG")
+    return buf.getvalue()
+
+
+def test_map_background_comes_through_the_backend(client, monkeypatch):
+    calls = []
+
+    def fake_get(url, timeout=60):
+        calls.append(url)
+        return _png(), "image/png"
+
+    monkeypatch.setattr(xyz, "_http_get", fake_get)
+    # nothing configured: no background tiles
+    assert client.get("/api/basemap/3/4/2", headers=AUTH).status_code == 404
+    settings = client.get("/api/settings", headers=AUTH).json()
+    settings["imagery"] = {
+        **XYZ_IMAGERY,
+        "custom_url": "https://{s}.tiles.example.test/{z}/{x}/{y}.png",
+        "custom_subdomains": "mt0, mt1,mt2,mt3",
+    }
+    assert client.put("/api/settings", json=settings, headers=AUTH).status_code == 200
+    assert client.get("/api/basemap/3/4/2").status_code == 401  # needs the app's token
+    r = client.get("/api/basemap/3/4/2", headers=AUTH)
+    assert r.status_code == 200 and r.headers["content-type"] == "image/png"
+    assert calls == ["https://mt2.tiles.example.test/3/4/2.png"]
+    client.get("/api/basemap/3/4/2", headers=AUTH)
+    assert len(calls) == 1  # second time from the disk cache
+    assert client.get("/api/basemap/3/9/2", headers=AUTH).status_code == 502  # outside the world
+
+    # the user did not confirm the rights, or does not want it on the map: nothing
+    settings["imagery"]["custom_on_map"] = False
+    client.put("/api/settings", json=settings, headers=AUTH)
+    assert client.get("/api/basemap/3/4/2", headers=AUTH).status_code == 404
+    settings["imagery"].update(custom_on_map=True, custom_rights_confirmed=False)
+    client.put("/api/settings", json=settings, headers=AUTH)
+    assert client.get("/api/basemap/3/4/2", headers=AUTH).status_code == 404
+
+
+def test_a_server_that_answers_with_text_is_an_error(client, monkeypatch):
+    monkeypatch.setattr(xyz, "_http_get", lambda url, timeout=60: (b"<html>no</html>", "text/html"))
+    settings = client.get("/api/settings", headers=AUTH).json()
+    settings["imagery"] = XYZ_IMAGERY
+    client.put("/api/settings", json=settings, headers=AUTH)
+    r = client.get("/api/basemap/3/4/2", headers=AUTH)
+    assert r.status_code == 502 and r.json()["detail"]["key"] == "error.basemap"

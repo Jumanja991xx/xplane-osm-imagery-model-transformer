@@ -24,6 +24,8 @@ class ImagerySource(BaseModel):
     max_gsd_m: float = Field(default=0.4, gt=0)  # finest ground resolution worth requesting
     builtin: bool = True
     max_zoom: int = Field(default=19, ge=1, le=23)  # XYZ only
+    # XYZ only: what {s} in the URL stands for, one after the other ("a", "b", "c").
+    subdomains: list[str] = Field(default_factory=list)
     # May the image go into the package as ground texture? (Esri: recognition only)
     package_ok: bool = True
 
@@ -76,7 +78,12 @@ def esri_source(key: str) -> ImagerySource:
 
 
 def custom_source(
-    url: str, layer: str | None, attribution: str, kind: str = "wms", max_zoom: int = 19
+    url: str,
+    layer: str | None,
+    attribution: str,
+    kind: str = "wms",
+    max_zoom: int = 19,
+    subdomains: list[str] | None = None,
 ) -> ImagerySource:
     return ImagerySource(
         id="custom",
@@ -89,7 +96,47 @@ def custom_source(
         builtin=False,
         max_zoom=max_zoom,
         max_gsd_m=0.15,
+        subdomains=subdomains or [],
     )
+
+
+def xyz_template_ok(url: str, subdomains: list[str]) -> bool:
+    """An XYZ template we can fill: {z}, {x}, {y} or {-y}, and subdomains for {s}."""
+    return (
+        url.startswith(("https://", "http://"))
+        and all(k in url for k in ("{z}", "{x}"))
+        and ("{y}" in url or "{-y}" in url)
+        and ("{s}" not in url or bool(subdomains))
+    )
+
+
+def custom_from_settings(settings) -> ImagerySource | None:
+    """The user's own source from the settings, or None while it is incomplete."""
+    url = settings.custom_url
+    if not url.startswith(("https://", "http://")):
+        return None
+    if settings.custom_type == "xyz" and not xyz_template_ok(url, settings.subdomains):
+        return None
+    return custom_source(
+        url,
+        settings.custom_layer,
+        settings.custom_attribution,
+        settings.custom_type,
+        settings.custom_max_zoom,
+        settings.subdomains,
+    )
+
+
+def map_source(settings) -> ImagerySource | None:
+    """The user's XYZ source as map background: only when complete, confirmed and wanted."""
+    if not (
+        settings.source == "custom"
+        and settings.custom_type == "xyz"
+        and settings.custom_rights_confirmed
+        and settings.custom_on_map
+    ):
+        return None
+    return custom_from_settings(settings)
 
 
 def covers(source: ImagerySource, lon: float, lat: float) -> bool:
@@ -110,18 +157,8 @@ def resolve_source(
     if choice == "esri":
         return (esri_source(esri_key), None) if esri_key else (None, "imagery.esri_no_key")
     if choice == "custom":
-        url = settings.custom_url
-        if not url.startswith(("https://", "http://")):
-            return None, "imagery.custom_missing"
-        if settings.custom_type == "xyz" and not all(k in url for k in ("{z}", "{x}")):
-            return None, "imagery.custom_missing"
-        return custom_source(
-            url,
-            settings.custom_layer,
-            settings.custom_attribution,
-            settings.custom_type,
-            settings.custom_max_zoom,
-        ), None
+        source = custom_from_settings(settings)
+        return (source, None) if source else (None, "imagery.custom_missing")
     candidates = (
         BUILTIN_SOURCES if choice == "auto" else [s for s in BUILTIN_SOURCES if s.id == choice]
     )

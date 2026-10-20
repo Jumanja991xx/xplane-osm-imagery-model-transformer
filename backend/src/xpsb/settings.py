@@ -29,10 +29,18 @@ class ImagerySettings(BaseModel):
     custom_type: Literal["wms", "xyz"] = "wms"
     custom_max_zoom: int = Field(default=19, ge=10, le=23)  # XYZ only
     custom_url: str = Field(default="", max_length=1000)
+    # XYZ only: servers a {s} in the URL rotates through, e.g. "a,b,c" or "mt0,mt1".
+    custom_subdomains: str = Field(default="", max_length=200, pattern=r"^[A-Za-z0-9,\- ]*$")
     custom_layer: str = Field(default="", max_length=200)
     custom_attribution: str = Field(default="", max_length=300)
     # The user confirms they may use the custom source for this purpose.
     custom_rights_confirmed: bool = False
+    # XYZ only: also show the custom source as the background of the map.
+    custom_on_map: bool = True
+
+    @property
+    def subdomains(self) -> list[str]:
+        return [part.strip() for part in self.custom_subdomains.split(",") if part.strip()]
 
 
 class Settings(BaseModel):

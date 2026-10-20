@@ -26,8 +26,9 @@ from pydantic import BaseModel, Field
 
 from xpsb import __version__
 from xpsb.geo import GeoJsonPolygon
-from xpsb.imagery import xyz
-from xpsb.imagery.sources import ESRI_ACCOUNT, esri_source
+from xpsb.imagery import basemap, xyz
+from xpsb.imagery.sources import ESRI_ACCOUNT, esri_source, map_source
+from xpsb.imagery.wms import WmsError
 from xpsb.jobs.manager import (
     DesignEstimate,
     JobConflict,
@@ -359,6 +360,27 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
     async def delete_item(job_id: str, item_id: str) -> JobView:
         ctx.jobs.delete_item(job_id, item_id)
         return ctx.jobs.view(job_id)
+
+    @app.get(
+        "/api/basemap/{z}/{x}/{y}",
+        dependencies=auth,
+        response_class=Response,
+        responses={200: {"content": {"image/png": {}, "image/jpeg": {}}}},
+    )
+    async def basemap_tile(z: int, x: int, y: int):
+        """A tile of the user's own XYZ source for the map background (see basemap.py)."""
+        source = map_source(ctx.settings.load().imagery)
+        if source is None:
+            raise HTTPException(404, detail={"key": "error.no_basemap"})
+        try:
+            data, ctype = await asyncio.to_thread(
+                basemap.tile, source, ctx.paths.cache / "basemap", z, x, y
+            )
+        except WmsError as exc:
+            raise HTTPException(
+                502, detail={"key": "error.basemap", "detail": str(exc)[:200]}
+            ) from None
+        return Response(data, media_type=ctype, headers={"Cache-Control": "private, max-age=86400"})
 
     @app.get(
         "/api/jobs/{job_id}/imagery",

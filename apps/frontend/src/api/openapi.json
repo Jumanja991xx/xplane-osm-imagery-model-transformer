@@ -935,6 +935,61 @@
         }
       }
     },
+    "/api/basemap/{z}/{x}/{y}": {
+      "get": {
+        "summary": "Basemap Tile",
+        "description": "A tile of the user's own XYZ source for the map background (see basemap.py).",
+        "operationId": "basemap_tile_api_basemap__z___x___y__get",
+        "parameters": [
+          {
+            "name": "z",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Z"
+            }
+          },
+          {
+            "name": "x",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "X"
+            }
+          },
+          {
+            "name": "y",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Y"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/png": {},
+              "image/jpeg": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobs/{job_id}/imagery": {
       "get": {
         "summary": "Job Imagery",
@@ -2827,6 +2882,13 @@
             "title": "Custom Url",
             "default": ""
           },
+          "custom_subdomains": {
+            "type": "string",
+            "maxLength": 200,
+            "pattern": "^[A-Za-z0-9,\\- ]*$",
+            "title": "Custom Subdomains",
+            "default": ""
+          },
           "custom_layer": {
             "type": "string",
             "maxLength": 200,
@@ -2843,6 +2905,11 @@
             "type": "boolean",
             "title": "Custom Rights Confirmed",
             "default": false
+          },
+          "custom_on_map": {
+            "type": "boolean",
+            "title": "Custom On Map",
+            "default": true
           }
         },
         "type": "object",

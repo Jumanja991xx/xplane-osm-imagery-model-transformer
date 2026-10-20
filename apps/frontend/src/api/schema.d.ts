@@ -337,6 +337,26 @@ export interface paths {
         patch: operations["update_item_api_jobs__job_id__items__item_id__patch"];
         trace?: never;
     };
+    "/api/basemap/{z}/{x}/{y}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Basemap Tile
+         * @description A tile of the user's own XYZ source for the map background (see basemap.py).
+         */
+        get: operations["basemap_tile_api_basemap__z___x___y__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs/{job_id}/imagery": {
         parameters: {
             query?: never;
@@ -1056,6 +1076,11 @@ export interface components {
              */
             custom_url: string;
             /**
+             * Custom Subdomains
+             * @default
+             */
+            custom_subdomains: string;
+            /**
              * Custom Layer
              * @default
              */
@@ -1070,6 +1095,11 @@ export interface components {
              * @default false
              */
             custom_rights_confirmed: boolean;
+            /**
+             * Custom On Map
+             * @default true
+             */
+            custom_on_map: boolean;
         };
         /** InstallResult */
         InstallResult: {
@@ -2486,6 +2516,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    basemap_tile_api_basemap__z___x___y__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                z: number;
+                x: number;
+                y: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": unknown;
+                    "image/jpeg": unknown;
                 };
             };
             /** @description Validation Error */

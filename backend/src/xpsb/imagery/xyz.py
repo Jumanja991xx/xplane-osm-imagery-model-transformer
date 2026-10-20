@@ -43,7 +43,11 @@ def choose_zoom(source: ImagerySource, lat: float, width_m: float, height_m: flo
     return 1
 
 
-def tile_url(template: str, z: int, x: int, y: int) -> str:
+def tile_url(template: str, z: int, x: int, y: int, subdomains: list[str] | None = None) -> str:
+    """Fills an XYZ template. {s} takes the subdomains in turn (the same tile always
+    from the same server, so caches along the way stay useful)."""
+    if "{s}" in template and subdomains:
+        template = template.replace("{s}", subdomains[(x + y) % len(subdomains)])
     return (
         template.replace("{z}", str(z))
         .replace("{x}", str(x))
@@ -56,7 +60,7 @@ def _get_tile(source: ImagerySource, z: int, x: int, y: int) -> Image.Image:
     fixtures = os.environ.get("XPSB_FIXTURES_DIR")
     if fixtures:
         return _fixture_tile(Path(fixtures), z, x, y)
-    data, ctype = _http_get(tile_url(source.url, z, x, y), timeout=60)
+    data, ctype = _http_get(tile_url(source.url, z, x, y, source.subdomains), timeout=60)
     try:
         return Image.open(io.BytesIO(data)).convert("RGB")
     except OSError as exc:
@@ -123,6 +127,20 @@ def fetch_mosaic(
     )
     out = src[rows][:, cols]
     return Image.fromarray(np.ascontiguousarray(out), "RGB"), gsd
+
+
+def tile_bytes(source: ImagerySource, z: int, x: int, y: int) -> tuple[bytes, str]:
+    """One tile as the server sends it (for the map background), checked to be an image."""
+    if not (0 <= z <= source.max_zoom and 0 <= x < 2**z and 0 <= y < 2**z):
+        raise WmsError(f"tile {z}/{x}/{y} out of range")
+    data, ctype = _http_get(tile_url(source.url, z, x, y, source.subdomains), timeout=30)
+    if not ctype.startswith("image/"):
+        try:
+            Image.open(io.BytesIO(data)).verify()
+        except Exception as exc:
+            raise WmsError(f"tile {z}/{x}/{y}: {service_message(data) or ctype}") from exc
+        ctype = "image/" + (Image.open(io.BytesIO(data)).format or "png").lower()
+    return data, ctype
 
 
 # A tile over Europe at a low zoom: enough to know whether the service takes the key.
