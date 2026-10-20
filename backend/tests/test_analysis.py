@@ -210,9 +210,14 @@ def test_custom_source_needs_confirmed_rights(client):
 
 
 def test_area_outside_open_sources_is_announced(client):
-    job = setup(client, imagery={"source": "auto"})
+    # Hockenheim lies in Baden-Württemberg: the Bavarian imagery does not cover it
+    job = setup(client, imagery={"source": "bayern_dop40"})
     assert "gate.a.imagery.not_covered" in keys(job["pending_gate"]["items"])
     assert "gate.a.ai_needs_imagery" in keys(job["pending_gate"]["items"])
+    # "auto" finds the state's own open imagery
+    job = setup(client, imagery={"source": "auto"})
+    imagery = next(i for i in job["pending_gate"]["items"] if i["key"] == "gate.a.imagery")
+    assert imagery["params"]["source"].startswith("Baden-Württemberg")
 
 
 def test_analysis_with_ai_questions_and_editor(client, fake_ai, app_ctx):
