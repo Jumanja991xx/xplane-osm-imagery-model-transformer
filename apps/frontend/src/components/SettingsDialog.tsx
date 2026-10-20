@@ -6,7 +6,21 @@ import { IMAGERY_PRESETS } from "../imagery/presets";
 import { Alert, Button, Checkbox, inputClass, Section, Spinner } from "./ui";
 
 const MODELS = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"] as const;
-const IMAGERY_CHOICES: ImagerySettings["source"][] = ["auto", "bayern_dop40", "nrw_dop", "esri", "custom", "none"];
+const IMAGERY_CHOICES: ImagerySettings["source"][] = [
+  "auto",
+  "bayern_dop40",
+  "nrw_dop",
+  "swissimage",
+  "basemap_at",
+  "pdok_nl",
+  "ign_fr",
+  "pnoa_es",
+  "usgs_naip",
+  "gsi_jp",
+  "esri",
+  "custom",
+  "none",
+];
 
 function CheckBadge({ check }: { check: XPlaneCheck }) {
   const { t } = useT();

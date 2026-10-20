@@ -28,7 +28,7 @@ from xpsb.ai.usage import UsageLedger
 from xpsb.build import assemble, phototex
 from xpsb.geo import METERS_PER_DEG_LAT, meters_per_deg_lon
 from xpsb.imagery import wms
-from xpsb.imagery.sources import resolve_source
+from xpsb.imagery.sources import candidates, resolve_source
 from xpsb.jobs.events import EventLog
 from xpsb.jobs.models import (
     AnalysisResult,
@@ -92,11 +92,10 @@ def _osm_stage(job: Job, deps: AnalysisDeps, log: EventLog) -> list:
 
 def _imagery_stage(job: Job, deps: AnalysisDeps, log: EventLog, notes: list[Note]):
     lon, lat = job.aoi_center
-    source, reason = resolve_source(deps.settings.imagery, lon, lat, deps.esri_key)
-    if source is None:
+    first, reason = resolve_source(deps.settings.imagery, lon, lat, deps.esri_key)
+    if first is None:
         notes.append(Note(key=reason or "imagery.off"))
         return None
-    _progress(log, "imagery", 0.0, "stage.imagery", source=source.name)
     ring = job.aoi.ring
     area = wms.Bounds(
         min(p[0] for p in ring),
@@ -104,18 +103,22 @@ def _imagery_stage(job: Job, deps: AnalysisDeps, log: EventLog, notes: list[Note
         max(p[0] for p in ring),
         max(p[1] for p in ring),
     )
-    try:
-        info = wms.fetch_area_image(
-            source,
-            area,
-            deps.job_dir / "imagery",
-            progress=lambda p: _progress(log, "imagery", p, "stage.imagery", source=source.name),
-        )
-    except (wms.WmsError, OSError, ValueError) as exc:
-        key = "imagery.esri_failed" if source.id == "esri" else "imagery.failed"
-        notes.append(Note(key=key, params={"source": source.name, "detail": str(exc)[:300]}))
-        return None
-    return info
+    # "auto": when a server fails, the next source covering the place (noted for the user)
+    for source in candidates(deps.settings.imagery, lon, lat, deps.esri_key) or [first]:
+        _progress(log, "imagery", 0.0, "stage.imagery", source=source.name)
+        try:
+            return wms.fetch_area_image(
+                source,
+                area,
+                deps.job_dir / "imagery",
+                progress=lambda p, s=source: _progress(
+                    log, "imagery", p, "stage.imagery", source=s.name
+                ),
+            )
+        except (wms.WmsError, OSError, ValueError) as exc:
+            key = "imagery.esri_failed" if source.id == "esri" else "imagery.failed"
+            notes.append(Note(key=key, params={"source": source.name, "detail": str(exc)[:300]}))
+    return None
 
 
 def _apply_memory(items: list, deps: AnalysisDeps) -> int:

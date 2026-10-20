@@ -87,9 +87,14 @@ There is no official release yet. Every push builds a Windows installer automati
 
 - **Map data** © OpenStreetMap contributors, [ODbL](https://www.openstreetmap.org/copyright) –
   credited in every package.
-- **Aerial imagery built in:** open government imagery (Bavaria DOP40, North Rhine-Westphalia
-  DOP), credited in the package. You can add your own WMS/XYZ source if you have the right
-  to use it. Google, Bing and Apple imagery are not built in.
+- **Aerial imagery built in:** open government imagery, chosen automatically by the area's
+  real borders and credited in the package – Bavaria (DOP40), North Rhine-Westphalia (DOP),
+  Switzerland (swisstopo SWISSIMAGE), Austria (basemap.at), Netherlands (PDOK), France
+  (IGN BD ORTHO), Spain (IGN PNOA), USA (USGS NAIP Plus, public domain) and Japan (GSI,
+  recognition only – its terms do not allow passing the imagery on). If a server fails,
+  the next matching source is tried. You can add your own WMS/XYZ source if you have the
+  right to use it. Google, Bing and Apple imagery are not built in. Country borders for
+  choosing the source: © Overture Maps Foundation / OpenStreetMap contributors (ODbL).
 - **Esri World Imagery** (with your own key) is used for recognition only and is never put
   into a package.
 - **Photos** come from your own uploads, Wikimedia Commons, Panoramax and Mapillary. They go

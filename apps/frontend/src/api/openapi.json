@@ -2892,6 +2892,13 @@
               "auto",
               "bayern_dop40",
               "nrw_dop",
+              "swissimage",
+              "basemap_at",
+              "pdok_nl",
+              "ign_fr",
+              "pnoa_es",
+              "usgs_naip",
+              "gsi_jp",
               "esri",
               "custom",
               "none"

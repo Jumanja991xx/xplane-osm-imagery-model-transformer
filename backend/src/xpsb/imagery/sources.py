@@ -3,10 +3,15 @@ themselves and confirms they hold the rights."""
 
 from __future__ import annotations
 
+import json
 import urllib.parse
+from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
+import shapely
 from pydantic import BaseModel, Field
+from shapely.geometry import Point, shape
 
 
 class ImagerySource(BaseModel):
@@ -21,6 +26,9 @@ class ImagerySource(BaseModel):
     license: str
     # west, south, east, north – rough coverage, used to suggest the right source
     coverage: tuple[float, float, float, float] | None = None
+    # Exact coverage: a country or state in coverage.json (borders from Overture Maps,
+    # ODbL, simplified, 2 km wider). Wins over `coverage`.
+    region: str | None = None
     max_gsd_m: float = Field(default=0.4, gt=0)  # finest ground resolution worth requesting
     builtin: bool = True
     max_zoom: int = Field(default=19, ge=1, le=23)  # XYZ only
@@ -38,6 +46,7 @@ BAYERN_DOP40 = ImagerySource(
     attribution="Bayerische Vermessungsverwaltung – www.geodaten.bayern.de",
     license="CC BY 4.0",
     coverage=(8.9, 47.2, 13.9, 50.6),
+    region="DE-BY",
     max_gsd_m=0.4,
 )
 
@@ -49,10 +58,123 @@ NRW_DOP = ImagerySource(
     attribution="Land NRW (2026), Datenlizenz Deutschland – Zero – Version 2.0",
     license="dl-de/zero-2-0",
     coverage=(5.8, 50.3, 9.5, 52.6),
+    region="DE-NW",
     max_gsd_m=0.2,
 )
 
-BUILTIN_SOURCES = [BAYERN_DOP40, NRW_DOP]
+# Further open aerial imagery of countries popular in flight simulation. All may be
+# used for analysis and in a shared scenery with the attribution, except Japan's
+# GSI tiles (their terms forbid converting and passing on the tiles: recognition only).
+SWISSIMAGE = ImagerySource(
+    id="swissimage",
+    name="Schweiz – swisstopo SWISSIMAGE",
+    kind="xyz",
+    url="https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg",
+    attribution="© swisstopo",
+    license="OGD swisstopo (freie Nutzung mit Quellenangabe)",
+    coverage=(5.9, 45.8, 10.5, 47.9),
+    region="CH",
+    max_zoom=20,
+    max_gsd_m=0.1,
+)
+
+BASEMAP_AT = ImagerySource(
+    id="basemap_at",
+    name="Österreich – basemap.at Orthofoto",
+    kind="xyz",
+    url="https://{s}.wien.gv.at/basemap/bmaporthofoto30cm/normal/google3857/{z}/{y}/{x}.jpeg",
+    subdomains=["maps", "maps1", "maps2", "maps3", "maps4"],
+    attribution="Datenquelle: basemap.at",
+    license="CC BY (basemap.at)",
+    coverage=(9.5, 46.3, 17.2, 49.1),
+    region="AT",
+    max_zoom=19,
+    max_gsd_m=0.3,
+)
+
+PDOK_NL = ImagerySource(
+    id="pdok_nl",
+    name="Niederlande – PDOK Luchtfoto (hohe Auflösung)",
+    kind="xyz",
+    url="https://service.pdok.nl/hwh/luchtfotorgb/wmts/v1_0/Actueel_orthoHR/EPSG:3857/{z}/{x}/{y}.jpeg",
+    attribution="Beeldmateriaal.nl / PDOK",
+    license="CC BY 4.0 (Beeldmateriaal Nederland)",
+    coverage=(3.3, 50.7, 7.3, 53.6),
+    region="NL",
+    max_zoom=19,
+    max_gsd_m=0.1,
+)
+
+IGN_FR = ImagerySource(
+    id="ign_fr",
+    name="Frankreich – IGN BD ORTHO (Géoplateforme)",
+    kind="xyz",
+    url=(
+        "https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0"
+        "&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&TILEMATRIXSET=PM"
+        "&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/jpeg"
+    ),
+    attribution="© IGN – BD ORTHO",
+    license="Licence Ouverte Etalab 2.0",
+    coverage=(-5.2, 41.3, 9.6, 51.1),
+    region="FR",
+    max_zoom=19,
+    max_gsd_m=0.2,
+)
+
+PNOA_ES = ImagerySource(
+    id="pnoa_es",
+    name="Spanien – IGN PNOA",
+    kind="xyz",
+    url=(
+        "https://www.ign.es/wmts/pnoa-ma?request=GetTile&service=WMTS&VERSION=1.0.0"
+        "&Layer=OI.OrthoimageCoverage&Style=default&Format=image/jpeg"
+        "&TileMatrixSet=GoogleMapsCompatible&TileMatrix={z}&TileRow={y}&TileCol={x}"
+    ),
+    attribution="PNOA cedido por © Instituto Geográfico Nacional de España",
+    license="CC BY 4.0 (scne.es)",
+    coverage=(-18.2, 27.6, 4.4, 43.9),
+    region="ES",
+    max_zoom=19,
+    max_gsd_m=0.25,
+)
+
+USGS_NAIP = ImagerySource(
+    id="usgs_naip",
+    name="USA – USGS NAIP Plus (NAIP + hochauflösende Stadt-Orthos)",
+    url="https://imagery.nationalmap.gov/arcgis/services/USGSNAIPPlus/ImageServer/WMSServer",
+    attribution="USGS The National Map / USDA NAIP",
+    license="Public Domain (US-Bundesbehörden)",
+    region="US",
+    max_gsd_m=0.3,
+)
+
+GSI_JP = ImagerySource(
+    id="gsi_jp",
+    name="Japan – GSI Seamless Photo (国土地理院)",
+    kind="xyz",
+    url="https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg",
+    attribution="地理院タイル（国土地理院）",
+    license="GSI-Nutzungsbedingungen (nur zur Erkennung, nicht im Paket)",
+    coverage=(122.9, 24.0, 146.0, 45.6),
+    region="JP",
+    max_zoom=18,
+    max_gsd_m=0.3,
+    package_ok=False,
+)
+
+# Order matters: smaller areas first (a border region is covered by both neighbours).
+BUILTIN_SOURCES = [
+    BAYERN_DOP40,
+    NRW_DOP,
+    SWISSIMAGE,
+    BASEMAP_AT,
+    PDOK_NL,
+    IGN_FR,
+    PNOA_ES,
+    USGS_NAIP,
+    GSI_JP,
+]
 
 # Worldwide, with the user's own ArcGIS key (ArcGIS Location Platform, Esri's terms).
 # Used for recognition and the AI only - not as ground texture in the package.
@@ -139,11 +261,41 @@ def map_source(settings) -> ImagerySource | None:
     return custom_from_settings(settings)
 
 
+@lru_cache(maxsize=1)
+def _regions() -> dict:
+    data = json.loads((Path(__file__).with_name("coverage.json")).read_text(encoding="utf-8"))
+    shapes = {code: shape(geom) for code, geom in data.items()}
+    for geom in shapes.values():
+        shapely.prepare(geom)
+    return shapes
+
+
 def covers(source: ImagerySource, lon: float, lat: float) -> bool:
-    if source.coverage is None:
-        return True
-    w, s, e, n = source.coverage
-    return w <= lon <= e and s <= lat <= n
+    if source.coverage is not None:
+        w, s, e, n = source.coverage
+        if not (w <= lon <= e and s <= lat <= n):
+            return False
+    if source.region is not None:
+        region = _regions().get(source.region)
+        return region is None or region.contains(Point(lon, lat))
+    return True
+
+
+def candidates(
+    settings, lon: float, lat: float, esri_key: str | None = None
+) -> list[ImagerySource]:
+    """All sources the settings allow for the place, best first ("auto": the open
+    sources covering it, then Esri with the user's key). The analysis tries the next
+    one when a server fails."""
+    first, _ = resolve_source(settings, lon, lat, esri_key)
+    if first is None:
+        return []
+    if settings.source != "auto":
+        return [first]
+    out = [s for s in BUILTIN_SOURCES if covers(s, lon, lat)]
+    if esri_key:
+        out.append(esri_source(esri_key))
+    return out
 
 
 def resolve_source(

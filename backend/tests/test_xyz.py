@@ -251,3 +251,60 @@ def test_an_own_source_can_be_tried_before_saving(client, monkeypatch):
     bad = {**imagery, "custom_subdomains": ""}
     r = client.post("/api/imagery/test", json={"imagery": bad}, headers=AUTH)
     assert r.json()["ok"] is False and "subdomains" in r.json()["detail"]
+
+
+def test_open_national_imagery_is_chosen_by_the_real_borders():
+    from xpsb.imagery.sources import candidates
+    from xpsb.settings import ImagerySettings
+
+    auto = ImagerySettings()
+
+    def ids(lon, lat, key=None):
+        return [s.id for s in candidates(auto, lon, lat, key)]
+
+    assert ids(11.57, 48.14) == ["bayern_dop40"]  # Munich
+    assert ids(13.04, 47.80) == ["basemap_at"]  # Salzburg: inside the old Bavaria box
+    assert ids(8.54, 47.37) == ["swissimage"]  # Zurich
+    assert ids(4.90, 52.37) == ["pdok_nl"]
+    assert ids(2.35, 48.86) == ["ign_fr"]
+    assert ids(-16.5, 28.3) == ["pnoa_es"]  # Tenerife
+    assert ids(-74.0, 40.7) == ["usgs_naip"]
+    assert ids(-157.86, 21.3) == ["usgs_naip"]  # Honolulu
+    assert ids(139.7, 35.68) == ["gsi_jp"]
+    assert ids(19.04, 47.50) == []  # Budapest: nothing open built in
+    assert ids(19.04, 47.50, "KEY")[-1] == "esri"
+    assert ids(2.35, 48.86, "KEY") == ["ign_fr", "esri"]  # Esri as the fallback
+
+
+def test_japan_is_for_recognition_only():
+    from xpsb.imagery.sources import BUILTIN_SOURCES
+
+    by_id = {s.id: s for s in BUILTIN_SOURCES}
+    assert by_id["gsi_jp"].package_ok is False
+    assert all(s.package_ok for s in BUILTIN_SOURCES if s.id != "gsi_jp")
+    assert all(s.attribution and s.license for s in BUILTIN_SOURCES)
+
+
+def test_when_a_server_fails_the_next_source_is_tried(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from xpsb.jobs import pipeline
+    from xpsb.settings import Settings
+
+    tried = []
+
+    def fetch(source, area, out_dir, progress=None):
+        tried.append(source.id)
+        if source.id == "ign_fr":
+            raise wms.WmsError("data.geopf.fr: HTTP 503")
+        return SimpleNamespace(source_id=source.id)
+
+    monkeypatch.setattr(pipeline.wms, "fetch_area_image", fetch)
+    ring = [(2.34, 48.85), (2.36, 48.85), (2.36, 48.87), (2.34, 48.85)]
+    job = SimpleNamespace(aoi_center=(2.35, 48.86), aoi=SimpleNamespace(ring=ring))
+    deps = SimpleNamespace(settings=Settings(), esri_key="KEY", job_dir=tmp_path)
+    log = SimpleNamespace(publish_threadsafe=lambda **kw: None)
+    notes = []
+    info = pipeline._imagery_stage(job, deps, log, notes)
+    assert tried == ["ign_fr", "esri"] and info.source_id == "esri"
+    assert notes[0].key == "imagery.failed" and "503" in notes[0].params["detail"]

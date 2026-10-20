@@ -22,7 +22,10 @@ a = Analysis(
     pathex=["../src"],
     hiddenimports=hiddenimports,
     # Runs inside the user's Blender (read as a file, never imported by the app).
-    datas=[("../src/xpsb/blender/ao_bake.py", "xpsb/blender")],
+    datas=[
+        ("../src/xpsb/blender/ao_bake.py", "xpsb/blender"),
+        ("../src/xpsb/imagery/coverage.json", "xpsb/imagery"),
+    ],
     excludes=["tkinter", "pytest", "IPython"],
     noarchive=False,
 )

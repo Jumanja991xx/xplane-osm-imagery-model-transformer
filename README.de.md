@@ -73,8 +73,9 @@ Backend mit PyInstaller, Smoke-Test des fertigen Pakets, Tauri-NSIS-Installer
 
 ## Analyse und Editor testen (Meilenstein 2)
 
-1. *Einstellungen*: Luftbildquelle „Automatisch“ lassen (Bayern/NRW) oder eine eigene
-   WMS-Quelle eintragen und die Nutzungsrechte bestätigen. API-Key und Monatslimit prüfen.
+1. *Einstellungen*: Luftbildquelle „Automatisch“ lassen (eingebaut: Bayern, NRW, Schweiz,
+   Österreich, Niederlande, Frankreich, Spanien, USA, Japan – nur Erkennung) oder eine
+   eigene WMS-/XYZ-Quelle eintragen und die Nutzungsrechte bestätigen. API-Key und Monatslimit prüfen.
 2. Ein Gebiet in Bayern oder NRW zeichnen (z. B. ein Stadion), Kategorien wählen, bei
    *KI-Analyse* ein günstiges Modell und eine niedrige Kostengrenze (z. B. 1 USD) wählen.
 3. Freigabe A lesen: Welche Daten werden geladen, was geht an die KI, Kostengrenze.
