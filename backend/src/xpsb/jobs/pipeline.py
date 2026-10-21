@@ -30,7 +30,7 @@ from xpsb.ai.usage import UsageLedger
 from xpsb.build import assemble, phototex
 from xpsb.catalog import SurfaceMode
 from xpsb.geo import METERS_PER_DEG_LAT, meters_per_deg_lon
-from xpsb.imagery import wms
+from xpsb.imagery import roofs, wms
 from xpsb.imagery.sources import candidates, resolve_source
 from xpsb.jobs.events import EventLog
 from xpsb.jobs.models import (
@@ -269,6 +269,9 @@ def analyze_sync(job: Job, deps: AnalysisDeps, log: EventLog) -> AnalysisResult:
             analyzed=result.ai.analyzed,
             cost_usd=round(result.ai.cost_usd, 4),
         )
+    if info is not None:  # after the AI: its colours (and OSM's) come first
+        with Image.open(deps.job_dir / "imagery" / info.file) as img:
+            roofs.apply(result.items, img, info)
     if job.brief.research:
         _research_stage(job, result, deps, log, notes)
     result.notes = notes  # pydantic copied the list on construction

@@ -82,6 +82,19 @@ STYLES = {
         base="rustication",
         flat="windows_arched",
     ),
+    # Churches and their towers: one tall storey of narrow round-arched windows
+    # between buttresses (towers: one tier of openings above the other).
+    "church": FacadeStyle(
+        5.5,
+        16.0,
+        1.9,
+        8.5,
+        3.0,
+        0.45,
+        arched=True,
+        pilasters=True,
+        flat="windows_arched",
+    ),
 }
 ARCH_SEGMENTS = 6
 PILASTER_W = 0.55

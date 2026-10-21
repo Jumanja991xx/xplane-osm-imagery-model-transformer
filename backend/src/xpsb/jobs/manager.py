@@ -992,7 +992,7 @@ class JobManager:
             on_cost=pipeline.cost_book(job, self.ledger, stage, item.name or item.id),
         )
         inputs = assemble._script_inputs(item, job.analysis.items, detail)
-        max_tris = assemble.DETAIL.get(detail, assemble.DETAIL["medium"])[0]
+        max_tris = assemble.triangle_budget(inputs, detail)
         label = f"{item.name or ''} ({item.category})".strip()
         return architect.design(
             request=request,

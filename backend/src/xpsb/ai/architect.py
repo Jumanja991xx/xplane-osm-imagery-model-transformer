@@ -184,7 +184,7 @@ RULES:
 BUILDING KIT - use it for every building with windows: it builds the details with real
 depth (windows set into the wall with reveals and panes, pilasters, string courses, main
 cornice, rusticated ground storey, doors), keeps your script short (cheaper) and looks
-consistent. facade() for the walls (style "classic"/"arched"/"house"/"modern"; set
+consistent. facade() for the walls (style "classic"/"arched"/"church"/"house"/"modern"; set
 storeys and bay = side length / window axes from the photos), mansard() for the roofs
 of big blocks and wings around courtyards, parapet(mat="balustrade", statues=n) for
 palaces with balustrades and figures, chimneys() for houses and old buildings. Build
@@ -201,7 +201,8 @@ HOW TO BUILD COMMON THINGS (adapt to the facts and photos):
 - House: facade(style="house", top=None), pitched roof (roof_tiles) with faces/quads,
   chimneys(); apartment blocks: facade(style="modern"), balconies as thin boxes.
 - Church: nave with steep roof, tower with spire (box + pyramid faces or cylinder with
-  radius_top), apse.
+  radius_top), apse; facade(style="church") on nave and tower stages (tall arched
+  windows between buttresses; entrance=False on raised stages).
 - Palace, town hall, court, museum, station (historic, monumental): facade(style=
   "classic" or "arched", storeys and bay counted on the photos, holes=courtyards),
   mansard() or hipped roofs, parapet(mat="balustrade", statues=...) if the photos show

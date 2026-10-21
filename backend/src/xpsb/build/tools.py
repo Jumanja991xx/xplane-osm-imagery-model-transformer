@@ -210,7 +210,8 @@ class Tools:
         the middle of the longest side (entrance), and per style pilasters,
         string courses, a main cornice and a rusticated ground storey.
         style: "modern" (window every 2.7 m, 3.1 m storeys), "house" (3.6 m, 2.8 m),
-        "classic" (tall windows, 4.2 m, 4.8 m), "arched" (round-arched, 4.6 m, 5.4 m).
+        "classic" (tall windows, 4.2 m, 4.8 m), "arched" (round-arched, 4.6 m, 5.4 m),
+        "church" (tall narrow arched windows between buttresses, 5.5 m, 16 m).
         storeys/bay override the style (count the window axes on photos!); mat/color
         the wall, trim_color mouldings and pilasters; top a flat roof (None: open).
         Falls back to painted windows by itself when the triangle budget is short.

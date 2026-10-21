@@ -41,6 +41,21 @@ DETAIL = {
     "medium": (30_000, 2048, 24.0),
     "high": (80_000, 4096, 40.0),
 }
+BIG_PERIMETER_M = 160.0  # buildings with a longer outline get a bigger budget ...
+MAX_BUDGET_FACTOR = 3.0  # ... up to this many times the normal one
+
+
+def triangle_budget(inputs: ScriptInputs, detail: str) -> int:
+    """Triangles one object may have. A city block with 500 m of facade is ten
+    houses' worth of windows: with the budget of one it would only get painted
+    windows while the small house next to it gets real ones."""
+    budget = DETAIL.get(detail, DETAIL["medium"])[0]
+    rings = ([inputs.footprint] if inputs.footprint else []) + list(inputs.courtyards)
+    perimeter = sum(math.dist(r[i], r[(i + 1) % len(r)]) for r in rings for i in range(len(r)))
+    factor = min(MAX_BUDGET_FACTOR, max(1.0, perimeter / BIG_PERIMETER_M))
+    return int(budget * factor)
+
+
 SURFACE_LAYER = "airports"  # above the default terrain's own polygons (Spike A)
 SURFACE_ORDER = {
     "grass": 0,
@@ -370,8 +385,9 @@ def generate(
     script = item.script or DEFAULT_SCRIPTS.get(str(item.category))
     if script is None:
         raise LookupError("no generator yet")
-    budget, atlas, max_ppm = DETAIL.get(detail, DETAIL["medium"])
+    _, atlas, max_ppm = DETAIL.get(detail, DETAIL["medium"])
     inputs = _script_inputs(item, items, detail)
+    budget = triangle_budget(inputs, detail)
     if item.scan is not None and photo_dir is not None and item.attrs.use_scan is not False:
         scan_path = photo_dir.parent / item.scan.file
         inputs.scan = str(scan_path) if scan_path.is_file() else None

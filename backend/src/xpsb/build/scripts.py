@@ -326,14 +326,20 @@ FACADE_OF = {"windows": "modern", "windows_house": "house", "windows_classic": "
              "windows_arched": "arched"}
 WINDOWED = ["plaster", "brick", "stone", "concrete", "wood"]
 STYLE_FACADE = {"house": "house", "historic": "classic", "apartments": "modern",
-                "office": "modern", "generic": "modern"}
+                "office": "modern", "generic": "modern", "church": "church"}
 
 def walls(fp, z0, H, look, fstyle, top, top_color, holes, levels):
     wall, wall_mat = look[0], look[1]
     raised = z0 > 0.3
-    if fstyle != None and not raised and H - z0 >= 2.4:
-        facade(fp, z0, H, style=fstyle, storeys=levels, color=wall, holes=holes, top=top,
-               top_color=top_color, mat=(None if wall_mat in FACADE_OF else wall_mat))
+    if fstyle != None and H - z0 >= 2.4:
+        # Raised blocks (upper tower stages, wings over a passage) get windows too,
+        # but no door, and their underside closed.
+        facade(fp, z0, H, style=fstyle, storeys=None if raised else levels, color=wall,
+               holes=holes, top=top, top_color=top_color, entrance=not raised,
+               mat=(None if wall_mat in FACADE_OF else wall_mat))
+        if raised:
+            extrude(fp, z0, z0 + 0.1, mat=look[2], color=wall, top=None, bottom=True,
+                    holes=holes)
     else:
         extrude(fp, z0, H, mat=wall_mat, top=top, color=wall, top_color=top_color,
                 bottom=raised, holes=holes)
