@@ -18,6 +18,7 @@ from pathlib import Path
 
 from PIL import Image
 from shapely.geometry import Polygon, shape
+from shapely.strtree import STRtree
 
 from xpsb.city import atlas as atlas_mod
 from xpsb.city import lod2, roofs, styles
@@ -27,6 +28,8 @@ from xpsb.geo import METERS_PER_DEG_LAT, meters_per_deg_lon
 from xpsb.scene import SceneItem
 
 CELL_M = 250.0
+SHARED_WALL_M = 3.0  # wall two buildings must share to count as one row
+MAX_EAVE_DIFF_M = 1.5
 ATLAS = "city_atlas.png"
 ATLAS_LIT = "city_atlas_LIT.png"
 ROOF_SHAPES = {
@@ -170,6 +173,50 @@ def without(buildings: list[CityBuilding], keep_out: list) -> list[CityBuilding]
     return out
 
 
+def neighbours(buildings: list[CityBuilding]) -> list[list[CityBuilding]]:
+    """Buildings wall to wall of about the same height and use: a row of houses, a
+    block of flats in sections. Each house its own random colour made a patchwork
+    of roofs where the street shows one row."""
+    if not buildings:
+        return []
+    lat = buildings[0].footprint[0][0][1]
+    eps = 0.3 / METERS_PER_DEG_LAT  # outlines closer than ~30 cm touch
+    polys = []
+    for b in buildings:
+        try:
+            p = Polygon(b.footprint[0])
+            polys.append(p if p.is_valid else p.buffer(0))
+        except ValueError:
+            polys.append(Polygon())
+    min_shared = SHARED_WALL_M / max(meters_per_deg_lon(lat), METERS_PER_DEG_LAT)
+    tree = STRtree(polys)
+    parent = list(range(len(buildings)))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for i, (a, pa) in enumerate(zip(buildings, polys, strict=True)):
+        if pa.is_empty:
+            continue
+        grown = pa.buffer(eps)
+        for j in tree.query(grown):
+            j = int(j)
+            b = buildings[j]
+            if j <= i or polys[j].is_empty or a.use != b.use:
+                continue
+            if abs(a.eave_m - b.eave_m) > MAX_EAVE_DIFF_M:
+                continue
+            if grown.intersection(polys[j].boundary).length >= min_shared:
+                parent[find(j)] = find(i)
+    groups: dict[int, list[CityBuilding]] = {}
+    for i, b in enumerate(buildings):
+        groups.setdefault(find(i), []).append(b)
+    return list(groups.values())
+
+
 # ---- building the blocks ---------------------------------------------------------------
 
 
@@ -237,11 +284,15 @@ def build(
     meshes into preview_dir. `aerial`: (image, (w, s, e, n)) for real roofs."""
     preset = styles.PRESETS.get(preset_id) or styles.CENTRAL_EUROPE
     roof_material: dict[str, str] = {}
-    for b in buildings:
-        style, wall, roof = styles.assign(b, _area_m2(b), preset)
-        b.style, b.variant = style.facade.id, wall
-        b.roof_color = b.roof_color or style.roof.colors[roof]
+    for group in neighbours(buildings):
+        # One look per row of joined houses: the largest decides for all of them
+        # (its own colour from the map or the aerial image keeps each house).
+        lead = max(group, key=_area_m2)
+        style, wall, roof = styles.assign(lead, _area_m2(lead), preset)
         roof_material[style.facade.id] = style.roof.material
+        for b in group:
+            b.style, b.variant = style.facade.id, wall
+            b.roof_color = b.roof_color or style.roof.colors[roof]
     used = {(b.style, b.variant) for b in buildings}
     if not used:
         return []

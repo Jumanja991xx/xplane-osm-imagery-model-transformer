@@ -68,9 +68,9 @@ def roof_color(img: np.ndarray, info: ImageryInfo, geom: BaseGeometry) -> str | 
 
 
 def measure(items: list[SceneItem], image: Image.Image, info: ImageryInfo) -> dict[str, str]:
-    """Roof colour per building id as the aerial image shows it (without setting it)."""
-    if not info.package_ok:
-        return {}
+    """Roof colour per building id as the aerial image shows it (without setting it).
+    Only to tell which houses stand under one roof - so also from an image that is
+    for recognition only (nothing of it goes into the package)."""
     img = np.asarray(image.convert("RGB"))
     if img.shape[1] != info.width_px or img.shape[0] != info.height_px:
         return {}

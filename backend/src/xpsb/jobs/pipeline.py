@@ -364,14 +364,15 @@ def analyze_sync(job: Job, deps: AnalysisDeps, log: EventLog) -> AnalysisResult:
     if job.brief.mode == "city":
         _city_data_stage(job, deps, log, notes)
     info = _imagery_stage(job, deps, log, notes)
+    # OSM splits a terrace into its houses; built one by one every house got its own
+    # roof. They are joined - the aerial image (if any) tells apart different roofs.
+    seen: dict[str, str] = {}
     if info is not None:
-        # The aerial image knows the roofs better than the map: their colours, and
-        # which houses OSM splits up that stand under one roof.
         with Image.open(deps.job_dir / "imagery" / info.file) as img:
             seen = roofs.measure(items, img, info)
-        joined = rows.merge(items, seen) if seen else 0
-        if joined:
-            notes.append(Note(key="analysis.rows_joined", params={"count": joined}))
+    joined = rows.merge(items, seen)
+    if joined:
+        notes.append(Note(key="analysis.rows_joined", params={"count": joined}))
     result = AnalysisResult(items=items, imagery=info, notes=notes)
 
     if not job.brief.use_ai:

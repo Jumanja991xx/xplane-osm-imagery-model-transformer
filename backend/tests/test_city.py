@@ -120,3 +120,34 @@ def test_stored_official_buildings_are_read_back_and_landmarks_left_out(tmp_path
     buildings, source = pipeline._city_buildings(job, tmp_path)
     assert source == "lod2" and [b.id for b in buildings] == ["lod2/1"]  # the church is single
     assert buildings[0].walls[0][0] == (1.0, 2.0, 3.0) and buildings[0].zone == 32
+
+
+def test_a_row_of_houses_gets_one_look_not_a_patchwork(tmp_path: Path):
+    """Houses wall to wall: one style and roof colour for the row; a taller block
+    and a house across the street keep their own."""
+    els = [
+        way(i + 1, rect(i * 7, 0, (i + 1) * 7, 10), building="house", height="9") for i in range(6)
+    ]
+    els.append(way(20, rect(42, 0, 60, 14), building="apartments", height="16"))
+    els.append(way(21, rect(0, 40, 9, 50), building="house", height="9"))
+    houses = city.from_items(run(els))
+    groups = city.neighbours(houses)
+    sizes = sorted(len(g) for g in groups)
+    assert sizes == [1, 1, 6]
+    city.build(houses, "central_europe", (houses[0].footprint[0][0]), tmp_path / "out")
+    row = next(g for g in groups if len(g) == 6)
+    assert len({(b.style, b.variant, b.roof_color) for b in row}) == 1
+
+
+def test_houses_are_joined_into_rows_without_measured_roof_colours():
+    """Outside the official aerial images (Esri: recognition only) the rows are
+    joined all the same."""
+    from xpsb.osm import rows
+
+    items = run(
+        [
+            way(i + 1, rect(i * 6, 0, (i + 1) * 6, 10), building="house", height="9")
+            for i in range(4)
+        ]
+    )
+    assert rows.merge(items, {}) == 4
