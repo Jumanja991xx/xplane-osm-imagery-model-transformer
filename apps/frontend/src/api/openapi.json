@@ -5686,6 +5686,17 @@
             ],
             "title": "Blender Device",
             "default": "auto"
+          },
+          "overpass_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overpass Url"
           }
         },
         "type": "object",

@@ -2088,6 +2088,8 @@ export interface components {
              * @enum {string}
              */
             blender_device: "auto" | "cpu";
+            /** Overpass Url */
+            overpass_url?: string | null;
         };
         /** SimilarBody */
         SimilarBody: {

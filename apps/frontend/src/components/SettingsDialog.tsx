@@ -255,6 +255,19 @@ export function SettingsDialog() {
             </label>
           </Section>
 
+          <Section title={t("settings.osm")}>
+            <p className="text-xs text-zinc-600 dark:text-zinc-300">{t("settings.osm_intro")}</p>
+            <label className="block text-sm">
+              <span className="mb-1 block text-zinc-600 dark:text-zinc-300">{t("settings.overpass_url")}</span>
+              <input
+                className={inputClass}
+                placeholder="https://…/api/interpreter"
+                value={draft.overpass_url ?? ""}
+                onChange={(e) => setDraft({ ...draft, overpass_url: e.target.value.trim() || null })}
+              />
+            </label>
+          </Section>
+
           <Section title={t("settings.blender")}>
             <p className="text-xs text-zinc-600 dark:text-zinc-300">{t("settings.blender_intro")}</p>
             <p className="text-sm" data-testid="blender-status">

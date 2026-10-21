@@ -99,10 +99,26 @@ def _progress(log: EventLog, stage: str, value: float, key: str, **params) -> No
     log.publish_threadsafe(type="progress", stage=stage, progress=value, key=key, params=params)
 
 
-def _osm_stage(job: Job, deps: AnalysisDeps, log: EventLog) -> list:
+def _osm_stage(job: Job, deps: AnalysisDeps, log: EventLog, notes: list[Note]) -> list:
     assert job.brief is not None
     _progress(log, "osm", 0.0, "stage.osm")
-    data = overpass.fetch(overpass.build_query(job.aoi.ring), deps.cache_dir / "overpass")
+    try:
+        data = overpass.fetch(
+            overpass.build_query(job.aoi.ring),
+            deps.cache_dir / "overpass",
+            ring=[tuple(p) for p in job.aoi.ring],
+            own_endpoint=deps.settings.overpass_url,
+        )
+    except overpass.OverpassError as exc:
+        # Without OSM the job goes on: the AI finds objects in the aerial image,
+        # earlier jobs of the area bring back what the user confirmed there.
+        notes.append(Note(key="analysis.osm_unavailable", params={"detail": str(exc)[:300]}))
+        _progress(log, "osm", 1.0, "stage.osm_done", count=0)
+        return []
+    if data.get("source") == "cache":
+        notes.append(Note(key="analysis.osm_from_cache", params={"days": data.get("age_days")}))
+    elif data.get("source") == "osm_api":
+        notes.append(Note(key="analysis.osm_from_api"))
     items = classify.classify(
         data.get("elements", []),
         Polygon(job.aoi.ring),
@@ -221,7 +237,7 @@ def analyze_sync(job: Job, deps: AnalysisDeps, log: EventLog) -> AnalysisResult:
     """Runs in a worker thread."""
     assert job.brief is not None
     notes: list[Note] = []
-    items = _osm_stage(job, deps, log)
+    items = _osm_stage(job, deps, log, notes)
     remembered = _apply_memory(items, deps)
     if remembered:
         notes.append(Note(key="analysis.remembered", params={"count": remembered}))
