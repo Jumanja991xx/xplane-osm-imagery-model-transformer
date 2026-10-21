@@ -24,6 +24,7 @@ a = Analysis(
     # Runs inside the user's Blender (read as a file, never imported by the app).
     datas=[
         ("../src/xpsb/blender/ao_bake.py", "xpsb/blender"),
+        ("../src/xpsb/blender/boot/startup/xpsb_boot.py", "xpsb/blender/boot/startup"),
         ("../src/xpsb/imagery/coverage.json", "xpsb/imagery"),
     ],
     excludes=["tkinter", "pytest", "IPython"],

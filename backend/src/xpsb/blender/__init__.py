@@ -27,6 +27,8 @@ from xpsb.build.bake import BakedMesh
 from xpsb.build.mesh import Mesh
 
 SCRIPT = Path(__file__).with_name("ao_bake.py")
+# Extra start-up script folder for Blender (BLENDER_SYSTEM_SCRIPTS): see boot/startup.
+BOOT_SCRIPTS = Path(__file__).with_name("boot")
 # Blender is stopped when no object finishes for this long - or for 4x the time
 # the current object should take judging by the ones before (big stadiums on a
 # slow CPU can take minutes; stopping them would lose everything).
@@ -169,7 +171,7 @@ def _work(npz: Path) -> float:
 class Status:
     """What Blender is doing right now (for the progress line)."""
 
-    phase: str  # launch | gpu | object | relief | retry_cpu
+    phase: str  # launch | boot | gpu | object | relief | retry_cpu
     done: int
     total: int
     device: str = ""
@@ -190,8 +192,12 @@ def _start(exe: str, list_file: Path, cpu: bool, popen):
         *(["--cpu"] if cpu else []),
         str(list_file),
     ]
+    env = dict(os.environ)
+    env["BLENDER_SYSTEM_SCRIPTS"] = str(BOOT_SCRIPTS)
     proc = popen(
         cmd,
+        env=env,
+        stdin=subprocess.DEVNULL,  # never wait for input from the app's own handles
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -304,7 +310,7 @@ def _run(
     before = set(done)
 
     def limit() -> float:
-        if status.phase == "launch":
+        if status.phase in ("launch", "boot"):
             return LAUNCH_TIMEOUT_S
         if status.phase == "gpu":
             return GPU_TIMEOUT_S
@@ -332,6 +338,14 @@ def _run(
                     on_progress(Status("retry_cpu", len(done), total))
                 else:
                     note(f"XPSB_TIMEOUT no answer from Blender for {quiet:.0f} s ({status.phase})")
+                    note(
+                        {
+                            "launch": "Blender started but printed nothing at all: it hangs"
+                            " before its Python runs (try another Blender version, e.g. 4.5 LTS)",
+                            "boot": "Blender's Python runs but Blender hangs while loading its"
+                            " add-ons (try another Blender version, e.g. 4.5 LTS)",
+                        }.get(status.phase, "Blender stopped answering")
+                    )
                 proc.kill()
                 break
             continue
@@ -339,13 +353,15 @@ def _run(
             break
         note(line.rstrip("\n"))
         # Our markers may share a line with Blender's own output.
-        m = re.search(r"XPSB_(START|DEVICE|BEGIN|RELIEF|DONE|FAILED) ?(.*)", line)
+        m = re.search(r"XPSB_(BOOT|START|DEVICE|BEGIN|RELIEF|DONE|FAILED) ?(.*)", line)
         if not m:
             continue  # Blender's own messages do not count as progress
         quiet = 0.0
         kind, rest = m.group(1), m.group(2).strip()
         n = int(rest.split()[0]) if kind in ("BEGIN", "RELIEF", "DONE", "FAILED") else -1
-        if kind == "START":
+        if kind == "BOOT":
+            status.phase = "boot"
+        elif kind == "START":
             status.phase = "gpu"
         elif kind == "DEVICE":
             status.device = rest
@@ -373,7 +389,7 @@ def _run(
 
 def problem(log: list[str]) -> str:
     """The most telling line of a Blender run that went wrong (for the user)."""
-    for key in ("XPSB_FAILED", "Error", "Traceback", "XPSB_TIMEOUT", "XPSB_EXIT"):
+    for key in ("XPSB_FAILED", "Error", "Traceback", "hangs", "XPSB_TIMEOUT", "XPSB_EXIT"):
         for line in reversed(log):
             if key in line:
                 return line.strip()[:300]

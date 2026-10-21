@@ -640,6 +640,7 @@ export const en: Record<MessageKey, string> = {
   "preview.blender_shaded": "Refined with Blender (soft shading baked in) – as in the finished package.",
   "preview.crashed": "The 3D preview ran into an error. Close it and open it again; if it happens again, please send the text below.",
   "stage.blender_launch": "Starting Blender … ({total} objects to refine)",
+  "stage.blender_boot": "Blender is loading its scripts and add-ons …",
   "stage.blender_gpu": "Blender is looking for the graphics card … {device}",
   "stage.blender_object": "Blender: object {current} of {total} – soft shading · {done} done · about {left} min. left · device: {device}",
   "stage.blender_relief": "Blender: object {current} of {total} – facade relief · {done} done · about {left} min. left · device: {device}",

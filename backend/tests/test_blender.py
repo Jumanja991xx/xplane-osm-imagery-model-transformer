@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import subprocess
 import sys
 import threading
 from pathlib import Path
@@ -215,3 +216,30 @@ def test_self_test_times_the_steps_of_a_test_object(tmp_path):
         "blender", tmp_path / "t", cpu=True, popen=lambda cmd, **kw: FakeProc(cmd, **kw)
     )
     assert cpu.ok and cpu.gpu_search_s is None
+
+
+def test_blender_gets_the_boot_script_and_no_input_handle(tmp_path):
+    seen = {}
+
+    def popen(cmd, **kw):
+        seen.update(kw)
+        return FakeProc(cmd, **kw)
+
+    mesh = _mesh()
+    npz = tmp_path / "o.npz"
+    blender.prepare(mesh, bake(mesh), npz)
+    blender.bake_batch("blender", [(npz, tmp_path / "a.png", tmp_path / "d.png")], popen=popen)
+    boot = Path(seen["env"]["BLENDER_SYSTEM_SCRIPTS"]) / "startup" / "xpsb_boot.py"
+    assert boot.is_file()
+    assert seen["stdin"] is subprocess.DEVNULL
+
+
+def test_boot_script_turns_off_wmi_on_windows(monkeypatch, capsys):
+    import platform
+
+    boot = blender.BOOT_SCRIPTS / "startup" / "xpsb_boot.py"
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(platform, "_wmi", object(), raising=False)
+    exec(compile(boot.read_text(encoding="utf-8"), str(boot), "exec"), {"__name__": "xpsb_boot"})
+    assert platform._wmi is None
+    assert "XPSB_BOOT" in capsys.readouterr().out

@@ -638,6 +638,7 @@ export const de = {
   "preview.blender_shaded": "Mit Blender veredelt (weiche Schatten eingebacken) – so steht es im fertigen Paket.",
   "preview.crashed": "Die 3D-Vorschau ist auf einen Fehler gestoßen. Schließe sie und öffne sie neu; wenn es wieder passiert, schick mir bitte den Text unten.",
   "stage.blender_launch": "Blender startet … ({total} Objekte zu veredeln)",
+  "stage.blender_boot": "Blender lädt seine Skripte und Add-ons …",
   "stage.blender_gpu": "Blender sucht die Grafikkarte … {device}",
   "stage.blender_object": "Blender: Objekt {current} von {total} – weiche Schatten · {done} fertig · noch ca. {left} Min. · Gerät: {device}",
   "stage.blender_relief": "Blender: Objekt {current} von {total} – Fassadenrelief · {done} fertig · noch ca. {left} Min. · Gerät: {device}",
