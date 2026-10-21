@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { SURFACE_TYPES } from "../../scene";
 import {
   api,
@@ -6,6 +6,7 @@ import {
   type Brief,
   type ExclusionType,
   type ObjectCategory,
+  type OtherScenery,
   type SurfaceType,
 } from "../../api/client";
 import { useT } from "../../i18n";
@@ -62,6 +63,12 @@ export function BriefStep({ onSubmitted }: { onSubmitted: () => void }) {
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Sceneries already installed for this tile (orthos, other objects).
+  const [others, setOthers] = useState<OtherScenery[]>([]);
+  useEffect(() => {
+    if (job) void api.otherSceneries(job.id).then(setOthers).catch(() => setOthers([]));
+  }, [job]);
+  const ortho = others.some((o) => o.enabled && (o.kind === "ortho" || o.kind === "mesh"));
   const everything =
     (brief.object_categories?.length ?? 0) === CATEGORIES.length &&
     (brief.surface_types?.length ?? 0) === SURFACES.length;
@@ -146,8 +153,32 @@ export function BriefStep({ onSubmitted }: { onSubmitted: () => void }) {
         )}
       </Section>
 
+      {others.length > 0 && (
+        <Alert kind={ortho ? "warning" : "info"}>
+          <div data-testid="other-sceneries">
+            <div className="font-medium">{t("brief.others_title")}</div>
+            <ul className="my-1 list-disc pl-5 text-xs">
+              {others.map((o) => (
+                <li key={o.name}>
+                  {o.name} – {t(`brief.others_kind.${o.kind}`)}
+                  {!o.enabled && ` (${t("brief.others_disabled")})`}
+                </li>
+              ))}
+            </ul>
+            <div className="text-xs">{t("brief.others_objects_hint")}</div>
+            {ortho && brief.surface_mode !== "none" && (
+              <div className="mt-1 flex items-center gap-2 text-xs">
+                <span>{t("brief.others_ortho_hint")}</span>
+                <Button onClick={() => update({ surface_mode: "none" })} data-testid="surface-none-suggest">
+                  {t("brief.others_apply")}
+                </Button>
+              </div>
+            )}
+          </div>
+        </Alert>
+      )}
       <Section title={t("brief.surface_mode")}>
-        {(["material", "imagery"] as const).map((mode) => (
+        {(["material", "imagery", "none"] as const).map((mode) => (
           <label key={mode} className="flex items-center gap-2 text-sm">
             <input
               type="radio"

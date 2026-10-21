@@ -116,6 +116,9 @@ class ItemResult:
     photo_textures: list[str] = field(default_factory=list)  # ids of photos painted on it
     scan: bool = False  # its free 3D scan was placed (credited in the README)
     heading: float = 0.0  # degrees clockwise, as turned in the 3D preview
+    # What the built object covers on the ground (local metres around the anchor,
+    # before turning): west, south, east, north. Sizes the exclusion zone.
+    extent: tuple[float, float, float, float] | None = None
     shaded: bool = False  # ambient occlusion baked in by Blender
     detailed: bool = False  # fine detail (surrounds, dentils) baked into its normal map
     blender_input: str | None = None  # prepared for Blender (package build only)
@@ -135,6 +138,19 @@ def _anchor(item: SceneItem) -> tuple[float, float]:
         else (geom.representative_point())
     )
     return p.x, p.y
+
+
+def _extent(mesh) -> tuple[float, float, float, float] | None:
+    xs, ys = [], []
+    for patch in mesh.patches:
+        if patch.lod != "bake":
+            xs += [p[0] for p in patch.positions]
+            ys += [p[1] for p in patch.positions]
+    xs += [p.x for p in mesh.placements]
+    ys += [p.y for p in mesh.placements]
+    if not xs:
+        return None
+    return (round(min(xs), 2), round(min(ys), 2), round(max(xs), 2), round(max(ys), 2))
 
 
 def placement(item: SceneItem) -> tuple[tuple[float, float], float]:
@@ -421,6 +437,7 @@ def generate_one(
         res.status, res.message = "error", str(exc)[:2000]
     else:
         res.triangles = mesh.triangle_count
+        res.extent = _extent(mesh)
         res.photo_textures = photo_ids
         res.scan = mesh.used_scan
         res.library = [

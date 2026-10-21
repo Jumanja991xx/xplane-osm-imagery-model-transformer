@@ -418,3 +418,55 @@ def test_adjust_one_object_in_the_plan(client, app_ctx):
         f"/api/jobs/{job['id']}/objects/{stand['item_id']}", json={"attrs": {}}, headers=AUTH
     )
     assert late.status_code == 409
+
+
+def test_no_surfaces_keeps_the_ground_and_exclusions_cover_what_is_built(client, app_ctx):
+    brief = {**BRIEF, "surface_mode": "none", "exclusions": ["objects"]}
+    job = create(client)
+    job = client.put(f"/api/jobs/{job['id']}/brief", json=brief, headers=AUTH).json()
+    approve(client, job, "A")
+    job = wait_for_state(client, job["id"], {"analyzed"})
+    job = approve(client, job, "B").json()
+    plan = job["plan"]
+    assert plan["surface_mode"] == "none" and plan["surfaces"] == 0
+    assert not any(f.startswith("polygons/") for f in plan["files"])
+    preview = client.get(f"/api/jobs/{job['id']}/preview", headers=AUTH).json()
+    assert preview["surfaces"] == []
+    # Every built object knows what it covers; the exclusion zone takes all of it in.
+    from xpsb.jobs import pipeline
+
+    stored = app_ctx.jobs.get(job["id"])
+    ok = [o for o in stored.plan.objects if o.status == "ok"]
+    assert all(o.extent is not None for o in ok)
+    rects = pipeline._exclusion_rects(stored, ok)
+    for o, (w, s, e, n) in zip(ok, rects, strict=True):
+        bw, bs, be, bn = pipeline._object_bounds(o)
+        assert w <= bw and s <= bs and e >= be and n >= bn
+
+
+def test_other_sceneries_for_the_same_tile(tmp_path):
+    from xpsb.xplane import neighbors
+    from xpsb.xplane.dsf_text import Tile
+
+    tile = Tile(11, 48)
+    custom = tmp_path / "Custom Scenery"
+    for name, size in (("zOrtho4XP_+48+011", 30_000_000), ("Friedensengel", 2000), ("Mine", 10)):
+        dsf = custom / name / tile.dsf_relative_path
+        dsf.parent.mkdir(parents=True)
+        with dsf.open("wb") as f:
+            f.truncate(size)
+    other = custom / "Elsewhere" / Tile(8, 49).dsf_relative_path
+    other.parent.mkdir(parents=True)
+    other.write_bytes(b"x")
+    (custom / "scenery_packs.ini").write_text(
+        "I\n1000 Version\nSCENERY\n\n"
+        "SCENERY_PACK Custom Scenery/Friedensengel/\n"
+        "SCENERY_PACK_DISABLED Custom Scenery/zOrtho4XP_+48+011/\n",
+        encoding="utf-8",
+    )
+    found = neighbors.for_tile(str(tmp_path), tile, own="Mine")
+    assert [(s.name, s.kind, s.enabled, s.order) for s in found] == [
+        ("Friedensengel", "objects", True, 0),
+        ("zOrtho4XP_+48+011", "ortho", False, 1),
+    ]
+    assert neighbors.for_tile(None, tile) == []

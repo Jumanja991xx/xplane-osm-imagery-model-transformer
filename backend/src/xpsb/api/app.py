@@ -43,7 +43,9 @@ from xpsb.photos import MAPILLARY_ACCOUNT, SearchResult
 from xpsb.scene import ItemPatch, NewItem, PhotoTexture
 from xpsb.secrets import ANTHROPIC_ACCOUNT, SecretStore, normalize_api_key
 from xpsb.settings import ImagerySettings, Settings, SettingsStore
-from xpsb.xplane import dsftool
+from xpsb.xplane import dsftool, neighbors
+from xpsb.xplane.dsf_text import Tile
+from xpsb.xplane.neighbors import OtherScenery
 from xpsb.xplane_detect import XPlaneCheck, check_xplane_path, detect_xplane_installs
 
 TAURI_ORIGINS = ["tauri://localhost", "http://tauri.localhost", "https://tauri.localhost"]
@@ -329,6 +331,16 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
             return SourceTest(ok=False, detail="incomplete URL ({z}, {x}, {y}; subdomains for {s})")
         ok, detail = await asyncio.to_thread(xyz.check_at, source, body.lon, body.lat)
         return SourceTest(ok=ok, detail=detail)
+
+    @app.get("/api/jobs/{job_id}/other-sceneries", dependencies=auth)
+    async def other_sceneries(job_id: str) -> list[OtherScenery]:
+        """Installed sceneries for the same tile (orthos, other objects)."""
+        job = ctx.jobs.get(job_id)
+        own = job.brief.package_name if job.brief else None
+        tile = Tile.containing(*job.aoi_center)
+        return await asyncio.to_thread(
+            neighbors.for_tile, ctx.settings.load().xplane_path, tile, own
+        )
 
     @app.get("/api/places", dependencies=auth)
     async def search_places(

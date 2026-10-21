@@ -11,6 +11,7 @@ export type SystemStatus = S["SystemStatus"];
 export type XPlaneCheck = S["XPlaneCheck"];
 export type BlenderTest = S["BlenderTest"];
 export type Place = S["Place"];
+export type OtherScenery = S["OtherScenery"];
 export type DsfToolStatus = S["DsfToolStatus"];
 export type GeoJsonPolygon = S["GeoJsonPolygon"];
 export type JobState = JobView["state"];
@@ -137,6 +138,7 @@ export const api = {
   checkEsriKey: () => request<S["KeyCheck"]>("POST", "/api/secrets/esri/check"),
   testImagery: (imagery: ImagerySettings, lon?: number, lat?: number) =>
     request<S["SourceTest"]>("POST", "/api/imagery/test", { imagery, lon, lat }),
+  otherSceneries: (id: string) => request<OtherScenery[]>("GET", `/api/jobs/${id}/other-sceneries`),
   searchPlaces: (q: string, lon: number, lat: number, final: boolean) =>
     request<Place[]>(
       "GET",

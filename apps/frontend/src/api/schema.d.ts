@@ -184,6 +184,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/jobs/{job_id}/other-sceneries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Other Sceneries
+         * @description Installed sceneries for the same tile (orthos, other objects).
+         */
+        get: operations["other_sceneries_api_jobs__job_id__other_sceneries_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/places": {
         parameters: {
             query?: never;
@@ -1453,6 +1473,20 @@ export interface components {
          * @enum {string}
          */
         ObjectCategory: "buildings" | "grandstands" | "scaffolding" | "canopies" | "barriers" | "masts" | "monuments";
+        /** OtherScenery */
+        OtherScenery: {
+            /** Name */
+            name: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Order */
+            order?: number | null;
+        };
         /** PathBody */
         PathBody: {
             /** Path */
@@ -1688,6 +1722,13 @@ export interface components {
              * @default 0
              */
             heading: number;
+            /** Extent */
+            extent?: [
+                number,
+                number,
+                number,
+                number
+            ] | null;
             /**
              * Shaded
              * @default false
@@ -1947,7 +1988,7 @@ export interface components {
          * SurfaceMode
          * @enum {string}
          */
-        SurfaceMode: "material" | "imagery";
+        SurfaceMode: "material" | "imagery" | "none";
         /**
          * SurfaceType
          * @enum {string}
@@ -2388,6 +2429,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SourceTest"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    other_sceneries_api_jobs__job_id__other_sceneries_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OtherScenery"][];
                 };
             };
             /** @description Validation Error */

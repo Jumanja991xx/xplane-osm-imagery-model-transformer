@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import re
 import shutil
 import threading
@@ -27,6 +28,7 @@ from xpsb.ai import analyze as ai
 from xpsb.ai import detect
 from xpsb.ai.usage import UsageLedger
 from xpsb.build import assemble, phototex
+from xpsb.catalog import SurfaceMode
 from xpsb.geo import METERS_PER_DEG_LAT, meters_per_deg_lon
 from xpsb.imagery import wms
 from xpsb.imagery.sources import candidates, resolve_source
@@ -344,9 +346,27 @@ EXCLUSION_MARGIN_M = 3.0
 Bounds = tuple[float, float, float, float]  # west, south, east, north
 
 
-def _exclusion_rects(job: Job, built_ids: set[str]) -> list[Bounds]:
-    """Where other scenery is removed: one rectangle around each new object (and
-    surface, for surface exclusions), or the whole area if the user chose that."""
+def _object_bounds(o: PlanObject) -> Bounds | None:
+    """What the built object really covers (its mesh and library objects, moved and
+    turned as placed) in lon/lat - often much more than its OSM outline (a statue
+    mapped as a point stands on terraces and steps)."""
+    if o.extent is None:
+        return None
+    w, s, e, n = o.extent
+    h = math.radians(o.heading)
+    lon0, lat0 = o.anchor
+    lons, lats = [], []
+    for x, y in ((w, s), (e, s), (e, n), (w, n)):
+        xr = x * math.cos(h) + y * math.sin(h)
+        yr = -x * math.sin(h) + y * math.cos(h)
+        lons.append(lon0 + xr / meters_per_deg_lon(lat0))
+        lats.append(lat0 + yr / METERS_PER_DEG_LAT)
+    return (min(lons), min(lats), max(lons), max(lats))
+
+
+def _exclusion_rects(job: Job, built: list[PlanObject]) -> list[Bounds]:
+    """Where other scenery is removed: one rectangle around each new object - its OSM
+    outline and what was really built - or the whole area if the user chose that."""
     assert job.brief is not None and job.analysis is not None
     if job.brief.exclusion_scope is ExclusionScope.AREA:
         ring = job.aoi.ring
@@ -361,10 +381,15 @@ def _exclusion_rects(job: Job, built_ids: set[str]) -> list[Bounds]:
     _, lat0 = job.aoi_center
     dx = EXCLUSION_MARGIN_M / meters_per_deg_lon(lat0)
     dy = EXCLUSION_MARGIN_M / METERS_PER_DEG_LAT
+    by_id = {o.item_id: o for o in built}
     rects = []
     for it in job.analysis.items:
-        if it.id in built_ids:
+        if it.id in by_id:
             w, s, e, n = shape(it.geometry).bounds
+            built_bounds = _object_bounds(by_id[it.id])
+            if built_bounds is not None:
+                w, s = min(w, built_bounds[0]), min(s, built_bounds[1])
+                e, n = max(e, built_bounds[2]), max(n, built_bounds[3])
             rects.append((w - dx, s - dy, e + dx, n + dy))
     return rects
 
@@ -380,12 +405,16 @@ def _surface_rects(job: Job) -> list[Bounds]:
 
 def _exclusions(job: Job) -> list[tuple[str, Bounds]]:
     assert job.brief is not None and job.plan is not None
-    built = {o.item_id for o in job.plan.objects if o.status == "ok"}
+    built = [o for o in job.plan.objects if o.status == "ok"]
     rects = _exclusion_rects(job, built)
     out = []
     for kind in job.brief.exclusions:
         kind_rects = rects
-        if kind is ExclusionType.POLYGONS and job.brief.exclusion_scope is ExclusionScope.OBJECTS:
+        if (
+            kind is ExclusionType.POLYGONS
+            and job.brief.exclusion_scope is ExclusionScope.OBJECTS
+            and job.brief.surface_mode is not SurfaceMode.NONE
+        ):
             kind_rects = rects + _surface_rects(job)
         out += [(kind.value, r) for r in kind_rects]
     return out
@@ -495,6 +524,8 @@ def make_plan(job: Job, job_dir: Path, library: Catalog | None = None) -> BuildP
     surfaces = [
         it for it in job.analysis.items if it.kind == "surface" and it.included and not it.proposal
     ]
+    if job.brief.surface_mode is SurfaceMode.NONE:  # the ground stays as it is
+        surfaces = []
 
     items = [
         PlanItem(kind="confirmed", label_key=_label_key(key), count=count)
@@ -514,7 +545,10 @@ def make_plan(job: Job, job_dir: Path, library: Catalog | None = None) -> BuildP
     files = [tile.dsf_relative_path, "README.txt"] + object_files(objects)
     kinds = ["ortho"] if ortho and surfaces else sorted({str(s.category) for s in surfaces})
     files += [f"polygons/xpsb_{k}.{ext}" for k in kinds for ext in ("pol", "png")]
-    rects = _exclusion_rects(job, {o.item_id for o in ok})
+    rects = _exclusion_rects(job, ok)
+    surface_mode = "imagery" if ortho else "material"
+    if job.brief.surface_mode is SurfaceMode.NONE:
+        surface_mode = "none"
     return BuildPlan(
         package_name=job.brief.package_name,
         tile=tile.dsf_relative_path,
@@ -522,7 +556,7 @@ def make_plan(job: Job, job_dir: Path, library: Catalog | None = None) -> BuildP
         detail=detail,
         objects=objects,
         surfaces=len(surfaces),
-        surface_mode="imagery" if ortho else "material",
+        surface_mode=surface_mode,
         exclusions=[k.value for k in job.brief.exclusions],
         exclusion_scope=job.brief.exclusion_scope.value,
         exclusion_rects=len(rects),
@@ -619,8 +653,11 @@ def build_package(
     log.publish_threadsafe(type="progress", stage="write", progress=0.0, key=write_key)
     assert job.analysis is not None
     tile = Tile.containing(*plan.center)
+    items = job.analysis.items
+    if job.brief.surface_mode is SurfaceMode.NONE:  # no surfaces: the ground stays as it is
+        items = [it for it in items if it.kind != "surface"]
     result = assemble.write_package(
-        job.analysis.items,
+        items,
         package,
         tile,
         plan.detail,

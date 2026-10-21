@@ -401,6 +401,50 @@
         }
       }
     },
+    "/api/jobs/{job_id}/other-sceneries": {
+      "get": {
+        "summary": "Other Sceneries",
+        "description": "Installed sceneries for the same tile (orthos, other objects).",
+        "operationId": "other_sceneries_api_jobs__job_id__other_sceneries_get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OtherScenery"
+                  },
+                  "title": "Response Other Sceneries Api Jobs  Job Id  Other Sceneries Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/places": {
       "get": {
         "summary": "Search Places",
@@ -4024,6 +4068,40 @@
         ],
         "title": "ObjectCategory"
       },
+      "OtherScenery": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          },
+          "order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "kind"
+        ],
+        "title": "OtherScenery"
+      },
       "PathBody": {
         "properties": {
           "path": {
@@ -4561,6 +4639,33 @@
             "type": "number",
             "title": "Heading",
             "default": 0.0
+          },
+          "extent": {
+            "anyOf": [
+              {
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array",
+                "maxItems": 4,
+                "minItems": 4
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extent"
           },
           "shaded": {
             "type": "boolean",
@@ -5242,7 +5347,8 @@
         "type": "string",
         "enum": [
           "material",
-          "imagery"
+          "imagery",
+          "none"
         ],
         "title": "SurfaceMode"
       },

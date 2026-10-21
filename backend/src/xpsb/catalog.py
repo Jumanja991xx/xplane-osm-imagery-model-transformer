@@ -28,6 +28,7 @@ class SurfaceType(StrEnum):
 class SurfaceMode(StrEnum):
     MATERIAL = "material"
     IMAGERY = "imagery"
+    NONE = "none"  # no surfaces at all: the ground of other sceneries (orthos) stays
 
 
 # Names for unnamed objects in messages built on the server (progress, approvals).

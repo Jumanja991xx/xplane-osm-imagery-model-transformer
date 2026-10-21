@@ -667,6 +667,8 @@ class JobManager:
         for it in job.analysis.items:
             if it.kind != "surface" or not it.included or it.proposal:
                 continue
+            if job.plan.surface_mode == "none":  # not built: the ground stays as it is
+                break
             geom = shape(it.geometry)
             for poly in getattr(geom, "geoms", [geom]):
                 surfaces.append(
