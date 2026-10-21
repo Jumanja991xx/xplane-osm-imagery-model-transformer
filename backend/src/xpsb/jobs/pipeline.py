@@ -14,6 +14,7 @@ import math
 import re
 import shutil
 import threading
+import urllib.parse
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -108,6 +109,9 @@ def _osm_stage(job: Job, deps: AnalysisDeps, log: EventLog, notes: list[Note]) -
             deps.cache_dir / "overpass",
             ring=[tuple(p) for p in job.aoi.ring],
             own_endpoint=deps.settings.overpass_url,
+            on_try=lambda ep: _progress(
+                log, "osm", 0.0, "stage.osm_asking", host=urllib.parse.urlsplit(ep).hostname
+            ),
         )
     except overpass.OverpassError as exc:
         # Without OSM the job goes on: the AI finds objects in the aerial image,

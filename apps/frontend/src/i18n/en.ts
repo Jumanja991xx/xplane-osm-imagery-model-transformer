@@ -339,6 +339,7 @@ export const en: Record<MessageKey, string> = {
   "attr.open": "open",
   "plan.confirmed": "Confirmed list",
   "stage.osm_done": "OSM data: {count} matching items",
+  "stage.osm_asking": "OSM data: asking {host} …",
   "stage.ai_done": "AI analysis done: {analyzed} assessed, {cost_usd} USD",
   "settings.monthly_limit": "AI monthly limit (USD, across all jobs)",
   "settings.imagery": "Aerial imagery source",

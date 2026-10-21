@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 import urllib.error
 
@@ -90,3 +91,47 @@ def test_osm_api_answer_becomes_overpass_style_elements(down, monkeypatch, tmp_p
     assert {i.id for i in items} >= {"way/10", "relation/20"}
     # Stored like an Overpass answer: the next fetch is a plain cache hit.
     assert json.loads(next(tmp_path.glob("*.json")).read_text())["source"] == "osm_api"
+
+
+def test_a_hanging_server_does_not_hold_up_the_next(monkeypatch, tmp_path):
+    """A busy server keeps the request open (Siklós: minutes without an answer): the
+    next server is asked after HEDGE_S, its answer wins."""
+    monkeypatch.delenv("XPSB_FIXTURES_DIR", raising=False)
+    monkeypatch.setattr(overpass, "HEDGE_S", 0.2)
+    release = threading.Event()
+    asked = []
+
+    def post(endpoint, body):
+        asked.append(endpoint)
+        if endpoint == overpass.ENDPOINTS[0]:
+            release.wait(10)  # hangs
+            raise TimeoutError("timed out")
+        return {"elements": [{"type": "node", "id": 7}]}
+
+    monkeypatch.setattr(overpass, "_post", post)
+    start = time.monotonic()
+    tried = []
+    data = overpass.fetch("q", tmp_path, ring=RING, on_try=tried.append)
+    release.set()
+    assert data["elements"] == [{"type": "node", "id": 7}]
+    assert time.monotonic() - start < 2
+    assert asked[:2] == overpass.ENDPOINTS[:2] and tried == asked
+
+
+def test_when_all_servers_hang_the_osm_api_steps_in_after_the_deadline(monkeypatch, tmp_path):
+    monkeypatch.delenv("XPSB_FIXTURES_DIR", raising=False)
+    monkeypatch.setattr(overpass, "HEDGE_S", 0.05)
+    monkeypatch.setattr(overpass, "DEADLINE_S", 0.5)
+    monkeypatch.setattr(overpass.time, "sleep", lambda s: None)
+    release = threading.Event()
+
+    def hang(endpoint, body):
+        release.wait(10)
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(overpass, "_post", hang)
+    monkeypatch.setattr(overpass, "osm_api_map", lambda ring: {"elements": [], "source": "osm_api"})
+    start = time.monotonic()
+    data = overpass.fetch("q", tmp_path, ring=RING)
+    release.set()
+    assert data["source"] == "osm_api" and time.monotonic() - start < 2

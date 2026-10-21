@@ -337,6 +337,7 @@ export const de = {
   "attr.open": "offen",
   "plan.confirmed": "Bestätigte Liste",
   "stage.osm_done": "OSM-Daten: {count} passende Einträge",
+  "stage.osm_asking": "OSM-Daten: frage {host} …",
   "stage.ai_done": "KI-Analyse fertig: {analyzed} bewertet, {cost_usd} USD",
   "settings.monthly_limit": "KI-Monatslimit (USD, über alle Aufträge)",
   "settings.imagery": "Luftbildquelle",

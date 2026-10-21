@@ -1,7 +1,12 @@
 """Overpass API client.
 
-Fair use (community servers): identify ourselves with a User-Agent, one request
-per job, cache answers on disk, back off on 429/504 and try a second server.
+Fair use (community servers): identify ourselves with a User-Agent, cache answers
+on disk, back off on 429/504. A busy server can keep a request open for minutes
+without answering; waiting for each server in turn could take half an hour before
+the fallbacks got their chance. So the next server is asked only when the one
+before has not answered within HEDGE_S (most answers come in seconds, so mostly
+one request is sent), the first answer wins, and after DEADLINE_S the fallbacks
+take over.
 """
 
 from __future__ import annotations
@@ -10,10 +15,13 @@ import hashlib
 import json
 import logging
 import os
+import queue
+import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
 
 from shapely.geometry import Polygon
@@ -33,6 +41,9 @@ USER_AGENT = (
     "(+https://github.com/Jumanja991xx/xplane-osm-imagery-model-transformer)"
 )
 CACHE_MAX_AGE_S = 7 * 24 * 3600
+REQUEST_TIMEOUT_S = 100  # per request (the query asks the server for at most 90 s)
+HEDGE_S = 25.0  # no answer yet: ask the next server as well
+DEADLINE_S = 150.0  # all Overpass servers together; then older data / the OSM API
 
 # Everything the catalog can use; the classifier decides what each element becomes.
 SELECTORS = [
@@ -124,8 +135,59 @@ def _post(endpoint: str, body: bytes) -> dict:
     req = urllib.request.Request(
         endpoint, data=body, headers={"User-Agent": USER_AGENT}, method="POST"
     )
-    with urllib.request.urlopen(req, timeout=120) as resp:
+    with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT_S) as resp:
         return json.loads(resp.read())
+
+
+def _race(
+    endpoints: list[str], body: bytes, retries: int, on_try: Callable[[str], None] | None
+) -> tuple[dict | None, str]:
+    """Asks the servers one after another, the next one already when the one before
+    takes longer than HEDGE_S or fails; the first answer wins. A server that failed
+    fast (busy: 429/504, unreachable) is asked again up to `retries` times."""
+    answers: queue.Queue = queue.Queue()
+    deadline = time.monotonic() + DEADLINE_S
+    order = [ep for _ in range(retries + 1) for ep in endpoints]
+    last_error = "no endpoint tried"
+    running = 0
+
+    def ask(endpoint: str) -> None:
+        try:
+            answers.put((endpoint, _post(endpoint, body), None))
+        except urllib.error.HTTPError as exc:
+            answers.put((endpoint, None, f"HTTP {exc.code}"))
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+            answers.put((endpoint, None, str(exc)))
+
+    next_try = 0
+    while time.monotonic() < deadline and (running or next_try < len(order)):
+        if next_try < len(order):
+            endpoint = order[next_try]
+            next_try += 1
+            if next_try > len(endpoints):
+                time.sleep(2.0)  # a second round: give busy servers a moment
+            if on_try:
+                on_try(endpoint)
+            threading.Thread(target=ask, args=(endpoint,), daemon=True).start()
+            running += 1
+            wait = HEDGE_S
+        else:
+            wait = deadline - time.monotonic()
+        try:
+            endpoint, data, error = answers.get(
+                timeout=max(0.0, min(wait, deadline - time.monotonic()))
+            )
+        except queue.Empty:
+            continue  # no answer in time: ask the next server as well
+        running -= 1
+        if data is not None:
+            return data, ""
+        last_error = f"{endpoint}: {error}"
+        log.warning("overpass %s", last_error)
+        # Failed: the next server right away (the loop starts it now).
+    if running:
+        last_error += f"; no answer within {DEADLINE_S:.0f} s"
+    return None, last_error
 
 
 def fetch(
@@ -134,6 +196,7 @@ def fetch(
     retries: int = 2,
     ring: list[tuple[float, float]] | None = None,
     own_endpoint: str | None = None,
+    on_try: Callable[[str], None] | None = None,
 ) -> dict:
     """OSM data for the query. When every Overpass server fails: an older answer for
     the same (or a larger, enclosing) area from the cache, then OpenStreetMap's own
@@ -150,23 +213,10 @@ def fetch(
 
     body = urllib.parse.urlencode({"data": query}).encode()
     endpoints = ([own_endpoint] if own_endpoint else []) + ENDPOINTS
-    last_error = "no endpoint tried"
-    for attempt in range(retries + 1):
-        for endpoint in endpoints:
-            try:
-                data = _post(endpoint, body)
-            except urllib.error.HTTPError as exc:
-                last_error = f"{endpoint}: HTTP {exc.code}"
-                log.warning("overpass %s", last_error)
-                continue
-            except (urllib.error.URLError, TimeoutError, ValueError) as exc:
-                last_error = f"{endpoint}: {exc}"
-                log.warning("overpass %s", last_error)
-                continue
-            _store(cache_dir, cache_file, data, ring)
-            return data
-        if attempt < retries:
-            time.sleep(5 * (attempt + 1))
+    data, last_error = _race(endpoints, body, retries, on_try)
+    if data is not None:
+        _store(cache_dir, cache_file, data, ring)
+        return data
     old = _stale(cache_dir, cache_file, ring)
     if old is not None:
         return old
