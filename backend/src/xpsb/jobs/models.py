@@ -238,6 +238,9 @@ class BuildPlan(BaseModel):
     exclusions: list[str] = Field(default_factory=list)  # kinds, e.g. "objects"
     exclusion_scope: str = "objects"
     exclusion_rects: int = 0  # rectangles per kind
+    # Objects/polygons of other packs on our objects' places (xplane/foreign.py):
+    # {kind, bounds [w, s, e, n], pack, path} - each gets its own exclusion zone.
+    foreign_zones: list[dict] = Field(default_factory=list)
     test_scenery: bool = False
     cube_height_m: float | None = None
 

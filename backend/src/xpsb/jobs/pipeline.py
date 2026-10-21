@@ -21,6 +21,7 @@ from pathlib import Path
 
 from PIL import Image
 from shapely.geometry import Polygon, shape
+from shapely.ops import unary_union
 
 from xpsb import APP_NAME, __version__, research
 from xpsb import photos as photos_mod
@@ -51,7 +52,7 @@ from xpsb.osm import bridges as bridges_mod
 from xpsb.osm import classify, overpass, rows
 from xpsb.photos import Photo
 from xpsb.settings import Settings
-from xpsb.xplane import dsftool, terrain
+from xpsb.xplane import dsftool, foreign, terrain
 from xpsb.xplane.dsf_text import Tile
 from xpsb.xplane.library import Catalog
 from xpsb.xplane.testscene import files_for
@@ -447,6 +448,38 @@ def _exclusion_rects(job: Job, built: list[PlanObject]) -> list[Bounds]:
     return rects
 
 
+def _foreign_zones(job: Job, built: list[PlanObject], reader) -> tuple[list[dict], list[str]]:
+    """Exclusion zones for what other packs place on our objects' places."""
+    assert job.brief is not None and job.analysis is not None
+    if reader is None or not built or not job.brief.exclusions:
+        return [], []
+    from shapely.geometry import box as bbox_shape
+
+    by_id = {o.item_id: o for o in built}
+    ours = []
+    for it in job.analysis.items:
+        if it.id not in by_id:
+            continue
+        geom = shape(it.geometry)
+        if geom.geom_type in ("LineString", "Point"):
+            lat = geom.centroid.y
+            width = (it.attrs.width_m or 4.0) / 2
+            geom = geom.buffer(width / ((meters_per_deg_lon(lat) + METERS_PER_DEG_LAT) / 2))
+        bounds = _object_bounds(by_id[it.id])
+        ours.append(geom if bounds is None else geom.union(bbox_shape(*bounds)))
+    if not ours:
+        return [], []
+    w, s, e, n = unary_union(ours).bounds
+    found, failed = reader((w, s, e, n))
+    wanted = {k.value for k in job.brief.exclusions}
+    zones = [
+        {"kind": p.kind, "bounds": list(foreign.zone(p)), "pack": p.pack, "path": p.path}
+        for p in foreign.overlapping(found, ours)
+        if p.kind in wanted
+    ]
+    return zones, failed
+
+
 def _surface_rects(job: Job) -> list[Bounds]:
     assert job.analysis is not None
     return [
@@ -470,6 +503,7 @@ def _exclusions(job: Job) -> list[tuple[str, Bounds]]:
         ):
             kind_rects = rects + _surface_rects(job)
         out += [(kind.value, r) for r in kind_rects]
+    out += [(z["kind"], tuple(z["bounds"])) for z in job.plan.foreign_zones]
     return out
 
 
@@ -537,7 +571,12 @@ def object_items(objects: list[PlanObject]) -> list[PlanItem]:
     return items
 
 
-def make_plan(job: Job, job_dir: Path, library: Catalog | None = None) -> BuildPlan:
+def make_plan(
+    job: Job,
+    job_dir: Path,
+    library: Catalog | None = None,
+    foreign_reader: Callable | None = None,
+) -> BuildPlan:
     """Plan from the confirmed list: generates every object once for the 3D preview
     (job folder only) so the user sees what will be built before approving it."""
     assert job.brief is not None and job.analysis is not None
@@ -599,6 +638,28 @@ def make_plan(job: Job, job_dir: Path, library: Catalog | None = None) -> BuildP
     kinds = ["ortho"] if ortho and surfaces else sorted({str(s.category) for s in surfaces})
     files += [f"polygons/xpsb_{k}.{ext}" for k in kinds for ext in ("pol", "png")]
     rects = _exclusion_rects(job, ok)
+    zones, failed = _foreign_zones(job, ok, foreign_reader)
+    if zones:
+        by_pack: dict[str, int] = {}
+        for z in zones:
+            by_pack[z["pack"]] = by_pack.get(z["pack"], 0) + 1
+        items.append(
+            PlanItem(
+                kind="foreign",
+                label_key="plan.foreign",
+                count=len(zones),
+                params={"packs": ", ".join(f"{p} ({n})" for p, n in sorted(by_pack.items()))},
+            )
+        )
+    if failed:
+        items.append(
+            PlanItem(
+                kind="foreign_unread",
+                label_key="plan.foreign_unread",
+                count=len(failed),
+                params={"packs": ", ".join(failed)},
+            )
+        )
     surface_mode = "imagery" if ortho else "material"
     if job.brief.surface_mode is SurfaceMode.NONE:
         surface_mode = "none"
@@ -613,6 +674,7 @@ def make_plan(job: Job, job_dir: Path, library: Catalog | None = None) -> BuildP
         exclusions=[k.value for k in job.brief.exclusions],
         exclusion_scope=job.brief.exclusion_scope.value,
         exclusion_rects=len(rects),
+        foreign_zones=zones,
         items=items,
         files=sorted(files),
     )

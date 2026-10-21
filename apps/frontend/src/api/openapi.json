@@ -2936,6 +2936,14 @@
             "title": "Exclusion Rects",
             "default": 0
           },
+          "foreign_zones": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Foreign Zones"
+          },
           "test_scenery": {
             "type": "boolean",
             "title": "Test Scenery",

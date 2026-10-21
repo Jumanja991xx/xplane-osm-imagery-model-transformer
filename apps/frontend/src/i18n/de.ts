@@ -436,6 +436,8 @@ export const de = {
   "analysis.exclude": "Ausschließen",
   "analysis.include_short": "Aufnehmen",
   "plan.objects": "{count} 3D-Objekte bauen (Bauskripte, Texturen, X-Plane-Objekte).",
+  "plan.foreign": "{count} Objekte/Flächen anderer Szenerien stehen genau dort, wo unsere stehen – sie bekommen eigene Ausschlusszonen: {packs}.",
+  "plan.foreign_unread": "{count} andere Szenerien ließen sich nicht lesen (DSFTool): {packs} – dort gelten nur die Rechtecke um unsere Objekte.",
   "plan.surfaces": "{count} Bodenflächen anlegen (Rasen, Asphalt, Sand …).",
   "plan.surfaces_ortho": "{count} Bodenflächen mit dem Luftbild als Textur anlegen.",
   "gate.c.exclude_objects": "Entfernen: {label} anderer Szenerien unter deinen neuen Objekten ({count} Bereiche, je 3 m Rand).",

@@ -45,7 +45,8 @@ from xpsb.paths import AppPaths
 from xpsb.scene import ItemAttrs, ItemPatch, NewItem, PhotoTexture, SceneItem, validate_item
 from xpsb.secrets import ANTHROPIC_ACCOUNT, SecretStore
 from xpsb.settings import SettingsStore
-from xpsb.xplane import dsftool, library
+from xpsb.xplane import dsftool, foreign, library
+from xpsb.xplane.dsf_text import Tile
 from xpsb.xplane.library import Catalog
 from xpsb.xplane_detect import is_xplane_running
 
@@ -793,6 +794,23 @@ class JobManager:
         self._save(job)
         return job
 
+    def _foreign_reader(self, job: Job):
+        """Reads what other packs place around a box (for exact exclusion zones)."""
+        settings = self._settings.load()
+        exe = dsftool.locate(settings.dsftool_path, self._resources_dir)
+        if not settings.xplane_path or exe is None:
+            return None
+        lon, lat = job.aoi_center
+        own = job.brief.package_name if job.brief else None
+        cache = self._paths.cache / "foreign"
+
+        def read(bbox):
+            return foreign.near(
+                settings.xplane_path, exe, Tile.containing(lon, lat), bbox, cache, own
+            )
+
+        return read
+
     async def place_built(self, job_id: str, item_id: str, attrs: dict) -> Job:
         """Moves/turns an object after the build (3D view of the result): only the
         DSF is written again - in the package and, if installed, in Custom Scenery."""
@@ -1219,7 +1237,7 @@ class JobManager:
             return
         self.events(job.id).publish(type="progress", stage="plan", progress=0.0, key="stage.plan")
         job.plan = await asyncio.to_thread(
-            pipeline.make_plan, job, self.job_dir(job.id), self.library()
+            pipeline.make_plan, job, self.job_dir(job.id), self.library(), self._foreign_reader(job)
         )
         self._set_state(job, JobState.PLANNED)
 
@@ -1437,7 +1455,9 @@ class JobManager:
                 self._set_state(job, JobState.PLANNING)
                 self._start(job, self._do_plan(job, ctx.design))
             else:
-                job.plan = pipeline.make_plan(job, self.job_dir(job.id), self.library())
+                job.plan = pipeline.make_plan(
+                    job, self.job_dir(job.id), self.library(), self._foreign_reader(job)
+                )
                 self._set_state(job, JobState.PLANNED)
         elif gate == "C":
             assert ctx.dsftool is not None

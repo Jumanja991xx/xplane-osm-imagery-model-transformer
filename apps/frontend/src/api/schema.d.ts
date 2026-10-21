@@ -1070,6 +1070,10 @@ export interface components {
              * @default 0
              */
             exclusion_rects: number;
+            /** Foreign Zones */
+            foreign_zones?: {
+                [key: string]: unknown;
+            }[];
             /**
              * Test Scenery
              * @default false

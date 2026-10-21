@@ -438,6 +438,8 @@ export const en: Record<MessageKey, string> = {
   "analysis.exclude": "Exclude",
   "analysis.include_short": "Include",
   "plan.objects": "Build {count} 3D objects (build scripts, textures, X-Plane objects).",
+  "plan.foreign": "{count} objects/polygons of other sceneries stand exactly where ours do – each gets its own exclusion zone: {packs}.",
+  "plan.foreign_unread": "{count} other sceneries could not be read (DSFTool): {packs} – only the rectangles around our objects apply there.",
   "plan.surfaces": "Create {count} ground surfaces (grass, asphalt, dirt …).",
   "plan.surfaces_ortho": "Create {count} ground surfaces textured with the aerial image.",
   "gate.c.exclude_objects": "Remove: {label} of other sceneries under your new objects ({count} areas, 3 m margin each).",
