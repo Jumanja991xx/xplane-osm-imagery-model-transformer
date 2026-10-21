@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import sys
 from pathlib import Path
 
@@ -385,6 +386,25 @@ def test_adjust_one_object_in_the_plan(client, app_ctx):
     # only this object was rebuilt, and approval C reflects it
     assert preview.read_text() != before
     assert job["pending_gate"]["hash"] != old_hash
+
+    # Moved 10 m east and turned by 90 degrees in the preview: no rebuild, new placement.
+    before = preview.read_text()
+    anchor = next(o for o in job["plan"]["objects"] if o["item_id"] == stand["item_id"])["anchor"]
+    r = client.patch(
+        f"/api/jobs/{job['id']}/objects/{stand['item_id']}",
+        json={"attrs": {"shift_x_m": 10.0, "turn_deg": -90}},
+        headers=AUTH,
+    )
+    assert r.status_code == 200, r.text
+    moved = next(o for o in r.json()["plan"]["objects"] if o["item_id"] == stand["item_id"])
+    assert preview.read_text() == before
+    assert moved["heading"] == 270.0
+    east_m = (moved["anchor"][0] - anchor[0]) * 111320 * math.cos(math.radians(anchor[1]))
+    assert abs(east_m - 10.0) < 0.1 and abs(moved["anchor"][1] - anchor[1]) < 1e-9
+    scene = client.get(f"/api/jobs/{job['id']}/preview", headers=AUTH)
+    if scene.status_code == 200:
+        obj = next(o for o in scene.json()["objects"] if o["item_id"] == stand["item_id"])
+        assert obj["heading"] == 270.0
 
     bad = client.patch(
         f"/api/jobs/{job['id']}/objects/{stand['item_id']}",

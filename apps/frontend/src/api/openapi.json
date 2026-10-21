@@ -3537,6 +3537,45 @@
               }
             ],
             "title": "Use Scan"
+          },
+          "shift_x_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000.0,
+                "minimum": -1000.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shift X M"
+          },
+          "shift_y_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000.0,
+                "minimum": -1000.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shift Y M"
+          },
+          "turn_deg": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 720.0,
+                "minimum": -720.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Turn Deg"
           }
         },
         "type": "object",
@@ -4517,6 +4556,11 @@
             "type": "boolean",
             "title": "Scan",
             "default": false
+          },
+          "heading": {
+            "type": "number",
+            "title": "Heading",
+            "default": 0.0
           },
           "shaded": {
             "type": "boolean",

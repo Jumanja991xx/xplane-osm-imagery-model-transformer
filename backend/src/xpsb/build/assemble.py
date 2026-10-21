@@ -115,6 +115,7 @@ class ItemResult:
     lights: int = 0
     photo_textures: list[str] = field(default_factory=list)  # ids of photos painted on it
     scan: bool = False  # its free 3D scan was placed (credited in the README)
+    heading: float = 0.0  # degrees clockwise, as turned in the 3D preview
     shaded: bool = False  # ambient occlusion baked in by Blender
     detailed: bool = False  # fine detail (surrounds, dentils) baked into its normal map
     blender_input: str | None = None  # prepared for Blender (package build only)
@@ -134,6 +135,16 @@ def _anchor(item: SceneItem) -> tuple[float, float]:
         else (geom.representative_point())
     )
     return p.x, p.y
+
+
+def placement(item: SceneItem) -> tuple[tuple[float, float], float]:
+    """Where the object stands (lon, lat) and its heading (degrees clockwise): the
+    centre of its outline, moved and turned as set in the 3D preview."""
+    lon, lat = _anchor(item)
+    a = item.attrs
+    lon += (a.shift_x_m or 0.0) / meters_per_deg_lon(lat)
+    lat += (a.shift_y_m or 0.0) / METERS_PER_DEG_LAT
+    return (lon, lat), (a.turn_deg or 0.0) % 360.0
 
 
 def _to_local(lon0: float, lat0: float) -> Callable[[float, float], list[float]]:
@@ -391,7 +402,8 @@ def generate_one(
     photo_dir: Path | None = None,
     blender_exe: str | None = None,
 ) -> ItemResult:
-    res = ItemResult(item.id, stem, str(item.category), item.name, _anchor(item), "ok")
+    anchor, heading = placement(item)
+    res = ItemResult(item.id, stem, str(item.category), item.name, anchor, "ok", heading=heading)
     res.designed = bool(item.script)
     for name in (
         f"{stem}.png",
@@ -718,17 +730,21 @@ def write_package(
             continue
         if res.has_mesh:
             idx = dsf.add_object_def(f"objects/{res.stem}.obj")
-            dsf.add_object(idx, res.anchor[0], res.anchor[1], 0.0)
-        # Library objects: only referenced by their virtual path (X-Plane has them).
+            dsf.add_object(idx, res.anchor[0], res.anchor[1], res.heading)
+        # Library objects: only referenced by their virtual path (X-Plane has them);
+        # they turn with the object around its anchor.
         lon0, lat0 = res.anchor
+        h = math.radians(res.heading)
         for p in res.library:
             if p["path"] not in lib_defs:
                 lib_defs[p["path"]] = dsf.add_object_def(p["path"])
+            x = p["x"] * math.cos(h) + p["y"] * math.sin(h)
+            y = -p["x"] * math.sin(h) + p["y"] * math.cos(h)
             dsf.add_object(
                 lib_defs[p["path"]],
-                lon0 + p["x"] / meters_per_deg_lon(lat0),
-                lat0 + p["y"] / METERS_PER_DEG_LAT,
-                p["heading"],
+                lon0 + x / meters_per_deg_lon(lat0),
+                lat0 + y / METERS_PER_DEG_LAT,
+                (p["heading"] + res.heading) % 360.0,
             )
 
     surface_defs: dict[str, int] = {}

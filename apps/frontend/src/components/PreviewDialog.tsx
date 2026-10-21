@@ -91,6 +91,13 @@ function PreviewDialogInner({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
+  // Moving/turning the selected object with the mouse (plan preview only).
+  const [tool, setTool] = useState<PlaceTool>("none");
+  const toolRef = useRef<PlaceTool>("none");
+  const selectedRef = useRef<string | null>(null);
+  const placeRef = useRef<(stem: string, dx: number, dy: number, heading: number) => void>(() => {});
+  toolRef.current = editable ? tool : "none";
+  selectedRef.current = selected;
 
   useEffect(() => {
     const el = mount.current;
@@ -180,6 +187,7 @@ function PreviewDialogInner({
       const group = new THREE.Group();
       group.name = o.stem;
       group.position.copy(toThree(o.offset[0], o.offset[1], 0));
+      group.rotation.y = -((o.heading ?? 0) * Math.PI) / 180; // heading: clockwise from north
       if (o.has_mesh !== false) {
         const [m, texUrl, nmlUrl] = await Promise.all([
           preview.mesh(jobId, o.stem),
@@ -248,24 +256,77 @@ function PreviewDialogInner({
       await loadObject(o);
     };
 
-    // Click (not drag) on an object selects it.
+    // Click (not drag) on an object selects it. With "move"/"turn" a drag moves or
+    // turns the selected object on the ground instead of turning the camera.
     const raycaster = new THREE.Raycaster();
-    let down: { x: number; y: number } | null = null;
-    const onDown = (e: PointerEvent) => (down = { x: e.clientX, y: e.clientY });
-    const onUp = (e: PointerEvent) => {
-      if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
+    const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    const pointerAt = (e: PointerEvent) => {
       const rect = renderer.domElement.getBoundingClientRect();
-      const pointer = new THREE.Vector2(
+      return new THREE.Vector2(
         ((e.clientX - rect.left) / rect.width) * 2 - 1,
         -((e.clientY - rect.top) / rect.height) * 2 + 1,
       );
-      raycaster.setFromCamera(pointer, camera);
+    };
+    const groundAt = (e: PointerEvent) => {
+      raycaster.setFromCamera(pointerAt(e), camera);
+      return raycaster.ray.intersectPlane(groundPlane, new THREE.Vector3());
+    };
+    let down: { x: number; y: number } | null = null;
+    let drag: {
+      group: THREE.Object3D;
+      start: THREE.Vector3;
+      pos: THREE.Vector3;
+      rot: number;
+      mode: PlaceTool;
+    } | null = null;
+    const onDown = (e: PointerEvent) => {
+      down = { x: e.clientX, y: e.clientY };
+      const stem = selectedRef.current;
+      const mode = toolRef.current;
+      const group = stem ? objects.getObjectByName(stem) : undefined;
+      const start = mode !== "none" && group ? groundAt(e) : null;
+      if (group && start) {
+        drag = { group, start, pos: group.position.clone(), rot: group.rotation.y, mode };
+        controls.enabled = false;
+        renderer.domElement.setPointerCapture(e.pointerId);
+      }
+    };
+    const onMove = (e: PointerEvent) => {
+      if (!drag) return;
+      const p = groundAt(e);
+      if (!p) return;
+      const { group, start, pos, rot } = drag;
+      if (drag.mode === "move") {
+        group.position.set(pos.x + p.x - start.x, pos.y, pos.z + p.z - start.z);
+      } else {
+        const a0 = Math.atan2(start.z - pos.z, start.x - pos.x);
+        const a1 = Math.atan2(p.z - pos.z, p.x - pos.x);
+        const deg = Math.round(((rot - (a1 - a0)) * 180) / Math.PI); // whole degrees
+        group.rotation.y = (deg * Math.PI) / 180;
+      }
+    };
+    const onUp = (e: PointerEvent) => {
+      if (drag) {
+        const { group, pos, rot } = drag;
+        drag = null;
+        controls.enabled = true;
+        const dx = group.position.x - pos.x;
+        const dy = -(group.position.z - pos.z);
+        if (Math.hypot(dx, dy) > 0.05 || Math.abs(group.rotation.y - rot) > 1e-4) {
+          const heading = ((((-group.rotation.y * 180) / Math.PI) % 360) + 360) % 360;
+          placeRef.current(group.name, dx, dy, Math.round(heading * 10) / 10);
+        }
+        return;
+      }
+      if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
+      raycaster.setFromCamera(pointerAt(e), camera);
       const hit = raycaster.intersectObjects(objects.children, true)[0];
       let target: THREE.Object3D | null = hit ? hit.object : null;
       while (target && target.parent !== objects) target = target.parent;
       setSelected(target ? target.name : null);
     };
     renderer.domElement.addEventListener("pointerdown", onDown);
+    renderer.domElement.addEventListener("pointermove", onMove);
     renderer.domElement.addEventListener("pointerup", onUp);
 
     const resize = () => {
@@ -363,6 +424,7 @@ function PreviewDialogInner({
       cancelAnimationFrame(raf);
       observer.disconnect();
       renderer.domElement.removeEventListener("pointerdown", onDown);
+      renderer.domElement.removeEventListener("pointermove", onMove);
       renderer.domElement.removeEventListener("pointerup", onUp);
       controls.dispose();
       scene.traverse((obj) => {
@@ -390,6 +452,31 @@ function PreviewDialogInner({
     await reloadRef.current(o);
     highlightRef.current(o.stem);
   };
+
+  /** Moves (metres east/north, relative) and turns (absolute heading) one object. */
+  const [placeError, setPlaceError] = useState<string | null>(null);
+  const place = async (stem: string, dx: number, dy: number, heading: number) => {
+    const o = data?.objects.find((x) => x.stem === stem);
+    const item = useApp.getState().job?.analysis?.items?.find((i) => i.id === o?.item_id);
+    if (!o || !item) return;
+    const a = item.attrs ?? {};
+    const round = (v: number) => Math.round(v * 100) / 100;
+    setPlaceError(null);
+    try {
+      const view = await api.adjustObject(jobId, o.item_id, {
+        shift_x_m: round((a.shift_x_m ?? 0) + dx),
+        shift_y_m: round((a.shift_y_m ?? 0) + dy),
+        turn_deg: round(heading),
+      });
+      useApp.getState().setJob(view);
+      const next = view.plan?.objects?.find((x) => x.item_id === o.item_id);
+      await onAdjusted({ ...o, ...next, offset: [o.offset[0] + dx, o.offset[1] + dy] });
+    } catch (e) {
+      setPlaceError(e instanceof ApiError ? t(e.key, e.params) : String(e));
+      await reloadRef.current(o); // back to where it was
+    }
+  };
+  placeRef.current = (stem, dx, dy, heading) => void place(stem, dx, dy, heading);
 
   return (
     <div className="fixed inset-0 z-50 flex bg-black/60 p-4" role="dialog" aria-modal="true" data-testid="preview-dialog">
@@ -427,6 +514,15 @@ function PreviewDialogInner({
               <p className="text-xs text-zinc-500">{t("preview.library_legend")}</p>
             )}
             {current && (current.library ?? []).length > 0 && <LibraryList library={current.library ?? []} />}
+            {current && editable && (
+              <PlacementControls
+                object={current}
+                tool={tool}
+                setTool={setTool}
+                onPlace={(dx, dy, heading) => place(current.stem, dx, dy, heading)}
+                error={placeError}
+              />
+            )}
             {current && editable && (
               <ObjectControls key={current.stem} jobId={jobId} object={current} onAdjusted={onAdjusted} />
             )}
@@ -472,6 +568,91 @@ function PreviewDialogInner({
         </aside>
         <div ref={mount} className="relative min-w-0 flex-1" data-testid="preview-canvas" />
       </div>
+    </div>
+  );
+}
+
+type PlaceTool = "none" | "move" | "turn";
+
+/** Moving and turning the selected object on the ground (whole object, no rebuild). */
+function PlacementControls({
+  object,
+  tool,
+  setTool,
+  onPlace,
+  error,
+}: {
+  object: PreviewObject;
+  tool: PlaceTool;
+  setTool: (t: PlaceTool) => void;
+  onPlace: (dx: number, dy: number, heading: number) => Promise<void>;
+  error: string | null;
+}) {
+  const { t } = useT();
+  const item = useApp((s) => s.job?.analysis?.items?.find((i) => i.id === object.item_id));
+  const [busy, setBusy] = useState(false);
+  const heading = object.heading ?? 0;
+  const shiftX = item?.attrs?.shift_x_m ?? 0;
+  const shiftY = item?.attrs?.shift_y_m ?? 0;
+  const run = async (dx: number, dy: number, h: number) => {
+    setBusy(true);
+    try {
+      await onPlace(dx, dy, ((h % 360) + 360) % 360);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const toolButton = (mode: PlaceTool, label: string) => (
+    <Button
+      variant={tool === mode ? "primary" : "secondary"}
+      onClick={() => setTool(tool === mode ? "none" : mode)}
+      aria-pressed={tool === mode}
+      data-testid={`place-${mode}`}
+    >
+      {label}
+    </Button>
+  );
+  const nudge = (label: string, dx: number, dy: number, dh: number, title: string) => (
+    <button
+      type="button"
+      className="rounded border border-zinc-300 px-1.5 py-0.5 text-xs hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-600 dark:hover:bg-zinc-800"
+      disabled={busy}
+      title={title}
+      onClick={() => void run(dx, dy, heading + dh)}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div className="space-y-2 rounded-md border border-zinc-200 p-2 dark:border-zinc-700" data-testid="placement">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold">{t("place.title")}</span>
+        {busy && <Spinner />}
+      </div>
+      <div className="flex gap-2">
+        {toolButton("move", `✋ ${t("place.move")}`)}
+        {toolButton("turn", `⟳ ${t("place.turn")}`)}
+      </div>
+      {tool !== "none" && <p className="text-xs text-zinc-500">{t(`place.hint_${tool}`)}</p>}
+      <div className="flex flex-wrap items-center gap-1">
+        {nudge("←", -1, 0, 0, t("place.west"))}
+        {nudge("↑", 0, 1, 0, t("place.north"))}
+        {nudge("↓", 0, -1, 0, t("place.south"))}
+        {nudge("→", 1, 0, 0, t("place.east"))}
+        <span className="mx-1 text-zinc-300">|</span>
+        {nudge("⟲ 5°", 0, 0, -5, t("place.left"))}
+        {nudge("⟳ 5°", 0, 0, 5, t("place.right"))}
+        {nudge("⟳ 90°", 0, 0, 90, t("place.right"))}
+      </div>
+      <p className="text-xs text-zinc-500" data-testid="placement-state">
+        {t("place.state", { heading: heading.toFixed(1), east: shiftX.toFixed(1), north: shiftY.toFixed(1) })}
+      </p>
+      {(heading !== 0 || shiftX !== 0 || shiftY !== 0) && (
+        <Button variant="ghost" onClick={() => void run(-shiftX, -shiftY, 0)} disabled={busy} data-testid="place-reset">
+          {t("place.reset")}
+        </Button>
+      )}
+      {error && <Alert kind="error">{error}</Alert>}
     </div>
   );
 }

@@ -1298,6 +1298,12 @@ export interface components {
             robe?: boolean | null;
             /** Use Scan */
             use_scan?: boolean | null;
+            /** Shift X M */
+            shift_x_m?: number | null;
+            /** Shift Y M */
+            shift_y_m?: number | null;
+            /** Turn Deg */
+            turn_deg?: number | null;
         };
         /**
          * ItemPatch
@@ -1677,6 +1683,11 @@ export interface components {
              * @default false
              */
             scan: boolean;
+            /**
+             * Heading
+             * @default 0
+             */
+            heading: number;
             /**
              * Shaded
              * @default false

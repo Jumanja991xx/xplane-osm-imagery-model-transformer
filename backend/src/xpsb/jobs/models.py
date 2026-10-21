@@ -216,6 +216,7 @@ class PlanObject(BaseModel):
     lights: int = 0  # X-Plane lights (floodlights, street lamps)
     photo_textures: list[str] = Field(default_factory=list)  # photos painted onto it
     scan: bool = False  # built from a free 3D scan (Wikimedia Commons)
+    heading: float = 0.0  # degrees clockwise, as turned in the 3D preview
     shaded: bool = False  # soft shading baked in by Blender (package build only)
     detailed: bool = False  # fine detail baked into the normal map by Blender
     library: list[LibraryPlacement] = Field(default_factory=list)

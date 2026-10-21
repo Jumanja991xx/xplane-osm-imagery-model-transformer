@@ -72,6 +72,11 @@ class ItemAttrs(BaseModel):
     holding: StatueHeld | None = None
     robe: bool | None = None
     use_scan: bool | None = None  # False: build the figure instead of the 3D scan
+    # Placement fine-tuned in the 3D preview: moved (metres east/north) and turned
+    # (degrees clockwise) on the ground as a whole - no rebuild needed.
+    shift_x_m: float | None = Field(default=None, ge=-1000, le=1000)
+    shift_y_m: float | None = Field(default=None, ge=-1000, le=1000)
+    turn_deg: float | None = Field(default=None, ge=-720, le=720)
 
 
 class Scan(BaseModel):

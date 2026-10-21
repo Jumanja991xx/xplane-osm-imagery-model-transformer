@@ -240,6 +240,7 @@ export interface PreviewObject {
   message: string;
   triangles: number;
   offset: [number, number];
+  heading?: number; // degrees clockwise from north, as turned in the preview
   has_mesh?: boolean;
   library?: { path: string; x: number; y: number; heading: number; size?: number[] }[];
 }

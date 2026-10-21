@@ -255,6 +255,24 @@ with sync_playwright() as p:
     expect(page.get_by_test_id("adjust-flip")).to_be_enabled(timeout=15000)
     page.wait_for_timeout(1500)
     page.screenshot(path=OUT / "09d2-preview-building.png")
+    # Placement on the ground: nudge buttons, then a drag with the move tool.
+    page.get_by_title("1 m nach Osten").click()
+    expect(page.get_by_test_id("placement-state")).to_contain_text("1.0 m Ost", timeout=15000)
+    page.get_by_role("button", name="⟳ 90°").click()
+    expect(page.get_by_test_id("placement-state")).to_contain_text("Drehung 90.0°", timeout=15000)
+    page.get_by_test_id("place-move").click()
+    canvas = page.get_by_test_id("preview-canvas").bounding_box()
+    px, py = canvas["x"] + canvas["width"] / 2, canvas["y"] + canvas["height"] * 0.6
+    page.mouse.move(px, py)
+    page.mouse.down()
+    page.mouse.move(px + 120, py, steps=8)
+    page.mouse.up()
+    expect(page.get_by_test_id("placement-state")).not_to_contain_text("1.0 m Ost", timeout=15000)
+    page.get_by_test_id("place-move").click()
+    page.wait_for_timeout(800)
+    page.screenshot(path=OUT / "09d3-preview-moved.png")
+    page.get_by_test_id("place-reset").click()
+    expect(page.get_by_test_id("placement-state")).to_contain_text("Drehung 0.0°", timeout=15000)
     # AI architect (fake AI): own words → cost first → send → rebuilt object.
     page.get_by_test_id("preview-objects").get_by_role("button", name="Clubhaus").click()
     # Photos for the architect: an own one (rights confirmed) and one from open sources.

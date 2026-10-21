@@ -123,6 +123,9 @@ ROLLBACK = {
 }
 
 
+PLACEMENT_KEYS = {"shift_x_m", "shift_y_m", "turn_deg"}
+
+
 class JobManager:
     def __init__(
         self,
@@ -738,7 +741,17 @@ class JobManager:
         except ValueError as exc:
             raise JobConflict("error.invalid_item", detail=str(exc)[:300]) from exc
         item.edited = True
-        self.regenerate_object(job, item)
+        if set(attrs) <= PLACEMENT_KEYS:  # only moved/turned: the object stays as built
+            from xpsb.build import assemble
+
+            assert job.plan is not None
+            obj = next((o for o in job.plan.objects if o.item_id == item.id), None)
+            if obj is None:
+                raise JobConflict("error.item_not_found", item=item.id)
+            anchor, heading = assemble.placement(item)
+            obj.anchor, obj.heading = anchor, heading
+        else:
+            self.regenerate_object(job, item)
         self._save(job)
         return job
 
