@@ -109,6 +109,8 @@ def run_script(
         raise ScriptError(str(exc)) from None
     except GeometryError as exc:
         raise ScriptError(str(exc)) from None
+    if time.monotonic() > deadline:  # finished, but between two cancel checks too late
+        raise ScriptError(f"script took longer than {timeout_s:.0f} s")
     if not mesh.patches and not mesh.placements:
         raise ScriptError("the script produced no geometry")
     return mesh

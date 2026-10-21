@@ -72,7 +72,7 @@ def test_sandbox_blocks_everything_but_geometry():
         ("while True:\n  pass", "while"),
         ("def f(n):\n  return f(n + 1)\nf(1)", ""),
         ("open('/etc/passwd')", "open"),
-        ("x = [i for i in range(100000000)]", "longer"),
+        ("x = [i for i in range(1000000) for j in range(1000000) if False]", "longer"),
         ("box(0,0,0,5,5,5, mat='gold')", "unknown material"),
         ("extrude([[0,0],[1,1]], 0, 1)", "at least 3"),
         ("x = 1", "no geometry"),
