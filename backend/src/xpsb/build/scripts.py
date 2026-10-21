@@ -636,9 +636,11 @@ BRIDGE = (
     COMMON
     + """
 # Bridges: params.bridge = structure (beam/arch/truss/suspension/cable_stayed),
-# material, width, carries (road/rail/foot), historic, approaches (roads leading
-# onto it, local metres, from the bridge outwards). height = deck top above the
-# ground at the object's origin.
+# material, width, carries (road/rail/foot), historic, deck ([x, y, z] of the
+# deck's centre every few metres: it meets the banks), ground ([x, y, z] of the
+# ground along it, may be empty), approaches (roads leading onto it, [x, y,
+# ground z], from the bridge outwards). Heights are relative to the ground at the
+# object's origin; footprint-only bridges (drawn by hand) use height.
 
 def measure(pts):
     d = [0.0]
@@ -647,7 +649,7 @@ def measure(pts):
     return d
 
 def at(pts, d, s):
-    # point and unit direction at distance s along the polyline
+    # point [x, y, z] and unit direction at distance s along the polyline
     for i in range(1, len(pts)):
         if d[i] >= s or i == len(pts) - 1:
             seg = max(d[i] - d[i - 1], 0.001)
@@ -655,7 +657,8 @@ def at(pts, d, s):
             dx = (pts[i][0] - pts[i - 1][0]) / seg
             dy = (pts[i][1] - pts[i - 1][1]) / seg
             return [pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * t,
-                    pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * t], [dx, dy]
+                    pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * t,
+                    pts[i - 1][2] + (pts[i][2] - pts[i - 1][2]) * t], [dx, dy]
     return pts[0], [1.0, 0.0]
 
 def side(p, u, off, z):
@@ -665,67 +668,83 @@ def side(p, u, off, z):
 def heading(u):
     return atan2(u[0], u[1])
 
-def axis_points():
+def ground_at(gr, x, y):
+    best = 0.0
+    bd = 1e18
+    for q in gr:
+        dd = (q[0] - x) * (q[0] - x) + (q[1] - y) * (q[1] - y)
+        if dd < bd:
+            bd = dd
+            best = q[2]
+    return best
+
+def deck_points(b):
+    deck = b.get("deck")
+    if deck != None and len(deck) >= 2:
+        return deck
+    H = g("height", 6.0)
     if path != None and len(path) >= 2:
-        return path
+        return [[p[0], p[1], H] for p in path]
     r = oriented_rect(footprint)
     L2 = r["length"] / 2
-    return [[r["x"] - r["ux"] * L2, r["y"] - r["uy"] * L2],
-            [r["x"] + r["ux"] * L2, r["y"] + r["uy"] * L2]]
+    return [[r["x"] - r["ux"] * L2, r["y"] - r["uy"] * L2, H],
+            [r["x"] + r["ux"] * L2, r["y"] + r["uy"] * L2, H]]
 
-def parapets(line, W, H, solid, mat, color, historic):
+def parapets(line, W, solid, mat, color, historic):
     for sgn in (-1, 1):
         o = sgn * W / 2
         if solid:
-            prof = [[o - 0.2 * sgn, H], [o - 0.2 * sgn, H + 1.0], [o + 0.2 * sgn, H + 1.0],
-                    [o + 0.2 * sgn, H - 0.3]]
+            prof = [[o - 0.2 * sgn, 0], [o - 0.2 * sgn, 1.0], [o + 0.2 * sgn, 1.0],
+                    [o + 0.2 * sgn, -0.3]]
             pm = "balustrade" if historic and mat == "stone" else mat
             sweep(line, prof, mats=[pm, "moulding" if historic else mat, pm, mat],
                   color=color, caps=True)
         else:
-            sweep(line, [[o - 0.04, H + 1.05], [o - 0.04, H + 1.15], [o + 0.04, H + 1.15],
-                         [o + 0.04, H + 1.05]], mat="steel", caps=True)
-            sweep(line, [[o - 0.02, H + 0.45], [o - 0.02, H + 0.5], [o + 0.02, H + 0.5],
-                         [o + 0.02, H + 0.45]], mat="steel", caps=True)
-    return None
+            sweep(line, [[o - 0.04, 1.05], [o - 0.04, 1.15], [o + 0.04, 1.15],
+                         [o + 0.04, 1.05]], mat="steel", caps=True)
+            sweep(line, [[o - 0.02, 0.45], [o - 0.02, 0.5], [o + 0.02, 0.5],
+                         [o + 0.02, 0.45]], mat="steel", caps=True)
 
-def railing_posts(pts, d, W, H, L):
+def railing_posts(pts, d, W, L):
     n = int(L / 2.5)
     for i in range(n + 1):
         p, u = at(pts, d, L * i / max(n, 1))
         for sgn in (-1, 1):
-            q = side(p, u, sgn * W / 2, H)
-            cylinder(q[0], q[1], H, 0.03, 1.15, mat="steel", segments=4)
+            q = side(p, u, sgn * W / 2, p[2])
+            cylinder(q[0], q[1], p[2], 0.03, 1.15, mat="steel", segments=4)
 
 def pier(p, u, z0, z1, W, thick, mat, color):
     if z1 - z0 < 0.5:
         return
     box(p[0], p[1], z0, thick, W, z1 - z0, heading=heading(u), mat=mat, color=color)
 
-def arches(pts, d, spans, W, H, t, mat, color):
+def arches(pts, d, gr, spans, W, t, mat, color):
     # stone/brick arches between the piers: the two spandrel walls and the vault
     n = segs(8)
     for a, b in spans:
         span = b - a
-        rise = min(span * 0.42, H - t - 1.0)
+        pa, ua = at(pts, d, a)
+        pb, ub = at(pts, d, b)
+        low = max(ground_at(gr, pa[0], pa[1]), ground_at(gr, pb[0], pb[1]))
+        top = min(pa[2], pb[2]) - t
+        rise = min(span * 0.42, top - low - 1.0)
         if rise < 1.0:
             continue
-        top = H - t
-        spring = top - rise - 0.6
         prev = None
         for k in range(n + 1):
             s = a + span * k / n
-            z = spring + rise * sin(180.0 * k / n)
             p, u = at(pts, d, s)
+            spring = top - rise - 0.6
+            z = spring + rise * sin(180.0 * k / n)
             cur = [side(p, u, W / 2, z), side(p, u, -W / 2, z),
-                   side(p, u, W / 2, top), side(p, u, -W / 2, top)]
+                   side(p, u, W / 2, p[2] - t), side(p, u, -W / 2, p[2] - t)]
             if prev != None:
                 quad(prev[0], cur[0], cur[2], prev[2], mat=mat, color=color)
                 quad(cur[1], prev[1], prev[3], cur[3], mat=mat, color=color)
                 quad(prev[1], cur[1], cur[0], prev[0], mat=mat, color=color)
             prev = cur
 
-def truss(pts, d, L, W, H):
+def truss(pts, d, L, W):
     th = clamp(W * 0.7, 5.0, 10.0)
     panel = clamp(L / max(1, int(L / 7.0 + 0.5)), 4.0, 9.0)
     n = max(1, int(L / panel + 0.5))
@@ -735,8 +754,8 @@ def truss(pts, d, L, W, H):
         bots = []
         for i in range(n + 1):
             p, u = at(pts, d, L * i / n)
-            tops.append(side(p, u, o, H + th))
-            bots.append(side(p, u, o, H))
+            tops.append(side(p, u, o, p[2] + th))
+            bots.append(side(p, u, o, p[2]))
         for i in range(n):
             tube(tops[i], tops[i + 1], 0.3, mat="steel", segments=4)
             tube(bots[i], bots[i + 1], 0.3, mat="steel", segments=4)
@@ -748,54 +767,59 @@ def truss(pts, d, L, W, H):
         tube(bots[n], tops[n], 0.2, mat="steel", segments=4)
     for i in range(0, n + 1, 2):  # cross bracing over the deck
         p, u = at(pts, d, L * i / n)
-        tube(side(p, u, W / 2 + 0.3, H + th), side(p, u, -W / 2 - 0.3, H + th), 0.18,
+        tube(side(p, u, W / 2 + 0.3, p[2] + th), side(p, u, -W / 2 - 0.3, p[2] + th), 0.18,
              mat="steel", segments=4)
 
-def suspension(pts, d, L, W, H, mat, color):
+def suspension(pts, d, gr, L, W, mat, color):
     sa = L * 0.18
     sb = L * 0.82
     main = sb - sa
-    th = H + clamp(main * 0.11, 12.0, 60.0)
+    pa, _ = at(pts, d, sa)
+    pb, _ = at(pts, d, sb)
+    th = max(pa[2], pb[2]) + clamp(main * 0.11, 12.0, 60.0)
     for s in (sa, sb):
         p, u = at(pts, d, s)
+        base = ground_at(gr, p[0], p[1]) - 4.0
         for sgn in (-1, 1):
             q = side(p, u, sgn * (W / 2 + 0.8), 0)
-            box(q[0], q[1], -4.0, 3.0, 2.2, th + 4.0, heading=heading(u), mat=mat, color=color)
+            box(q[0], q[1], base, 3.0, 2.2, th - base, heading=heading(u), mat=mat,
+                color=color)
         a = side(p, u, W / 2 + 0.8, th - 1.5)
         b = side(p, u, -W / 2 - 0.8, th - 1.5)
         mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, th - 1.5]
         box(mid[0], mid[1], th - 3.0, 3.0, W + 3.6, 2.5, heading=heading(u), mat=mat,
             color=color)
-    sag_low = H + 2.0
-    step = 8.0
+    pm, _ = at(pts, d, L / 2)
+    sag_low = pm[2] + 2.0
+    m = max(4, int(L / 8.0))
     for sgn in (-1, 1):
         o = sgn * (W / 2 + 0.8)
         prev = None
-        m = max(4, int(L / step))
         for i in range(m + 1):
             s = L * i / m
             p, u = at(pts, d, s)
             if s < sa:  # back stay down to the anchorage at the bank
-                z = H + 0.5 + (th - 0.5 - H - 0.5) * s / sa
+                z = p[2] + 0.5 + (th - 0.5 - p[2] - 0.5) * s / sa
             elif s > sb:
-                z = H + 0.5 + (th - 0.5 - H - 0.5) * (L - s) / (L - sb)
+                z = p[2] + 0.5 + (th - 0.5 - p[2] - 0.5) * (L - s) / (L - sb)
             else:
                 x = (s - sa) / main * 2 - 1
                 z = sag_low + (th - 0.5 - sag_low) * x * x
             cur = side(p, u, o, z)
             if prev != None:
                 tube(prev, cur, 0.35, mat="steel", segments=6)
-            if sa < s and s < sb and z - H > 1.2:
-                tube(cur, side(p, u, o, H), 0.05, mat="steel", segments=3)
+            if sa < s and s < sb and z - p[2] > 1.2:
+                tube(cur, side(p, u, o, p[2]), 0.05, mat="steel", segments=3)
             prev = cur
 
-def cable_stayed(pts, d, L, W, H, mat, color):
+def cable_stayed(pts, d, gr, L, W, mat, color):
     towers = [L / 2] if L < 250 else [L * 0.3, L * 0.7]
     reach = L / (2 * len(towers))
-    th = H + clamp(reach * 0.45, 15.0, 120.0)
     for s in towers:
         p, u = at(pts, d, s)
-        box(p[0], p[1], -4.0, 4.0, 3.0, th + 4.0, heading=heading(u), mat=mat, color=color)
+        th = p[2] + clamp(reach * 0.45, 15.0, 120.0)
+        base = ground_at(gr, p[0], p[1]) - 4.0
+        box(p[0], p[1], base, 4.0, 3.0, th - base, heading=heading(u), mat=mat, color=color)
         n = max(3, int(reach / 12.0))
         for i in range(1, n + 1):
             for dirn in (-1, 1):
@@ -804,30 +828,34 @@ def cable_stayed(pts, d, L, W, H, mat, color):
                     continue
                 q, v = at(pts, d, sp)
                 for sgn in (-1, 1):
-                    tube([p[0], p[1], th - 1.0 - i * 0.6], side(q, v, sgn * W / 2, H),
+                    tube([p[0], p[1], th - 1.0 - i * 0.6], side(q, v, sgn * W / 2, q[2]),
                          0.08, mat="steel", segments=3)
 
-def approach(pts, W, H, top_mat, wall_mat, color):
-    # a ramp following the road from the bridge end down to the ground
-    d = measure(pts)
-    total = d[-1]
-    run = min(total, max(20.0, H / 0.06))
-    if run < 3.0:
+def approach(pts, z_end, W, top_mat, wall_mat, color):
+    # a ramp following the road from the bridge end down to its ground
+    if len(pts) < 2:
         return
+    drop = z_end - pts[0][2]
+    if drop < 0.4:
+        return  # the road is already at deck height there
+    d = measure(pts)
+    run = min(d[-1], max(20.0, drop / 0.06))
     line = []
-    for q in resample([[p[0], p[1]] for p in pts], 3.0):
-        dist = hypot(q[0] - pts[0][0], q[1] - pts[0][1])
+    flat = [[p[0], p[1]] for p in pts]
+    for q in resample(flat, 3.0):
+        dist = 0.0
         if len(line) > 0:
             dist = line[-1][3] + hypot(q[0] - line[-1][0], q[1] - line[-1][1])
         if dist > run:
             break
+        g0 = ground_at(pts, q[0], q[1])
         t = dist / run
-        z = H * (0.5 + 0.5 * cos(180.0 * t))  # eases in and out
-        line.append([q[0], q[1], z, dist])
+        z = g0 + (z_end - pts[0][2]) * (0.5 + 0.5 * cos(180.0 * t))  # eases in and out
+        line.append([q[0], q[1], max(g0 + 0.05, z), dist])
     if len(line) < 2:
         return
-    path3 = [[q[0], q[1], max(0.05, q[2])] for q in line]
-    sweep(path3, [[-W / 2, -H - 2.0], [-W / 2, 0], [W / 2, 0], [W / 2, -H - 2.0]],
+    path3 = [[q[0], q[1], q[2]] for q in line]
+    sweep(path3, [[-W / 2, -drop - 2.0], [-W / 2, 0], [W / 2, 0], [W / 2, -drop - 2.0]],
           mats=[wall_mat, top_mat, wall_mat, wall_mat], colors=[color, None, color, color],
           caps=True)
 
@@ -835,19 +863,19 @@ def main():
     b = params.get("bridge") or {}
     st = b.get("structure") or "beam"
     W = b.get("width") or g("width", 8.0)
-    H = g("height", 6.0)
     carries = b.get("carries") or "road"
     historic = b.get("historic") or False
     mat = b.get("material") or (
         "stone" if st == "arch" else "steel" if st == "truss" else "concrete")
     color = g("wall_color", None)
-    pts = axis_points()
+    gr = b.get("ground") or []
+    pts = deck_points(b)
     d = measure(pts)
     L = d[-1]
     t = 1.2 if mat in ("stone", "brick") else 1.8 if st == "beam" else 1.0
     top = "asphalt" if carries == "road" else "concrete" if carries == "rail" else (
         "stone" if mat in ("stone", "brick") else "concrete")
-    line = [[p[0], p[1], H] for p in pts]
+    line = [[p[0], p[1], p[2]] for p in pts]
     side_mat = mat if mat in ("stone", "brick", "concrete") else "steel"
     sweep(line, [[-W / 2, -t], [-W / 2, 0], [W / 2, 0], [W / 2, -t]],
           mats=[side_mat, top, side_mat, side_mat], colors=[color, None, color, color], caps=True)
@@ -857,9 +885,9 @@ def main():
             i = o - sgn * 2.2
             sweep(line, [[o, 0], [o, 0.18], [i, 0.18], [i, 0]], mat="concrete", caps=True)
     solid = mat in ("stone", "brick") or (historic and mat == "concrete")
-    parapets(line, W, H, solid, side_mat, color, historic)
+    parapets(line, W, solid, side_mat, color, historic)
     if not solid:
-        railing_posts(pts, d, W, H, L)
+        railing_posts(pts, d, W, L)
 
     # Piers: how far apart depends on how the bridge is carried.
     span = {"arch": 22.0, "beam": 32.0, "truss": 70.0, "suspension": L,
@@ -874,23 +902,24 @@ def main():
     if st not in ("suspension", "cable_stayed"):
         for s in stops[1:-1]:
             p, u = at(pts, d, s)
-            pier(p, u, -6.0, H - t, W * 0.92, thick, pier_mat, color)
+            pier(p, u, ground_at(gr, p[0], p[1]) - 6.0, p[2] - t, W * 0.92, thick, pier_mat,
+                 color)
     for s in (0.0, L):  # abutments at both ends
         p, u = at(pts, d, s)
-        pier(p, u, -6.0, H - t, W + 0.6, 3.0, pier_mat, color)
+        pier(p, u, ground_at(gr, p[0], p[1]) - 6.0, p[2] - t, W + 0.6, 3.0, pier_mat, color)
     if st == "arch":
         spans = []
         for i in range(n):
             a = stops[i] + (thick / 2 if i > 0 else 1.5)
             e = stops[i + 1] - (thick / 2 if i < n - 1 else 1.5)
             spans.append([a, e])
-        arches(pts, d, spans, W, H, t, pier_mat, color)
+        arches(pts, d, gr, spans, W, t, pier_mat, color)
     elif st == "truss":
-        truss(pts, d, L, W, H)
+        truss(pts, d, L, W)
     elif st == "suspension":
-        suspension(pts, d, L, W, H, pier_mat, color)
+        suspension(pts, d, gr, L, W, pier_mat, color)
     elif st == "cable_stayed":
-        cable_stayed(pts, d, L, W, H, pier_mat, color)
+        cable_stayed(pts, d, gr, L, W, pier_mat, color)
 
     # Street lights along road bridges.
     if carries != "rail" and params.get("detail") != "low" and L > 30:
@@ -898,13 +927,18 @@ def main():
         for i in range(m + 1):
             p, u = at(pts, d, L * i / m)
             for sgn in (-1, 1):
-                q = side(p, u, sgn * (W / 2 - 0.4), H)
-                cylinder(q[0], q[1], H, 0.08, 7.0, mat="steel", segments=6, radius_top=0.05)
-                light(q[0], q[1], H + 7.0, 0, 0, -1, color="warm", intensity=4000, beam=110)
+                q = side(p, u, sgn * (W / 2 - 0.4), p[2])
+                cylinder(q[0], q[1], p[2], 0.08, 7.0, mat="steel", segments=6, radius_top=0.05)
+                light(q[0], q[1], p[2] + 7.0, 0, 0, -1, color="warm", intensity=4000, beam=110)
 
-    # The roads leading onto the bridge: ramps down to the ground.
+    # The roads leading onto the bridge: ramps down to their ground.
+    ends = [pts[0], pts[-1]]
     for ap in b.get("approaches") or []:
-        approach(ap, W, H, top, pier_mat, color)
+        e = ends[0]
+        if hypot(ap[0][0] - ends[1][0], ap[0][1] - ends[1][1]) < hypot(
+                ap[0][0] - ends[0][0], ap[0][1] - ends[0][1]):
+            e = ends[1]
+        approach(ap, e[2], W, top, pier_mat, color)
 
 main()
 """

@@ -47,10 +47,11 @@ from xpsb.jobs.models import (
     PlanItem,
     PlanObject,
 )
+from xpsb.osm import bridges as bridges_mod
 from xpsb.osm import classify, overpass, rows
 from xpsb.photos import Photo
 from xpsb.settings import Settings
-from xpsb.xplane import dsftool
+from xpsb.xplane import dsftool, terrain
 from xpsb.xplane.dsf_text import Tile
 from xpsb.xplane.library import Catalog
 from xpsb.xplane.testscene import files_for
@@ -68,6 +69,7 @@ class AnalysisDeps:
     memory_edits: dict = field(default_factory=dict)
     mapillary_token: str | None = None
     esri_key: str | None = None
+    dsftool: Path | None = None  # to read X-Plane's terrain (bridge heights)
 
 
 _COST_LOCK = threading.Lock()
@@ -170,6 +172,45 @@ def _apply_memory(items: list, deps: AnalysisDeps) -> int:
     return count
 
 
+def _terrain_stage(
+    job: Job, items: list, deps: AnalysisDeps, log: EventLog, notes: list[Note]
+) -> None:
+    """Ground heights from X-Plane's own terrain where they matter: bridges (their
+    decks meet the banks, their piers reach the ground, their ramps the roads)."""
+    bridges = [it for it in items if str(it.category) == "bridges"]
+    if not bridges:
+        return
+    from shapely.geometry import shape
+
+    geoms = [shape(it.geometry) for it in bridges] + [
+        shape(ap) for it in bridges for ap in it.approaches
+    ]
+    w = min(g.bounds[0] for g in geoms)
+    s = min(g.bounds[1] for g in geoms)
+    e = max(g.bounds[2] for g in geoms)
+    n = max(g.bounds[3] for g in geoms)
+    lon, lat = job.aoi_center
+    _progress(log, "terrain", 0.0, "stage.terrain", count=len(bridges))
+    try:
+        ground = terrain.load(
+            deps.settings.xplane_path,
+            deps.dsftool,
+            Tile.containing(lon, lat),
+            (w, s, e, n),
+            deps.cache_dir / "terrain",
+            job.brief.package_name if job.brief else None,
+        )
+    except terrain.TerrainError as exc:
+        notes.append(Note(key="analysis.terrain_failed", params={"detail": str(exc)[:300]}))
+        return
+    if ground is None:
+        notes.append(Note(key="analysis.terrain_unknown", params={"count": len(bridges)}))
+        return
+    for it in bridges:
+        it.ground = bridges_mod.sample_ground(it, ground.height)
+    _progress(log, "terrain", 1.0, "stage.terrain_done", count=len(bridges))
+
+
 def analyze_sync(job: Job, deps: AnalysisDeps, log: EventLog) -> AnalysisResult:
     """Runs in a worker thread."""
     assert job.brief is not None
@@ -180,6 +221,7 @@ def analyze_sync(job: Job, deps: AnalysisDeps, log: EventLog) -> AnalysisResult:
         notes.append(Note(key="analysis.remembered", params={"count": remembered}))
     if not items:
         notes.append(Note(key="analysis.nothing_found"))
+    _terrain_stage(job, items, deps, log, notes)
     info = _imagery_stage(job, deps, log, notes)
     if info is not None:
         # The aerial image knows the roofs better than the map: their colours, and

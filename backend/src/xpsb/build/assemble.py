@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from PIL import Image, ImageEnhance
-from shapely.geometry import Polygon, shape
+from shapely.geometry import LineString, Polygon, shape
 from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
 
@@ -150,11 +150,12 @@ class ItemResult:
 
 def _anchor(item: SceneItem) -> tuple[float, float]:
     geom = shape(item.geometry)
-    p = (
-        geom.centroid
-        if geom.geom_type in ("Polygon", "MultiPolygon")
-        else (geom.representative_point())
-    )
+    if geom.geom_type in ("Polygon", "MultiPolygon"):
+        p = geom.centroid
+    elif geom.geom_type == "LineString":  # the middle of a bridge, wall, fence
+        p = geom.interpolate(0.5, normalized=True)
+    else:
+        p = geom.representative_point()
     return p.x, p.y
 
 
@@ -263,8 +264,11 @@ def _params(item: SceneItem, items: list[SceneItem], local, detail: str) -> dict
 
 def _bridge(item: SceneItem, local) -> dict:
     """What the default bridge script builds: structure, material, width, what it
-    carries and the roads leading onto it (local metres, from the bridge outwards)."""
-    from xpsb.osm.bridges import structure
+    carries, the deck's height along the axis and the roads leading onto it (local
+    metres; heights relative to the ground at the object's origin, where X-Plane
+    puts it). With X-Plane's terrain (item.ground) the deck meets the banks;
+    without it the deck is a guessed height above flat ground."""
+    from xpsb.osm.bridges import deck_guess, structure
 
     tags, a = item.tags, item.attrs
     carries = "rail" if tags.get("railway") else "road"
@@ -273,22 +277,83 @@ def _bridge(item: SceneItem, local) -> dict:
     material = (a.material or "").lower() or None
     if material not in (None, "stone", "brick", "concrete", "steel", "wood"):
         material = None
+    axis = [local(x, y) for x, y in shape(item.geometry).coords]
+    ground = _ground_local(item, local)
+    deck = _deck_profile(axis, ground, a.height_m, deck_guess(tags), carries)
+    approaches = []
+    for ap in item.approaches:
+        if ap.get("type") != "LineString" or len(ap.get("coordinates", [])) < 2:
+            continue
+        pts = [local(x, y) for x, y in ap["coordinates"]]
+        approaches.append([[x, y, _ground_at(ground, x, y)] for x, y in pts])
     return {
         "structure": a.bridge_structure or structure(tags),
         "material": material,
         "width": a.width_m,
         "carries": carries,
         "historic": bool(tags.get("historic") or tags.get("heritage")),
-        "approaches": [
-            [local(x, y) for x, y in ap["coordinates"]]
-            for ap in item.approaches
-            if ap.get("type") == "LineString" and len(ap.get("coordinates", [])) >= 2
-        ],
+        "deck": deck,
+        "ground": [[round(x, 2), round(y, 2), round(z, 2)] for x, y, z in ground],
+        "approaches": approaches,
     }
+
+
+BRIDGE_STEP_M = 4.0
 
 
 # Statue material from OSM's material tag.
 _BRONZE = ("bronze", "copper", "brass", "metal", "iron", "steel")
+
+
+def _ground_local(item: SceneItem, local) -> list[tuple[float, float, float]]:
+    """item.ground in local metres, heights relative to the ground at the origin."""
+    if not item.ground:
+        return []
+    pts = [(*local(lon, lat), z) for lon, lat, z in item.ground]
+    z0 = min(pts, key=lambda p: p[0] * p[0] + p[1] * p[1])[2]  # nearest the origin
+    return [(x, y, z - z0) for x, y, z in pts]
+
+
+def _ground_at(ground, x: float, y: float) -> float:
+    if not ground:
+        return 0.0
+    return min(ground, key=lambda p: (p[0] - x) ** 2 + (p[1] - y) ** 2)[2]
+
+
+def _deck_profile(axis, ground, height, guess: float, carries: str) -> list[list[float]]:
+    """[x, y, z] of the deck's centre every few metres. Ends on the banks, a gentle
+    hump wherever the ground below (or a mapped/chosen height at the middle) asks
+    for more room."""
+    line = LineString(axis)
+    n = max(2, int(line.length / BRIDGE_STEP_M))
+    pts = [line.interpolate(line.length * i / n) for i in range(n + 1)]
+    if not ground:
+        h = height if height is not None else guess
+        return [[round(p.x, 3), round(p.y, 3), round(h, 2)] for p in pts]
+    za = _ground_at(ground, pts[0].x, pts[0].y) + 0.3
+    zb = _ground_at(ground, pts[-1].x, pts[-1].y) + 0.3
+    # The deck (with its girders) must clear the ground below everywhere; more room
+    # (a road or ships passing under) only where a height is mapped or chosen.
+    clearance = 2.0
+    hump = 0.0
+    for i, p in enumerate(pts):
+        t = i / n
+        bump = math.sin(math.pi * t)
+        if bump < 0.15:
+            continue
+        need = _ground_at(ground, p.x, p.y) + clearance - (za + (zb - za) * t)
+        hump = max(hump, need / bump)
+    if height is not None:  # mapped or chosen: the deck's height at the middle
+        hump = max(hump, height - (za + zb) / 2)
+    hump = min(hump, 0.12 * line.length + 2.0)
+    return [
+        [
+            round(p.x, 3),
+            round(p.y, 3),
+            round(za + (zb - za) * i / n + hump * math.sin(math.pi * i / n), 2),
+        ]
+        for i, p in enumerate(pts)
+    ]
 
 
 def _monument(item: SceneItem) -> dict:

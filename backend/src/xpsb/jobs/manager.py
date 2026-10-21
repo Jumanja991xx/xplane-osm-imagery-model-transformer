@@ -1442,6 +1442,7 @@ class JobManager:
             memory_edits=memory_edits,
             mapillary_token=self._secrets.get(photos.MAPILLARY_ACCOUNT),
             esri_key=self._secrets.get(ESRI_ACCOUNT),
+            dsftool=dsftool.locate(self._settings.load().dsftool_path, self._resources_dir),
         )
         analysis = await pipeline.run_analysis(job, deps, self.events(job.id))
         if job.state is JobState.ANALYZING:  # not cancelled meanwhile

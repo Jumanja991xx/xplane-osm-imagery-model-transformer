@@ -44,7 +44,7 @@ def test_a_bridge_way_becomes_a_bridge_with_its_approaches():
     assert b.name == "Erzsébet híd"
     assert b.geometry["type"] == "LineString"
     assert b.attrs.width_m == pytest.approx(4 * 3.3 + 2.0)
-    assert b.attrs.height_m == 6.0 and b.attrs.bridge_structure == "beam"
+    assert b.attrs.height_m is None and b.attrs.bridge_structure == "beam"  # not mapped
     assert len(b.approaches) == 2  # not the road underneath
     for ap in b.approaches:  # each starts at the bridge and leads away from it
         start = ap["coordinates"][0]
@@ -150,3 +150,56 @@ def test_from_far_away_only_the_big_parts_are_drawn():
     assert len(lods) == 2 and lods[0][0] == "0" and lods[0][1] == lods[1][0]
     counts = [int(c) for c in re.findall(r"TRIS \d+ (\d+)", text)]
     assert counts[-1] < 0.4 * counts[0]  # cables, hangers, railings and lamps are gone
+
+
+DSF_TEXT = """PATCH_BEGIN 0 0 -1 1 5
+BEGIN_PRIMITIVE 0
+PATCH_VERTEX 19.0 47.0 100.0 0 0
+PATCH_VERTEX 19.2 47.0 120.0 0 0
+PATCH_VERTEX 19.0 47.2 100.0 0 0
+END_PRIMITIVE
+BEGIN_PRIMITIVE 1
+PATCH_VERTEX 50.0 50.0 1 0 0
+PATCH_VERTEX 50.1 50.0 1 0 0
+PATCH_VERTEX 50.0 50.1 1 0 0
+END_PRIMITIVE
+PATCH_END
+"""
+
+
+def test_terrain_heights_come_from_the_dsf_mesh():
+    from xpsb.xplane import terrain
+
+    tris = terrain.triangles_from_text(DSF_TEXT.splitlines(), (18.9, 46.9, 19.3, 47.3))
+    assert tris.shape == (1, 3, 3)  # the far-away strip is left out
+    ground = terrain.Terrain(tris)
+    assert ground.height(19.1, 47.05) == pytest.approx(110.0)
+    assert ground.height(25.0, 47.0) is None
+
+
+def test_the_deck_meets_the_banks_of_a_valley():
+    from xpsb.osm import bridges
+
+    items = _run(_river_crossing(highway="primary"))
+    (b,) = _bridges(items)
+    # A valley: the banks 14 m above the river, X-Plane's ground in metres above sea.
+    lon0 = ll(0, 0)["lon"]
+    mx = meters_per_deg_lon(LAT0)
+
+    def height(lon, lat):
+        x = (lon - lon0) * mx
+        return 300.0 + min(14.0, max(0.0, abs(x) - 30) * 0.5)
+
+    b.ground = bridges.sample_ground(b, height)
+    mesh = assemble.generate(b, items, "medium")[0]
+    params = assemble._script_inputs(b, items, "medium").params["bridge"]
+    deck = params["deck"]
+    assert deck[0][2] == pytest.approx(14.3, abs=0.6) and deck[-1][2] == pytest.approx(
+        14.3, abs=0.6
+    )
+    assert min(p[2] for p in deck) >= 14.0  # high enough over the river
+    (x0, y0, z0), (x1, y1, z1) = mesh.bounds()
+    assert z0 < -4  # piers reach into the riverbed
+    flat = b.model_copy(update={"ground": []})
+    deck_flat = assemble._script_inputs(flat, items, "medium").params["bridge"]["deck"]
+    assert {p[2] for p in deck_flat} == {6.0}  # no terrain: the guessed height

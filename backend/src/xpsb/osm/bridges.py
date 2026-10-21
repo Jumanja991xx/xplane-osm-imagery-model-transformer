@@ -140,6 +140,31 @@ def _deck_height(tags: dict[str, str]) -> float:
     return round(base + max(0.0, layer - 1) * 5.0, 1)
 
 
+def deck_guess(tags: dict[str, str]) -> float:
+    """Deck height above the ground below when nothing better is known."""
+    return _deck_height({k: v for k, v in tags.items() if k != "height"})
+
+
+def sample_ground(item: SceneItem, height, step_m: float = 4.0) -> list[list[float]]:
+    """X-Plane's ground heights every few metres along the bridge and its approaches
+    ([lon, lat, elevation]); points without terrain are left out."""
+    lines = [item.geometry] + list(item.approaches)
+    out: list[list[float]] = []
+    for geo in lines:
+        line = LineString(geo["coordinates"])
+        c = line.centroid
+        fwd, back = _local(c.x, c.y)
+        local = transform(fwd, line)
+        n = max(1, int(local.length / step_m))
+        for i in range(n + 1):
+            p = local.interpolate(local.length * i / n)
+            lon, lat = back(p.x, p.y)
+            z = height(lon, lat)
+            if z is not None:
+                out.append([round(lon, 7), round(lat, 7), round(z, 2)])
+    return out
+
+
 def structure(tags: dict[str, str]) -> str:
     s = STRUCTURES.get(tags.get("bridge:structure", ""))
     if s:
@@ -265,7 +290,8 @@ def _bridge(ref, tags, poly, members, roads, fwd, back) -> SceneItem | None:
         way_tags.get("bridge:name") or way_tags.get("name")
     )
     attrs = ItemAttrs(
-        height_m=_deck_height(all_tags),
+        # Only a mapped height is a fact; else the build guesses (or uses the terrain).
+        height_m=_float(all_tags.get("height")),
         width_m=round(width, 1),
         material=_material(all_tags),
         bridge_structure=structure(all_tags),

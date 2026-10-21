@@ -168,6 +168,9 @@ class SceneItem(BaseModel):
     # Bridges: the roads that lead onto it (GeoJSON LineStrings, each starting at
     # the bridge end): the approach ramps follow them down to the ground.
     approaches: list[dict[str, Any]] = Field(default_factory=list)
+    # X-Plane's ground heights along it (and its approaches): [lon, lat, metres
+    # above sea level]; bridges meet the banks with them. Empty: unknown.
+    ground: list[list[float]] = Field(default_factory=list)
 
 
 class ItemPatch(BaseModel):
