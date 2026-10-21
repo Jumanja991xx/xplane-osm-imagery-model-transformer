@@ -20,9 +20,17 @@ import { PhotoPanel } from "./PhotoPanel";
 import { Alert, Button, Checkbox, Spinner } from "./ui";
 
 // Local metres (x east, y north, z up) → three.js (y up, -z north).
-const toThree = (x: number, y: number, z: number) => new THREE.Vector3(x, z, -y);
+const toThree = (x: number, y: number, z: number) =>
+  new THREE.Vector3(x, z, -y);
 
-const ROOF_MATERIALS = ["solar", "metal", "membrane", "tiles", "flat", "glass"] as const;
+const ROOF_MATERIALS = [
+  "solar",
+  "metal",
+  "membrane",
+  "tiles",
+  "flat",
+  "glass",
+] as const;
 
 /** Interactive 3D view of everything the plan will build, before anything is written.
  *  While the plan is open (editable), single objects can be fine-tuned here. */
@@ -37,15 +45,45 @@ function nightLights(lights: PreviewLight[]): THREE.Group {
   group.visible = false;
   if (!lights.length) return group;
   const pts = new THREE.BufferGeometry();
-  pts.setAttribute("position", new THREE.Float32BufferAttribute(lights.flatMap((l) => [l.x, l.z, -l.y]), 3));
-  group.add(new THREE.Points(pts, new THREE.PointsMaterial({ color: 0xfff2d0, size: 1.2, sizeAttenuation: true })));
+  pts.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(
+      lights.flatMap((l) => [l.x, l.z, -l.y]),
+      3,
+    ),
+  );
+  group.add(
+    new THREE.Points(
+      pts,
+      new THREE.PointsMaterial({
+        color: 0xfff2d0,
+        size: 1.2,
+        sizeAttenuation: true,
+      }),
+    ),
+  );
   const strongest = [...lights].sort((a, b) => b.cd - a.cd);
   const step = Math.max(1, Math.floor(strongest.length / SPOTS_PER_OBJECT));
-  for (let i = 0; i < strongest.length && group.children.length <= SPOTS_PER_OBJECT; i += step) {
+  for (
+    let i = 0;
+    i < strongest.length && group.children.length <= SPOTS_PER_OBJECT;
+    i += step
+  ) {
     const l = strongest[i];
-    const spot = new THREE.SpotLight(new THREE.Color(...l.color), (l.cd / 250) * step, 0, Math.acos(Math.max(-1, Math.min(1, l.cos))), 0.5, 1.2);
+    const spot = new THREE.SpotLight(
+      new THREE.Color(...l.color),
+      (l.cd / 250) * step,
+      0,
+      Math.acos(Math.max(-1, Math.min(1, l.cos))),
+      0.5,
+      1.2,
+    );
     spot.position.set(l.x, l.z, -l.y);
-    spot.target.position.set(l.x + l.dir[0] * 10, l.z + l.dir[2] * 10, -(l.y + l.dir[1] * 10));
+    spot.target.position.set(
+      l.x + l.dir[0] * 10,
+      l.z + l.dir[2] * 10,
+      -(l.y + l.dir[1] * 10),
+    );
     group.add(spot, spot.target);
   }
   return group;
@@ -53,7 +91,11 @@ function nightLights(lights: PreviewLight[]): THREE.Group {
 
 /** The 3D preview, protected: Escape always closes it, and if anything in it fails
  * the user sees why and can close it instead of being stuck on a dark screen. */
-export function PreviewDialog(props: { jobId: string; onClose: () => void; editable?: boolean }) {
+export function PreviewDialog(props: {
+  jobId: string;
+  onClose: () => void;
+  editable?: boolean;
+}) {
   const { t } = useT();
   const { onClose } = props;
   useEffect(() => {
@@ -64,7 +106,11 @@ export function PreviewDialog(props: { jobId: string; onClose: () => void; edita
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   return (
-    <ErrorBoundary title={t("preview.crashed")} closeLabel={t("common.close")} onClose={onClose}>
+    <ErrorBoundary
+      title={t("preview.crashed")}
+      closeLabel={t("common.close")}
+      onClose={onClose}
+    >
       <PreviewDialogInner {...props} />
     </ErrorBoundary>
   );
@@ -100,7 +146,9 @@ function PreviewDialogInner({
   const [tool, setTool] = useState<PlaceTool>("none");
   const toolRef = useRef<PlaceTool>("none");
   const selectedRef = useRef<string | null>(null);
-  const placeRef = useRef<(stem: string, dx: number, dy: number, heading: number) => void>(() => {});
+  const placeRef = useRef<
+    (stem: string, dx: number, dy: number, heading: number) => void
+  >(() => {});
   toolRef.current = editable ? tool : "none";
   selectedRef.current = selected;
 
@@ -109,14 +157,22 @@ function PreviewDialogInner({
     if (!el) return;
     let disposed = false;
     const urls: string[] = [];
-    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      preserveDrawingBuffer: true,
+    });
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(el.clientWidth, el.clientHeight);
     renderer.shadowMap.enabled = true;
     el.appendChild(renderer.domElement);
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0xbcd4ea);
-    const camera = new THREE.PerspectiveCamera(45, el.clientWidth / el.clientHeight, 0.5, 20000);
+    const camera = new THREE.PerspectiveCamera(
+      45,
+      el.clientWidth / el.clientHeight,
+      0.5,
+      20000,
+    );
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.maxPolarAngle = Math.PI * 0.49;
     const hemi = new THREE.HemisphereLight(0xffffff, 0x667755, 1.4);
@@ -125,13 +181,27 @@ function PreviewDialogInner({
     sun.position.set(-300, 500, 250);
     sun.castShadow = true;
     sun.shadow.mapSize.set(4096, 4096);
-    Object.assign(sun.shadow.camera, { left: -500, right: 500, top: 500, bottom: -500, far: 2000 });
+    Object.assign(sun.shadow.camera, {
+      left: -500,
+      right: 500,
+      top: 500,
+      bottom: -500,
+      far: 2000,
+    });
     scene.add(sun);
-    (window as unknown as { __xpsbPreview?: unknown }).__xpsbPreview = { scene, camera, renderer };
+    (window as unknown as { __xpsbPreview?: unknown }).__xpsbPreview = {
+      scene,
+      camera,
+      renderer,
+    };
 
     const frame = (center: THREE.Vector3, size: number) => {
       controls.target.copy(center);
-      camera.position.copy(center).add(new THREE.Vector3(-0.6, 0.55, 0.8).multiplyScalar(size * 1.4 + 20));
+      camera.position
+        .copy(center)
+        .add(
+          new THREE.Vector3(-0.6, 0.55, 0.8).multiplyScalar(size * 1.4 + 20),
+        );
       controls.update();
     };
     focusRef.current = (o) => frame(toThree(o.offset[0], o.offset[1], 5), 60);
@@ -174,7 +244,11 @@ function PreviewDialogInner({
     highlightRef.current = (stems) => {
       for (const group of objects.children) {
         group.traverse((child) => {
-          if (child instanceof THREE.Mesh && !child.userData.library && !nightOn.current) {
+          if (
+            child instanceof THREE.Mesh &&
+            !child.userData.library &&
+            !nightOn.current
+          ) {
             (child.material as THREE.MeshStandardMaterial).emissive.setHex(
               stems.includes(group.name) ? 0x2a4a7a : 0x000000,
             );
@@ -184,7 +258,9 @@ function PreviewDialogInner({
     };
 
     /** (Re)loads one object; replaces an older version with the same name. */
-    const loadObject = async (o: PreviewObject): Promise<THREE.Object3D | null> => {
+    const loadObject = async (
+      o: PreviewObject,
+    ): Promise<THREE.Object3D | null> => {
       const old = objects.getObjectByName(o.stem);
       if (old) {
         objects.remove(old);
@@ -232,7 +308,9 @@ function PreviewDialogInner({
             roughness: 0.85,
             ...(normalMap ? { normalMap } : {}),
             // see-through roofs and panels (alpha in the texture, as in X-Plane)
-            ...(m.alpha ? { transparent: true, alphaTest: 0.05, side: THREE.DoubleSide } : {}),
+            ...(m.alpha
+              ? { transparent: true, alphaTest: 0.05, side: THREE.DoubleSide }
+              : {}),
           }),
         );
         mesh.castShadow = true;
@@ -293,7 +371,13 @@ function PreviewDialogInner({
       const group = stem ? objects.getObjectByName(stem) : undefined;
       const start = mode !== "none" && group ? groundAt(e) : null;
       if (group && start) {
-        drag = { group, start, pos: group.position.clone(), rot: group.rotation.y, mode };
+        drag = {
+          group,
+          start,
+          pos: group.position.clone(),
+          rot: group.rotation.y,
+          mode,
+        };
         controls.enabled = false;
         renderer.domElement.setPointerCapture(e.pointerId);
       }
@@ -319,13 +403,18 @@ function PreviewDialogInner({
         controls.enabled = true;
         const dx = group.position.x - pos.x;
         const dy = -(group.position.z - pos.z);
-        if (Math.hypot(dx, dy) > 0.05 || Math.abs(group.rotation.y - rot) > 1e-4) {
-          const heading = ((((-group.rotation.y * 180) / Math.PI) % 360) + 360) % 360;
+        if (
+          Math.hypot(dx, dy) > 0.05 ||
+          Math.abs(group.rotation.y - rot) > 1e-4
+        ) {
+          const heading =
+            ((((-group.rotation.y * 180) / Math.PI) % 360) + 360) % 360;
           placeRef.current(group.name, dx, dy, Math.round(heading * 10) / 10);
         }
         return;
       }
-      if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
+      if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4)
+        return;
       raycaster.setFromCamera(pointerAt(e), camera);
       const hit = raycaster.intersectObjects(objects.children, true)[0];
       let target: THREE.Object3D | null = hit ? hit.object : null;
@@ -366,7 +455,10 @@ function PreviewDialogInner({
           const url = await imageryObjectUrl(jobId).catch(() => null);
           const { sw, ne } = d.imagery;
           const geo = new THREE.PlaneGeometry(ne[0] - sw[0], ne[1] - sw[1]);
-          const mat = new THREE.MeshStandardMaterial({ color: orthoMode ? 0x858585 : 0xffffff, roughness: 1 });
+          const mat = new THREE.MeshStandardMaterial({
+            color: orthoMode ? 0x858585 : 0xffffff,
+            roughness: 1,
+          });
           if (url) {
             urls.push(url);
             aerial = await loader.loadAsync(url);
@@ -380,8 +472,14 @@ function PreviewDialogInner({
           scene.add(ground);
         }
         for (const s of d.surfaces) {
-          const shape = new THREE.Shape(s.rings[0].map(([x, y]) => new THREE.Vector2(x, y)));
-          shape.holes = s.rings.slice(1).map((r) => new THREE.Path(r.map(([x, y]) => new THREE.Vector2(x, y))));
+          const shape = new THREE.Shape(
+            s.rings[0].map(([x, y]) => new THREE.Vector2(x, y)),
+          );
+          shape.holes = s.rings
+            .slice(1)
+            .map(
+              (r) => new THREE.Path(r.map(([x, y]) => new THREE.Vector2(x, y))),
+            );
           const geo = new THREE.ShapeGeometry(shape);
           let mat: THREE.MeshStandardMaterial;
           if (orthoMode && aerial && d.imagery) {
@@ -389,13 +487,18 @@ function PreviewDialogInner({
             const pos = geo.getAttribute("position");
             const uv: number[] = [];
             for (let i = 0; i < pos.count; i++) {
-              uv.push((pos.getX(i) - sw[0]) / (ne[0] - sw[0]), (pos.getY(i) - sw[1]) / (ne[1] - sw[1]));
+              uv.push(
+                (pos.getX(i) - sw[0]) / (ne[0] - sw[0]),
+                (pos.getY(i) - sw[1]) / (ne[1] - sw[1]),
+              );
             }
             geo.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
             mat = new THREE.MeshStandardMaterial({ map: aerial, roughness: 1 });
           } else {
             mat = new THREE.MeshStandardMaterial({
-              color: CATEGORY_COLORS[s.category as keyof typeof CATEGORY_COLORS] ?? "#888888",
+              color:
+                CATEGORY_COLORS[s.category as keyof typeof CATEGORY_COLORS] ??
+                "#888888",
               transparent: true,
               opacity: 0.55,
               depthWrite: false,
@@ -448,7 +551,9 @@ function PreviewDialogInner({
 
   /** Click: only this one. Ctrl/Cmd+click: add or remove it. Shift+click in the list: a range. */
   const pick = (stem: string | null, add: boolean, range = false) => {
-    const order = (data?.objects ?? []).filter((o) => o.status === "ok").map((o) => o.stem);
+    const order = (data?.objects ?? [])
+      .filter((o) => o.status === "ok")
+      .map((o) => o.stem);
     if (!stem) {
       if (!add) {
         setSelected(null);
@@ -457,11 +562,19 @@ function PreviewDialogInner({
       return;
     }
     if (range && selected) {
-      const [a, b] = [order.indexOf(selected), order.indexOf(stem)].sort((x, y) => x - y);
+      const [a, b] = [order.indexOf(selected), order.indexOf(stem)].sort(
+        (x, y) => x - y,
+      );
       setMulti([...new Set([...multiRef.current, ...order.slice(a, b + 1)])]);
     } else if (add) {
-      const base = multiRef.current.length ? multiRef.current : selected ? [selected] : [];
-      setMulti(base.includes(stem) ? base.filter((s) => s !== stem) : [...base, stem]);
+      const base = multiRef.current.length
+        ? multiRef.current
+        : selected
+          ? [selected]
+          : [];
+      setMulti(
+        base.includes(stem) ? base.filter((s) => s !== stem) : [...base, stem],
+      );
     } else {
       setMulti([]);
     }
@@ -473,10 +586,16 @@ function PreviewDialogInner({
   useEffect(() => {
     if (!editable) return;
     const onKey = (e: KeyboardEvent) => {
-      const typing = (e.target as HTMLElement | null)?.closest("input, textarea, select");
+      const typing = (e.target as HTMLElement | null)?.closest(
+        "input, textarea, select",
+      );
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a" && !typing) {
         e.preventDefault();
-        setMulti((data?.objects ?? []).filter((o) => o.status === "ok").map((o) => o.stem));
+        setMulti(
+          (data?.objects ?? [])
+            .filter((o) => o.status === "ok")
+            .map((o) => o.stem),
+        );
       } else if (e.key === "Escape" && multiRef.current.length > 1 && !typing) {
         e.stopImmediatePropagation();
         setMulti([]);
@@ -487,7 +606,8 @@ function PreviewDialogInner({
   }, [editable, data]);
 
   const label = (o: PreviewObject) =>
-    o.name || t(categoryLabelKey({ kind: "object", category: o.category as never }));
+    o.name ||
+    t(categoryLabelKey({ kind: "object", category: o.category as never }));
   const problems = data?.objects.filter((o) => o.status !== "ok") ?? [];
   const built = data?.objects.filter((o) => o.status === "ok") ?? [];
   // No new array per call: a fresh [] from a selector re-renders without end.
@@ -496,7 +616,13 @@ function PreviewDialogInner({
 
   /** After an adjustment: take the new plan entry and show the rebuilt object. */
   const onAdjusted = async (o: PreviewObject) => {
-    setData((d) => d && { ...d, objects: d.objects.map((x) => (x.stem === o.stem ? o : x)) });
+    setData(
+      (d) =>
+        d && {
+          ...d,
+          objects: d.objects.map((x) => (x.stem === o.stem ? o : x)),
+        },
+    );
     await reloadRef.current(o);
     highlightRef.current(multiRef.current.length ? multiRef.current : [o.stem]);
   };
@@ -505,9 +631,16 @@ function PreviewDialogInner({
 
   /** Moves (metres east/north, relative) and turns (absolute heading) one object. */
   const [placeError, setPlaceError] = useState<string | null>(null);
-  const place = async (stem: string, dx: number, dy: number, heading: number) => {
+  const place = async (
+    stem: string,
+    dx: number,
+    dy: number,
+    heading: number,
+  ) => {
     const o = data?.objects.find((x) => x.stem === stem);
-    const item = useApp.getState().job?.analysis?.items?.find((i) => i.id === o?.item_id);
+    const item = useApp
+      .getState()
+      .job?.analysis?.items?.find((i) => i.id === o?.item_id);
     if (!o || !item) return;
     const a = item.attrs ?? {};
     const round = (v: number) => Math.round(v * 100) / 100;
@@ -520,16 +653,26 @@ function PreviewDialogInner({
       });
       useApp.getState().setJob(view);
       const next = view.plan?.objects?.find((x) => x.item_id === o.item_id);
-      await onAdjusted({ ...o, ...next, offset: [o.offset[0] + dx, o.offset[1] + dy] });
+      await onAdjusted({
+        ...o,
+        ...next,
+        offset: [o.offset[0] + dx, o.offset[1] + dy],
+      });
     } catch (e) {
       setPlaceError(e instanceof ApiError ? t(e.key, e.params) : String(e));
       await reloadRef.current(o); // back to where it was
     }
   };
-  placeRef.current = (stem, dx, dy, heading) => void place(stem, dx, dy, heading);
+  placeRef.current = (stem, dx, dy, heading) =>
+    void place(stem, dx, dy, heading);
 
   return (
-    <div className="fixed inset-0 z-50 flex bg-black/60 p-4" role="dialog" aria-modal="true" data-testid="preview-dialog">
+    <div
+      className="fixed inset-0 z-50 flex bg-black/60 p-4"
+      role="dialog"
+      aria-modal="true"
+      data-testid="preview-dialog"
+    >
       <div className="flex h-full w-full overflow-hidden rounded-lg bg-white shadow-xl dark:bg-zinc-900">
         <aside className="flex w-80 shrink-0 flex-col border-r border-zinc-200 dark:border-zinc-700">
           <div className="flex items-center justify-between border-b border-zinc-200 px-3 py-2 dark:border-zinc-700">
@@ -545,12 +688,18 @@ function PreviewDialogInner({
             >
               {night ? "☀️" : "🌙"} {t("preview.night")}
             </Button>
-            <Button variant="ghost" onClick={onClose} data-testid="preview-close">
+            <Button
+              variant="ghost"
+              onClick={onClose}
+              data-testid="preview-close"
+            >
               {t("common.close")}
             </Button>
           </div>
           <div className="flex-1 space-y-3 overflow-y-auto p-3 text-sm">
-            <p className="text-xs text-zinc-500">{t(editable ? "preview.hint_edit" : "preview.hint")}</p>
+            <p className="text-xs text-zinc-500">
+              {t(editable ? "preview.hint_edit" : "preview.hint")}
+            </p>
             {loading && (
               <div className="flex items-center gap-2">
                 <Spinner /> {t("preview.loading")}
@@ -558,12 +707,18 @@ function PreviewDialogInner({
             )}
             {error && <Alert kind="error">{error}</Alert>}
             {data?.imagery && data.surface_mode === "imagery" && (
-              <p className="text-xs text-zinc-500">{t("preview.ortho_legend")}</p>
+              <p className="text-xs text-zinc-500">
+                {t("preview.ortho_legend")}
+              </p>
             )}
             {data?.objects.some((o) => (o.library ?? []).length > 0) && (
-              <p className="text-xs text-zinc-500">{t("preview.library_legend")}</p>
+              <p className="text-xs text-zinc-500">
+                {t("preview.library_legend")}
+              </p>
             )}
-            {current && (current.library ?? []).length > 0 && <LibraryList library={current.library ?? []} />}
+            {current && (current.library ?? []).length > 0 && (
+              <LibraryList library={current.library ?? []} />
+            )}
             {editable && built.length > 1 && (
               <div className="flex items-center justify-between text-xs text-zinc-500">
                 <span>{t("multi.hint")}</span>
@@ -592,12 +747,19 @@ function PreviewDialogInner({
                 object={current}
                 tool={tool}
                 setTool={setTool}
-                onPlace={(dx, dy, heading) => place(current.stem, dx, dy, heading)}
+                onPlace={(dx, dy, heading) =>
+                  place(current.stem, dx, dy, heading)
+                }
                 error={placeError}
               />
             )}
             {current && editable && !many && (
-              <ObjectControls key={current.stem} jobId={jobId} object={current} onAdjusted={onAdjusted} />
+              <ObjectControls
+                key={current.stem}
+                jobId={jobId}
+                object={current}
+                onAdjusted={onAdjusted}
+              />
             )}
             {built.length > 0 && (
               <ul className="space-y-0.5" data-testid="preview-objects">
@@ -605,17 +767,25 @@ function PreviewDialogInner({
                   <li key={o.stem}>
                     <button
                       className={`w-full truncate rounded px-1 text-left hover:underline ${
-                        shown.includes(o.stem) ? "bg-accent-600/15 font-medium" : ""
+                        shown.includes(o.stem)
+                          ? "bg-accent-600/15 font-medium"
+                          : ""
                       }`}
                       onClick={(e) => {
                         pick(o.stem, e.ctrlKey || e.metaKey, e.shiftKey);
-                        if (!e.ctrlKey && !e.metaKey && !e.shiftKey) focusRef.current(o);
+                        if (!e.ctrlKey && !e.metaKey && !e.shiftKey)
+                          focusRef.current(o);
                       }}
                     >
                       {label(o)}
-                      <span className="ml-1 text-xs text-zinc-400">{o.triangles}△</span>
+                      <span className="ml-1 text-xs text-zinc-400">
+                        {o.triangles}△
+                      </span>
                       {shadedStems.includes(o.stem) && (
-                        <span className="ml-1 text-xs" title={t("preview.blender_shaded")}>
+                        <span
+                          className="ml-1 text-xs"
+                          title={t("preview.blender_shaded")}
+                        >
                           🎨
                         </span>
                       )}
@@ -626,20 +796,28 @@ function PreviewDialogInner({
             )}
             {problems.length > 0 && (
               <div className="space-y-1">
-                <h3 className="text-xs font-semibold text-zinc-500 uppercase">{t("preview.not_built")}</h3>
+                <h3 className="text-xs font-semibold text-zinc-500 uppercase">
+                  {t("preview.not_built")}
+                </h3>
                 {problems.map((o) => (
                   <details key={o.stem} className="text-xs">
                     <summary>
                       {label(o)}: {t(`preview.status.${o.status}`)}
                     </summary>
-                    <pre className="mt-1 whitespace-pre-wrap break-all text-zinc-500">{o.message}</pre>
+                    <pre className="mt-1 whitespace-pre-wrap break-all text-zinc-500">
+                      {o.message}
+                    </pre>
                   </details>
                 ))}
               </div>
             )}
           </div>
         </aside>
-        <div ref={mount} className="relative min-w-0 flex-1" data-testid="preview-canvas" />
+        <div
+          ref={mount}
+          className="relative min-w-0 flex-1"
+          data-testid="preview-canvas"
+        />
       </div>
     </div>
   );
@@ -662,9 +840,20 @@ function MultiControls({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [text, setText] = useState("");
-  const [estimate, setEstimate] = useState<{ estimate_usd: number; max_usd: number; budget_usd: number; model: string } | null>(null);
-  const [results, setResults] = useState<{ item_id: string; ok: boolean; summary: string; error: string | null }[] | null>(null);
+  const [estimate, setEstimate] = useState<{
+    estimate_usd: number;
+    max_usd: number;
+    budget_usd: number;
+    model: string;
+  } | null>(null);
+  const [results, setResults] = useState<
+    | { item_id: string; ok: boolean; summary: string; error: string | null }[]
+    | null
+  >(null);
   const [cost, setCost] = useState<number | null>(null);
+  const aiReady = useApp((s) =>
+    Boolean(s.job?.brief?.use_ai && s.system?.has_api_key),
+  );
   const ids = objects.map((o) => o.item_id);
   const names = new Map(objects.map((o) => [o.item_id, o.name || o.stem]));
 
@@ -692,9 +881,14 @@ function MultiControls({
     run(async () => refresh(await api.adjustMany(jobId, ids, attrs, factor)));
 
   return (
-    <div className="space-y-2 rounded-md border border-accent-600/40 bg-accent-600/5 p-2" data-testid="multi-controls">
+    <div
+      className="space-y-2 rounded-md border border-accent-600/40 bg-accent-600/5 p-2"
+      data-testid="multi-controls"
+    >
       <div className="flex items-center justify-between">
-        <span className="font-medium">{t("multi.title", { count: objects.length })}</span>
+        <span className="font-medium">
+          {t("multi.title", { count: objects.length })}
+        </span>
         <span className="flex items-center gap-2">
           {busy && <Spinner />}
           <button type="button" className="text-xs underline" onClick={onClear}>
@@ -745,74 +939,112 @@ function MultiControls({
         label={t("adjust.wall_material")}
         value=""
         options={WALL_MATERIALS.map((v) => [v, t(`wall.${v}`)])}
-        onChange={(v) => v && void adjust({ wall_material: v as ItemAttrs["wall_material"] })}
+        onChange={(v) =>
+          v && void adjust({ wall_material: v as ItemAttrs["wall_material"] })
+        }
         disabled={busy}
         testId="multi-wall"
       />
       {(["wall_color", "roof_color"] as const).map((c) => (
-        <ColorField key={c} label={t(`adjust.${c}`)} value={null} onCommit={(v) => void adjust({ [c]: v })} disabled={busy} />
+        <ColorField
+          key={c}
+          label={t(`adjust.${c}`)}
+          value={null}
+          onCommit={(v) => void adjust({ [c]: v })}
+          disabled={busy}
+        />
       ))}
       <div className="space-y-1 border-t border-zinc-200 pt-2 dark:border-zinc-700">
-        <div className="text-xs font-semibold text-zinc-500 uppercase">✨ {t("multi.ai_title")}</div>
-        <textarea
-          className="w-full rounded border border-zinc-300 bg-white p-1.5 text-xs dark:border-zinc-600 dark:bg-zinc-800"
-          rows={3}
-          value={text}
-          placeholder={t("multi.ai_placeholder")}
-          onChange={(e) => {
-            setText(e.target.value);
-            setEstimate(null);
-          }}
-          data-testid="multi-ai-text"
-        />
-        {!estimate ? (
-          <Button
-            disabled={busy || text.trim().length < 3}
-            onClick={() => void run(async () => setEstimate(await api.designManyEstimate(jobId, ids)))}
-            data-testid="multi-ai-estimate"
-          >
-            {t("multi.ai_estimate")}
-          </Button>
-        ) : (
-          <>
-            <p className="text-xs text-zinc-600 dark:text-zinc-300">
-              {t("multi.ai_cost", {
-                count: objects.length,
-                typical: estimate.estimate_usd.toFixed(2),
-                max: estimate.max_usd.toFixed(2),
-                budget: estimate.budget_usd.toFixed(2),
-                model: estimate.model,
-              })}
-            </p>
-            <Button
-              variant="primary"
-              disabled={busy || estimate.max_usd > estimate.budget_usd}
-              onClick={() =>
-                void run(async () => {
-                  const out = await api.designMany(jobId, ids, text.trim(), estimate.max_usd);
-                  setResults(out.results as never);
-                  setCost(out.cost_usd);
-                  setEstimate(null);
-                  await refresh(out.job);
-                })
-              }
-              data-testid="multi-ai-send"
-            >
-              {t("design.send", { max: estimate.max_usd.toFixed(2) })}
-            </Button>
-            {estimate.max_usd > estimate.budget_usd && <Alert kind="warning">{t("multi.ai_over_budget")}</Alert>}
-          </>
+        <div className="text-xs font-semibold text-zinc-500 uppercase">
+          ✨ {t("multi.ai_title")}
+        </div>
+        {!aiReady && (
+          <p className="text-xs text-zinc-500">{t("design.no_ai")}</p>
         )}
-        {busy && text && !estimate && results === null && <p className="text-xs text-zinc-500">{t("multi.ai_running")}</p>}
-        {results && (
-          <ul className="space-y-0.5 text-xs" data-testid="multi-ai-results">
-            {results.map((r) => (
-              <li key={r.item_id} className={r.ok ? "" : "text-red-600"}>
-                {r.ok ? "✓" : "✗"} {names.get(r.item_id)}: {r.ok ? r.summary : t(r.error ?? "error.architect_failed")}
-              </li>
-            ))}
-            {cost !== null && <li className="text-zinc-500">{t("multi.ai_spent", { usd: cost.toFixed(3) })}</li>}
-          </ul>
+        {aiReady && (
+          <>
+            <textarea
+              className="w-full rounded border border-zinc-300 bg-white p-1.5 text-xs dark:border-zinc-600 dark:bg-zinc-800"
+              rows={3}
+              value={text}
+              placeholder={t("multi.ai_placeholder")}
+              onChange={(e) => {
+                setText(e.target.value);
+                setEstimate(null);
+              }}
+              data-testid="multi-ai-text"
+            />
+            {!estimate ? (
+              <Button
+                disabled={busy || text.trim().length < 3}
+                onClick={() =>
+                  void run(async () =>
+                    setEstimate(await api.designManyEstimate(jobId, ids)),
+                  )
+                }
+                data-testid="multi-ai-estimate"
+              >
+                {t("multi.ai_estimate")}
+              </Button>
+            ) : (
+              <>
+                <p className="text-xs text-zinc-600 dark:text-zinc-300">
+                  {t("multi.ai_cost", {
+                    count: objects.length,
+                    typical: estimate.estimate_usd.toFixed(2),
+                    max: estimate.max_usd.toFixed(2),
+                    budget: estimate.budget_usd.toFixed(2),
+                    model: estimate.model,
+                  })}
+                </p>
+                <Button
+                  variant="primary"
+                  disabled={busy || estimate.max_usd > estimate.budget_usd}
+                  onClick={() =>
+                    void run(async () => {
+                      const out = await api.designMany(
+                        jobId,
+                        ids,
+                        text.trim(),
+                        estimate.max_usd,
+                      );
+                      setResults(out.results as never);
+                      setCost(out.cost_usd);
+                      setEstimate(null);
+                      await refresh(out.job);
+                    })
+                  }
+                  data-testid="multi-ai-send"
+                >
+                  {t("design.send", { max: estimate.max_usd.toFixed(2) })}
+                </Button>
+                {estimate.max_usd > estimate.budget_usd && (
+                  <Alert kind="warning">{t("multi.ai_over_budget")}</Alert>
+                )}
+              </>
+            )}
+            {busy && text && !estimate && results === null && (
+              <p className="text-xs text-zinc-500">{t("multi.ai_running")}</p>
+            )}
+            {results && (
+              <ul
+                className="space-y-0.5 text-xs"
+                data-testid="multi-ai-results"
+              >
+                {results.map((r) => (
+                  <li key={r.item_id} className={r.ok ? "" : "text-red-600"}>
+                    {r.ok ? "✓" : "✗"} {names.get(r.item_id)}:{" "}
+                    {r.ok ? r.summary : t(r.error ?? "error.architect_failed")}
+                  </li>
+                ))}
+                {cost !== null && (
+                  <li className="text-zinc-500">
+                    {t("multi.ai_spent", { usd: cost.toFixed(3) })}
+                  </li>
+                )}
+              </ul>
+            )}
+          </>
         )}
       </div>
       {error && <Alert kind="error">{error}</Alert>}
@@ -837,7 +1069,9 @@ function PlacementControls({
   error: string | null;
 }) {
   const { t } = useT();
-  const item = useApp((s) => s.job?.analysis?.items?.find((i) => i.id === object.item_id));
+  const item = useApp((s) =>
+    s.job?.analysis?.items?.find((i) => i.id === object.item_id),
+  );
   const [busy, setBusy] = useState(false);
   const heading = object.heading ?? 0;
   const shiftX = item?.attrs?.shift_x_m ?? 0;
@@ -860,7 +1094,13 @@ function PlacementControls({
       {label}
     </Button>
   );
-  const nudge = (label: string, dx: number, dy: number, dh: number, title: string) => (
+  const nudge = (
+    label: string,
+    dx: number,
+    dy: number,
+    dh: number,
+    title: string,
+  ) => (
     <button
       type="button"
       className="rounded border border-zinc-300 px-1.5 py-0.5 text-xs hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-600 dark:hover:bg-zinc-800"
@@ -872,7 +1112,10 @@ function PlacementControls({
     </button>
   );
   return (
-    <div className="space-y-2 rounded-md border border-zinc-200 p-2 dark:border-zinc-700" data-testid="placement">
+    <div
+      className="space-y-2 rounded-md border border-zinc-200 p-2 dark:border-zinc-700"
+      data-testid="placement"
+    >
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold">{t("place.title")}</span>
         {busy && <Spinner />}
@@ -881,7 +1124,9 @@ function PlacementControls({
         {toolButton("move", `✋ ${t("place.move")}`)}
         {toolButton("turn", `⟳ ${t("place.turn")}`)}
       </div>
-      {tool !== "none" && <p className="text-xs text-zinc-500">{t(`place.hint_${tool}`)}</p>}
+      {tool !== "none" && (
+        <p className="text-xs text-zinc-500">{t(`place.hint_${tool}`)}</p>
+      )}
       <div className="flex flex-wrap items-center gap-1">
         {nudge("←", -1, 0, 0, t("place.west"))}
         {nudge("↑", 0, 1, 0, t("place.north"))}
@@ -893,10 +1138,19 @@ function PlacementControls({
         {nudge("⟳ 90°", 0, 0, 90, t("place.right"))}
       </div>
       <p className="text-xs text-zinc-500" data-testid="placement-state">
-        {t("place.state", { heading: heading.toFixed(1), east: shiftX.toFixed(1), north: shiftY.toFixed(1) })}
+        {t("place.state", {
+          heading: heading.toFixed(1),
+          east: shiftX.toFixed(1),
+          north: shiftY.toFixed(1),
+        })}
       </p>
       {(heading !== 0 || shiftX !== 0 || shiftY !== 0) && (
-        <Button variant="ghost" onClick={() => void run(-shiftX, -shiftY, 0)} disabled={busy} data-testid="place-reset">
+        <Button
+          variant="ghost"
+          onClick={() => void run(-shiftX, -shiftY, 0)}
+          disabled={busy}
+          data-testid="place-reset"
+        >
           {t("place.reset")}
         </Button>
       )}
@@ -922,8 +1176,26 @@ type Control =
 // Which quick controls make sense per kind of object (the default build scripts
 // read exactly these). Anything else: the AI architect below.
 const CONTROLS: Record<string, Control[]> = {
-  grandstands: ["flip", "height", "rows", "covered", "roof", "roof_color", "seat_color", "wall_color"],
-  buildings: ["height", "levels", "roof_shape", "flip", "roof", "wall_material", "wall_color", "roof_color"],
+  grandstands: [
+    "flip",
+    "height",
+    "rows",
+    "covered",
+    "roof",
+    "roof_color",
+    "seat_color",
+    "wall_color",
+  ],
+  buildings: [
+    "height",
+    "levels",
+    "roof_shape",
+    "flip",
+    "roof",
+    "wall_material",
+    "wall_color",
+    "roof_color",
+  ],
   canopies: ["height", "roof", "roof_color"],
   masts: ["height"],
   monuments: ["height", "flip", "monument"],
@@ -931,9 +1203,30 @@ const CONTROLS: Record<string, Control[]> = {
 };
 const DEFAULT_CONTROLS: Control[] = ["height"];
 const ROOF_SHAPES = ["flat", "gabled", "hipped"] as const;
-const MONUMENT_KINDS = ["statue", "rider", "bust", "obelisk", "column", "stone"] as const;
-const POSES = ["standing", "arm_raised", "arms_raised", "pointing", "seated"] as const;
-const HELD = ["none", "palm", "wreath", "sword", "torch", "book", "flag"] as const;
+const MONUMENT_KINDS = [
+  "statue",
+  "rider",
+  "bust",
+  "obelisk",
+  "column",
+  "stone",
+] as const;
+const POSES = [
+  "standing",
+  "arm_raised",
+  "arms_raised",
+  "pointing",
+  "seated",
+] as const;
+const HELD = [
+  "none",
+  "palm",
+  "wreath",
+  "sword",
+  "torch",
+  "book",
+  "flag",
+] as const;
 const WALL_MATERIALS = [
   "windows",
   "windows_classic",
@@ -949,12 +1242,25 @@ const WALL_MATERIALS = [
 ] as const;
 
 /** Quick controls for one object: free, instant, only this object is rebuilt. */
-type LibraryKind = "tree" | "light" | "vehicle" | "person" | "flag" | "fence" | "other";
+type LibraryKind =
+  | "tree"
+  | "light"
+  | "vehicle"
+  | "person"
+  | "flag"
+  | "fence"
+  | "other";
 
 const LIBRARY_WORDS: [LibraryKind, string[]][] = [
-  ["tree", ["tree", "bush", "hedge", "plant", "shrub", "palm", "conifer", "deciduous"]],
+  [
+    "tree",
+    ["tree", "bush", "hedge", "plant", "shrub", "palm", "conifer", "deciduous"],
+  ],
   ["light", ["light", "lamp", "flood", "lantern"]],
-  ["vehicle", ["car", "truck", "bus", "van", "vehicle", "tractor", "trailer", "lorry"]],
+  [
+    "vehicle",
+    ["car", "truck", "bus", "van", "vehicle", "tractor", "trailer", "lorry"],
+  ],
   ["person", ["people", "person", "pedestrian", "crowd"]],
   ["flag", ["flag", "banner", "billboard", "board", "screen", "sign"]],
   ["fence", ["fence", "barrier", "rail", "wall", "bollard", "gate"]],
@@ -962,23 +1268,44 @@ const LIBRARY_WORDS: [LibraryKind, string[]][] = [
 
 export function libraryKind(path: string): LibraryKind {
   // Whole words or word starts/ends ("trees", "streetlamp"), so "street" is no "tree".
-  const tokens = path.toLowerCase().split(/[^a-z]+/).filter(Boolean);
+  const tokens = path
+    .toLowerCase()
+    .split(/[^a-z]+/)
+    .filter(Boolean);
   for (const [kind, words] of LIBRARY_WORDS) {
-    if (tokens.some((tok) => words.some((w) => tok.startsWith(w) || tok.endsWith(w)))) return kind;
+    if (
+      tokens.some((tok) =>
+        words.some((w) => tok.startsWith(w) || tok.endsWith(w)),
+      )
+    )
+      return kind;
   }
   return "other";
 }
 
 /** Recognisable stand-in for an X-Plane library object (the real look comes from X-Plane). */
-function libraryStandIn(p: { path: string; size?: number[] | null }): THREE.Group {
+function libraryStandIn(p: {
+  path: string;
+  size?: number[] | null;
+}): THREE.Group {
   const [w0, d0, h0] = p.size && p.size.length >= 3 ? p.size : [1, 1, 2];
   const w = Math.max(w0, 0.2);
   const d = Math.max(d0, 0.2);
   const h = Math.max(h0, 0.2);
   const g = new THREE.Group();
   const mat = (color: number, opacity = 1) =>
-    new THREE.MeshStandardMaterial({ color, roughness: 0.8, transparent: opacity < 1, opacity });
-  const add = (geo: THREE.BufferGeometry, color: number, y: number, opacity = 1) => {
+    new THREE.MeshStandardMaterial({
+      color,
+      roughness: 0.8,
+      transparent: opacity < 1,
+      opacity,
+    });
+  const add = (
+    geo: THREE.BufferGeometry,
+    color: number,
+    y: number,
+    opacity = 1,
+  ) => {
     const m = new THREE.Mesh(geo, mat(color, opacity));
     m.position.y = y;
     m.castShadow = true;
@@ -989,17 +1316,38 @@ function libraryStandIn(p: { path: string; size?: number[] | null }): THREE.Grou
   switch (libraryKind(p.path)) {
     case "tree": {
       const r = Math.max(w, d) / 2;
-      add(new THREE.CylinderGeometry(Math.max(r * 0.08, 0.1), Math.max(r * 0.1, 0.12), h * 0.35, 6), 0x6b4a2b, h * 0.175);
-      add(new THREE.SphereGeometry(1, 10, 8).scale(r, h * 0.38, r), 0x4f7a35, h * 0.62);
+      add(
+        new THREE.CylinderGeometry(
+          Math.max(r * 0.08, 0.1),
+          Math.max(r * 0.1, 0.12),
+          h * 0.35,
+          6,
+        ),
+        0x6b4a2b,
+        h * 0.175,
+      );
+      add(
+        new THREE.SphereGeometry(1, 10, 8).scale(r, h * 0.38, r),
+        0x4f7a35,
+        h * 0.62,
+      );
       break;
     }
     case "light":
       add(new THREE.CylinderGeometry(0.08, 0.12, h, 6), 0x777b80, h / 2);
-      add(new THREE.BoxGeometry(Math.max(w, 0.5), 0.25, Math.max(d, 0.4)), 0xf2d16b, h);
+      add(
+        new THREE.BoxGeometry(Math.max(w, 0.5), 0.25, Math.max(d, 0.4)),
+        0xf2d16b,
+        h,
+      );
       break;
     case "vehicle":
       add(new THREE.BoxGeometry(w, h * 0.55, d), 0x4d6a8c, h * 0.3);
-      add(new THREE.BoxGeometry(w * 0.85, h * 0.4, d * 0.5), 0x8fa6bf, h * 0.75);
+      add(
+        new THREE.BoxGeometry(w * 0.85, h * 0.4, d * 0.5),
+        0x8fa6bf,
+        h * 0.75,
+      );
       break;
     case "person":
       add(new THREE.CylinderGeometry(0.2, 0.2, h * 0.8, 6), 0x5a5f8a, h * 0.4);
@@ -1007,7 +1355,11 @@ function libraryStandIn(p: { path: string; size?: number[] | null }): THREE.Grou
       break;
     case "flag":
       add(new THREE.CylinderGeometry(0.05, 0.06, h, 6), 0x9aa0a6, h / 2);
-      add(new THREE.BoxGeometry(Math.max(w, 1), Math.min(h * 0.3, 2), 0.05), 0xc0392b, h * 0.85);
+      add(
+        new THREE.BoxGeometry(Math.max(w, 1), Math.min(h * 0.3, 2), 0.05),
+        0xc0392b,
+        h * 0.85,
+      );
       break;
     case "fence":
       add(new THREE.BoxGeometry(w, h, Math.min(d, 0.15)), 0x8a8f94, h / 2, 0.8);
@@ -1024,13 +1376,18 @@ function LibraryList({ library }: { library: { path: string }[] }) {
   const counts = new Map<string, number>();
   for (const p of library) counts.set(p.path, (counts.get(p.path) ?? 0) + 1);
   return (
-    <div className="space-y-0.5 rounded-md bg-amber-50 p-2 text-xs dark:bg-amber-500/10" data-testid="library-list">
+    <div
+      className="space-y-0.5 rounded-md bg-amber-50 p-2 text-xs dark:bg-amber-500/10"
+      data-testid="library-list"
+    >
       <div className="font-medium">{t("preview.library_title")}</div>
       <ul>
         {[...counts.entries()].map(([path, n]) => (
           <li key={path} className="truncate" title={path}>
             {n} × {t(`preview.library_kind.${libraryKind(path)}`)}{" "}
-            <code className="text-[10px] text-zinc-500">{path.split("/").pop()}</code>
+            <code className="text-[10px] text-zinc-500">
+              {path.split("/").pop()}
+            </code>
           </li>
         ))}
       </ul>
@@ -1057,7 +1414,9 @@ function ObjectControls({
   if (!item) return null;
   const attrs = item.attrs ?? {};
   // An own script of the AI architect decides itself which parameters it reads.
-  const controls = item.script ? DEFAULT_CONTROLS : (CONTROLS[object.category] ?? DEFAULT_CONTROLS);
+  const controls = item.script
+    ? DEFAULT_CONTROLS
+    : (CONTROLS[object.category] ?? DEFAULT_CONTROLS);
   const has = (c: Control) => controls.includes(c);
   const roof = (attrs.material ?? "").replace(/^roof:/, "");
 
@@ -1067,7 +1426,9 @@ function ObjectControls({
     try {
       const view = await api.adjustObject(jobId, object.item_id, patch);
       setJob(view);
-      const next = view.plan?.objects?.find((o) => o.item_id === object.item_id);
+      const next = view.plan?.objects?.find(
+        (o) => o.item_id === object.item_id,
+      );
       if (next) await onAdjusted({ ...object, ...next });
     } catch (e) {
       setError(e instanceof ApiError ? t(e.key, e.params) : String(e));
@@ -1077,17 +1438,35 @@ function ObjectControls({
   };
 
   return (
-    <div className="space-y-2 rounded-md border border-accent-600/40 bg-accent-600/5 p-2" data-testid="object-controls">
+    <div
+      className="space-y-2 rounded-md border border-accent-600/40 bg-accent-600/5 p-2"
+      data-testid="object-controls"
+    >
       <div className="flex items-center justify-between">
         <span className="font-medium">
-          {object.name || t(categoryLabelKey({ kind: "object", category: object.category as never }))}
+          {object.name ||
+            t(
+              categoryLabelKey({
+                kind: "object",
+                category: object.category as never,
+              }),
+            )}
         </span>
         {busy && <Spinner />}
       </div>
       {object.status !== "ok" && <Alert kind="warning">{object.message}</Alert>}
       {has("flip") && (
-        <Button onClick={() => apply({ flip: !attrs.flip })} disabled={busy} data-testid="adjust-flip">
-          ↻ {t(object.category === "buildings" ? "adjust.flip_ridge" : "adjust.flip")}
+        <Button
+          onClick={() => apply({ flip: !attrs.flip })}
+          disabled={busy}
+          data-testid="adjust-flip"
+        >
+          ↻{" "}
+          {t(
+            object.category === "buildings"
+              ? "adjust.flip_ridge"
+              : "adjust.flip",
+          )}
         </Button>
       )}
       {has("height") && (
@@ -1123,7 +1502,9 @@ function ObjectControls({
           label={t("adjust.covered")}
           checked={Boolean(attrs.covered) || roof === "solar"}
           disabled={busy}
-          onChange={(on) => apply(on ? { covered: true } : { covered: false, material: null })}
+          onChange={(on) =>
+            apply(on ? { covered: true } : { covered: false, material: null })
+          }
         />
       )}
       {has("roof_shape") && (
@@ -1139,7 +1520,9 @@ function ObjectControls({
       {has("roof") && (
         <SelectField
           label={t("adjust.roof")}
-          value={(ROOF_MATERIALS as readonly string[]).includes(roof) ? roof : ""}
+          value={
+            (ROOF_MATERIALS as readonly string[]).includes(roof) ? roof : ""
+          }
           options={ROOF_MATERIALS.map((v) => [v, t(`roof.${v}`)])}
           onChange={(v) => apply({ material: v ? `roof:${v}` : null })}
           disabled={busy}
@@ -1151,7 +1534,9 @@ function ObjectControls({
           label={t("adjust.wall_material")}
           value={attrs.wall_material ?? ""}
           options={WALL_MATERIALS.map((v) => [v, t(`wall.${v}`)])}
-          onChange={(v) => apply({ wall_material: (v || null) as ItemAttrs["wall_material"] })}
+          onChange={(v) =>
+            apply({ wall_material: (v || null) as ItemAttrs["wall_material"] })
+          }
           disabled={busy}
           testId="adjust-wall"
         />
@@ -1168,7 +1553,10 @@ function ObjectControls({
           />
         ))}
       {has("monument") && item.scan && (
-        <div className="space-y-1 rounded bg-emerald-50 p-1.5 text-xs dark:bg-emerald-500/10" data-testid="scan-info">
+        <div
+          className="space-y-1 rounded bg-emerald-50 p-1.5 text-xs dark:bg-emerald-500/10"
+          data-testid="scan-info"
+        >
           <div>
             {t("adjust.scan_info", {
               author: item.scan.author ?? "?",
@@ -1189,17 +1577,25 @@ function ObjectControls({
             label={t("adjust.monument_kind")}
             value={attrs.monument_kind ?? ""}
             options={MONUMENT_KINDS.map((v) => [v, t(`monument.${v}`)])}
-            onChange={(v) => apply({ monument_kind: (v || null) as ItemAttrs["monument_kind"] })}
+            onChange={(v) =>
+              apply({
+                monument_kind: (v || null) as ItemAttrs["monument_kind"],
+              })
+            }
             disabled={busy}
             testId="adjust-monument-kind"
           />
-          {["statue", "column", undefined, null].includes(attrs.monument_kind) && (
+          {["statue", "column", undefined, null].includes(
+            attrs.monument_kind,
+          ) && (
             <>
               <SelectField
                 label={t("adjust.pose")}
                 value={attrs.pose ?? ""}
                 options={POSES.map((v) => [v, t(`pose.${v}`)])}
-                onChange={(v) => apply({ pose: (v || null) as ItemAttrs["pose"] })}
+                onChange={(v) =>
+                  apply({ pose: (v || null) as ItemAttrs["pose"] })
+                }
                 disabled={busy}
                 testId="adjust-pose"
               />
@@ -1207,7 +1603,9 @@ function ObjectControls({
                 label={t("adjust.holding")}
                 value={attrs.holding ?? ""}
                 options={HELD.map((v) => [v, t(`held.${v}`)])}
-                onChange={(v) => apply({ holding: (v || null) as ItemAttrs["holding"] })}
+                onChange={(v) =>
+                  apply({ holding: (v || null) as ItemAttrs["holding"] })
+                }
                 disabled={busy}
                 testId="adjust-holding"
               />
@@ -1221,8 +1619,15 @@ function ObjectControls({
           )}
           <SelectField
             label={t("adjust.statue_material")}
-            value={["bronze", "stone"].includes(attrs.material ?? "") ? (attrs.material as string) : ""}
-            options={["bronze", "stone"].map((v) => [v, t(`statue_material.${v}`)])}
+            value={
+              ["bronze", "stone"].includes(attrs.material ?? "")
+                ? (attrs.material as string)
+                : ""
+            }
+            options={["bronze", "stone"].map((v) => [
+              v,
+              t(`statue_material.${v}`),
+            ])}
             onChange={(v) => apply({ material: v || null })}
             disabled={busy}
             testId="adjust-statue-material"
@@ -1255,7 +1660,8 @@ function NumberField({
 }) {
   const { t } = useT();
   const [text, setText] = useState(value != null ? String(value) : "");
-  const parse = (v: string) => (v.trim() === "" ? null : Number(v.replace(",", ".")));
+  const parse = (v: string) =>
+    v.trim() === "" ? null : Number(v.replace(",", "."));
   return (
     <label className="flex items-center gap-2 text-xs">
       <span className="w-28 text-zinc-600 dark:text-zinc-300">{label}</span>
@@ -1267,9 +1673,12 @@ function NumberField({
         onChange={(e) => setText(e.target.value)}
         onBlur={() => {
           const v = parse(text);
-          if (v !== (value ?? null) && (v == null || Number.isFinite(v))) onCommit(v);
+          if (v !== (value ?? null) && (v == null || Number.isFinite(v)))
+            onCommit(v);
         }}
-        onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+        onKeyDown={(e) =>
+          e.key === "Enter" && (e.target as HTMLInputElement).blur()
+        }
         disabled={disabled}
         data-testid={testId}
       />
@@ -1329,7 +1738,9 @@ function ColorField({
 }) {
   const { t } = useT();
   const timer = useRef<number | undefined>(undefined);
-  const [color, setColor] = useState(value && /^#[0-9a-f]{6}$/i.test(value) ? value : "#a0a0a0");
+  const [color, setColor] = useState(
+    value && /^#[0-9a-f]{6}$/i.test(value) ? value : "#a0a0a0",
+  );
   useEffect(() => () => window.clearTimeout(timer.current), []);
   return (
     <label className="flex items-center gap-2 text-xs">
@@ -1342,12 +1753,19 @@ function ColorField({
           const v = e.target.value;
           setColor(v);
           window.clearTimeout(timer.current);
-          timer.current = window.setTimeout(() => onCommit(v.toUpperCase()), 700);
+          timer.current = window.setTimeout(
+            () => onCommit(v.toUpperCase()),
+            700,
+          );
         }}
         disabled={disabled}
       />
       {value ? (
-        <button className="text-zinc-500 underline" onClick={() => onCommit(null)} disabled={disabled}>
+        <button
+          className="text-zinc-500 underline"
+          onClick={() => onCommit(null)}
+          disabled={disabled}
+        >
           {t("adjust.auto")}
         </button>
       ) : (
@@ -1358,7 +1776,15 @@ function ColorField({
 }
 
 /** Live steps of the AI architect with elapsed time, while the user waits. */
-function DesignProgress({ itemId, since, started }: { itemId: string; since: number; started: number }) {
+function DesignProgress({
+  itemId,
+  since,
+  started,
+}: {
+  itemId: string;
+  since: number;
+  started: number;
+}) {
   const { t } = useT();
   const events = useApp((s) => s.events);
   const [now, setNow] = useState(Date.now());
@@ -1368,7 +1794,9 @@ function DesignProgress({ itemId, since, started }: { itemId: string; since: num
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, []);
-  const steps = events.filter((e) => e.seq > since && e.stage === "design" && e.params?.item === itemId);
+  const steps = events.filter(
+    (e) => e.seq > since && e.stage === "design" && e.params?.item === itemId,
+  );
   const secs = Math.floor((now - started) / 1000);
   const elapsed = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
   const current = steps[steps.length - 1];
@@ -1383,7 +1811,9 @@ function DesignProgress({ itemId, since, started }: { itemId: string; since: num
         <span className="inline-block h-7 w-7 shrink-0 animate-spin rounded-full border-[3px] border-accent-500 border-t-transparent" />
         <div className="min-w-0 flex-1">
           <div className="text-sm font-medium">
-            {current?.key ? t(current.key, current.params ?? {}) : t("design.step.sending")}
+            {current?.key
+              ? t(current.key, current.params ?? {})
+              : t("design.step.sending")}
           </div>
           <div className="text-xs text-zinc-500 tabular-nums">
             {elapsed} · {t("design.running_hint")}
@@ -1416,13 +1846,19 @@ function DesignPanel({
   const setJob = useApp((s) => s.setJob);
   const item = job?.analysis?.items?.find((i) => i.id === object.item_id);
   const [text, setText] = useState("");
-  const [estimate, setEstimate] = useState<{ typical: number; max: number; budget: number; model: string } | null>(
-    null,
-  );
+  const [estimate, setEstimate] = useState<{
+    typical: number;
+    max: number;
+    budget: number;
+    model: string;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [sending, setSending] = useState<{ since: number; started: number } | null>(null);
+  const [sending, setSending] = useState<{
+    since: number;
+    started: number;
+  } | null>(null);
   if (!item) return null;
   const aiOn = Boolean(job?.brief?.use_ai);
 
@@ -1445,19 +1881,32 @@ function DesignPanel({
   const check = () =>
     run(async () => {
       const e = await api.designEstimate(jobId, object.item_id);
-      setEstimate({ typical: e.estimate_usd, max: Math.min(e.max_usd, e.budget_usd), budget: e.budget_usd, model: e.model });
+      setEstimate({
+        typical: e.estimate_usd,
+        max: Math.min(e.max_usd, e.budget_usd),
+        budget: e.budget_usd,
+        model: e.model,
+      });
     });
   const send = () =>
     run(async () => {
       if (!estimate) return;
       const events = useApp.getState().events;
-      setSending({ since: events.length ? events[events.length - 1].seq : 0, started: Date.now() });
-      const out = await api.redesign(jobId, object.item_id, text.trim(), estimate.max).finally(() =>
-        setSending(null),
-      );
+      setSending({
+        since: events.length ? events[events.length - 1].seq : 0,
+        started: Date.now(),
+      });
+      const out = await api
+        .redesign(jobId, object.item_id, text.trim(), estimate.max)
+        .finally(() => setSending(null));
       setEstimate(null);
       setText("");
-      setDone(t("design.done", { summary: out.summary, cost: out.cost_usd.toFixed(3) }));
+      setDone(
+        t("design.done", {
+          summary: out.summary,
+          cost: out.cost_usd.toFixed(3),
+        }),
+      );
       await showNew(out.job);
     });
   const reset = () =>
@@ -1467,12 +1916,24 @@ function DesignPanel({
     });
 
   return (
-    <div className="space-y-1.5 border-t border-zinc-200 pt-2 dark:border-zinc-700" data-testid="design-panel">
-      <div className="text-xs font-semibold text-zinc-500 uppercase">✨ {t("design.title")}</div>
+    <div
+      className="space-y-1.5 border-t border-zinc-200 pt-2 dark:border-zinc-700"
+      data-testid="design-panel"
+    >
+      <div className="text-xs font-semibold text-zinc-500 uppercase">
+        ✨ {t("design.title")}
+      </div>
       {item.script && item.script_request && (
         <div className="flex items-start justify-between gap-2 text-xs">
-          <span className="text-zinc-600 dark:text-zinc-300">{t("design.custom", { request: item.script_request })}</span>
-          <Button variant="ghost" onClick={reset} disabled={busy} data-testid="design-reset">
+          <span className="text-zinc-600 dark:text-zinc-300">
+            {t("design.custom", { request: item.script_request })}
+          </span>
+          <Button
+            variant="ghost"
+            onClick={reset}
+            disabled={busy}
+            data-testid="design-reset"
+          >
             {t("design.reset")}
           </Button>
         </div>
@@ -1495,7 +1956,11 @@ function DesignPanel({
             data-testid="design-text"
           />
           {!estimate ? (
-            <Button onClick={check} disabled={busy || text.trim().length < 3} data-testid="design-check">
+            <Button
+              onClick={check}
+              disabled={busy || text.trim().length < 3}
+              data-testid="design-check"
+            >
               {t("design.check")}
             </Button>
           ) : (
@@ -1508,12 +1973,23 @@ function DesignPanel({
                   model: estimate.model,
                 })}
               </p>
-              <Button variant="primary" onClick={send} disabled={busy || estimate.max <= 0} data-testid="design-send">
+              <Button
+                variant="primary"
+                onClick={send}
+                disabled={busy || estimate.max <= 0}
+                data-testid="design-send"
+              >
                 {t("design.send", { max: estimate.max.toFixed(2) })}
               </Button>
             </div>
           )}
-          {sending && <DesignProgress itemId={object.item_id} since={sending.since} started={sending.started} />}
+          {sending && (
+            <DesignProgress
+              itemId={object.item_id}
+              since={sending.since}
+              started={sending.started}
+            />
+          )}
         </>
       )}
       {done && <Alert kind="success">{done}</Alert>}
