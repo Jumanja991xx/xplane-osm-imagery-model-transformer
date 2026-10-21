@@ -1022,6 +1022,52 @@ export interface components {
             /** Part */
             part?: string | null;
         };
+        /**
+         * CallCost
+         * @description One AI call as billed: the token counts the API reported, priced with the list
+         *     prices in ai/usage.py. `stage`/`item` are filled in by the job's cost book.
+         */
+        CallCost: {
+            /**
+             * Stage
+             * @default
+             */
+            stage: string;
+            /** Item */
+            item?: string | null;
+            /** Model */
+            model: string;
+            /**
+             * Input Tokens
+             * @default 0
+             */
+            input_tokens: number;
+            /**
+             * Output Tokens
+             * @default 0
+             */
+            output_tokens: number;
+            /**
+             * Cache Read Tokens
+             * @default 0
+             */
+            cache_read_tokens: number;
+            /**
+             * Cache Write Tokens
+             * @default 0
+             */
+            cache_write_tokens: number;
+            /**
+             * Usd
+             * @default 0
+             */
+            usd: number;
+            /**
+             * At
+             * Format: date-time
+             */
+            at?: string;
+        };
         /** CreateJob */
         CreateJob: {
             aoi: components["schemas"]["GeoJsonPolygon"];
@@ -1329,6 +1375,8 @@ export interface components {
             /** Approvals */
             approvals?: components["schemas"]["Approval"][];
             error?: components["schemas"]["JobError"] | null;
+            /** Costs */
+            costs?: components["schemas"]["CallCost"][];
             pending_gate?: components["schemas"]["PendingGate"] | null;
             /** Design Targets */
             design_targets?: string[];

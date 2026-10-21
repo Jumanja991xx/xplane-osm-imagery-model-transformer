@@ -497,7 +497,7 @@ class JobManager:
                 notes=job.brief.notes,
                 budget_usd=self._similar_budget(job),
                 transport=self._ai_transport_factory(self._secrets.get(ANTHROPIC_ACCOUNT)),
-                on_cost=self.ledger.add,
+                on_cost=pipeline.cost_book(job, self.ledger, "rating", item.name),
                 questions=questions,
                 context=detect.area_context(job.analysis.items),
             )
@@ -604,7 +604,7 @@ class JobManager:
                 notes=job.brief.notes,
                 budget_usd=budget,
                 transport=self._ai_transport_factory(self._secrets.get(ANTHROPIC_ACCOUNT)),
-                on_cost=self.ledger.add,
+                on_cost=pipeline.cost_book(job, self.ledger, "similar"),
             )
             snapshot = [it.model_copy(deep=True) for it in job.analysis.items]
             found, info = await asyncio.to_thread(
@@ -801,7 +801,14 @@ class JobManager:
         self._busy.add(job_id)
         try:
             result = await asyncio.to_thread(
-                self._design_call, job, item, request, budget, job.plan.detail, on_step
+                self._design_call,
+                job,
+                item,
+                request,
+                budget,
+                job.plan.detail,
+                on_step,
+                "correction",
             )
         finally:
             self._busy.discard(job_id)
@@ -823,7 +830,14 @@ class JobManager:
         return job, result.summary, result.info.cost_usd
 
     def _design_call(
-        self, job: Job, item: SceneItem, request: str, budget: float, detail: str, on_step
+        self,
+        job: Job,
+        item: SceneItem,
+        request: str,
+        budget: float,
+        detail: str,
+        on_step,
+        stage: str = "design",
     ):
         """One run of the AI architect for one object (worker thread)."""
         from xpsb.ai import architect
@@ -844,7 +858,7 @@ class JobManager:
             notes=job.brief.notes,
             budget_usd=budget,
             transport=self._ai_transport_factory(self._secrets.get(ANTHROPIC_ACCOUNT)),
-            on_cost=self.ledger.add,
+            on_cost=pipeline.cost_book(job, self.ledger, stage, item.name or item.id),
         )
         inputs = assemble._script_inputs(item, job.analysis.items, detail)
         max_tris = assemble.DETAIL.get(detail, assemble.DETAIL["medium"])[0]

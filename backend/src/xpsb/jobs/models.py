@@ -141,6 +141,21 @@ class Note(BaseModel):
     params: Params = Field(default_factory=dict)
 
 
+class CallCost(BaseModel):
+    """One AI call as billed: the token counts the API reported, priced with the list
+    prices in ai/usage.py. `stage`/`item` are filled in by the job's cost book."""
+
+    stage: str = ""  # analysis | rating | similar | design | correction
+    item: str | None = None  # object name for designs and corrections
+    model: str
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    usd: float = 0.0
+    at: datetime = Field(default_factory=utcnow)
+
+
 class AiRunInfo(BaseModel):
     model: str
     models_used: list[str] = Field(default_factory=list)  # differs on server-side fallback
@@ -281,6 +296,8 @@ class Job(BaseModel):
     install: InstallResult | None = None
     approvals: list[Approval] = Field(default_factory=list)
     error: JobError | None = None
+    # Every AI call of this job, as billed (the cost overview when installing).
+    costs: list[CallCost] = Field(default_factory=list)
 
 
 class JobView(Job):

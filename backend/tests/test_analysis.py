@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 
+import pytest
 from conftest import AUTH, FIXTURES, HOCKENHEIM_AOI, wait_for_state
 from PIL import Image
 
@@ -229,6 +230,10 @@ def test_analysis_with_ai_questions_and_editor(client, fake_ai, app_ctx):
     # 2 calls à 3000 in / 1500 out on Sonnet ($2/$10 per MTok)
     assert len(fake_ai.calls) == 2
     assert abs(a["ai"]["cost_usd"] - 2 * 0.021) < 1e-9
+    # every call is in the job's cost book (the overview when installing)
+    assert [c["stage"] for c in job["costs"]] == ["analysis", "analysis"]
+    assert job["costs"][0]["input_tokens"] == 3000 and job["costs"][0]["output_tokens"] == 1500
+    assert abs(sum(c["usd"] for c in job["costs"]) - a["ai"]["cost_usd"]) < 1e-9
     assert fake_ai.keys == ["sk-ant-test"]
     assert app_ctx.jobs.ledger.month_spent() > 0
 
@@ -430,6 +435,11 @@ def test_architect_writes_fixes_and_checks_a_script(client, fake_ai, app_ctx):
     assert r.status_code == 200, r.text
     out = r.json()
     assert out["summary"] == "Passt so." and out["cost_usd"] > 0
+    job_now = client.get(f"/api/jobs/{jid}", headers=AUTH).json()
+    corrections = [c for c in job_now["costs"] if c["stage"] == "correction"]
+    assert (
+        len(corrections) == 3 and abs(sum(c["usd"] for c in corrections) - out["cost_usd"]) < 1e-6
+    )
     formats = [c["format"] for c in fake_ai.calls]
     assert formats == ["ArchitectScript", "ArchitectScript", "ArchitectReview"]
     first = fake_ai.calls[0]["content"]
@@ -708,3 +718,17 @@ def test_no_automatic_design_without_budget_or_when_off(client, fake_ai):
         f"/api/jobs/{job['id']}/gates/B/approve", json={"hash": gate["hash"]}, headers=AUTH
     )
     assert r.json()["state"] == "planned"
+
+
+def test_costs_follow_the_bill_with_cache_and_long_prompts():
+    from xpsb.ai.usage import cost_usd
+
+    # Opus 5.5: $4 in, $20 out, cache reads 0.05x, writes 1.25x
+    assert cost_usd("claude-opus-5-5", 1_000_000, 0) == pytest.approx(4.0)
+    assert cost_usd("claude-opus-5-5", 0, 0, cache_read_tokens=1_000_000) == pytest.approx(0.20)
+    assert cost_usd("claude-opus-5-5", 0, 0, cache_write_tokens=1_000_000) == pytest.approx(5.0)
+    # Sonnet 5.5: cache reads 0.1x
+    assert cost_usd("claude-sonnet-5-5", 0, 1_000_000, 1_000_000) == pytest.approx(10.2)
+    # Haiku 5.5: a second rate card above 100k prompt tokens
+    assert cost_usd("claude-haiku-5-5", 100_000, 0) == pytest.approx(0.01)
+    assert cost_usd("claude-haiku-5-5", 200_000, 1_000_000) == pytest.approx(0.1 + 2.5)

@@ -28,7 +28,7 @@ from xpsb.ai.usage import cost_usd
 from xpsb.catalog import ObjectCategory, SurfaceType
 from xpsb.geo import METERS_PER_DEG_LAT, meters_per_deg_lon
 from xpsb.imagery.wms import ImageryInfo, crop
-from xpsb.jobs.models import AiRunInfo, Question, QuestionOption
+from xpsb.jobs.models import AiRunInfo, CallCost, Question, QuestionOption
 from xpsb.scene import AiAssessment, SceneItem
 
 log = logging.getLogger(__name__)
@@ -100,6 +100,8 @@ class AiResponse:
     output_tokens: int
     refused: bool = False
     stop_reason: str = "end_turn"  # "max_tokens": cut off at the output limit
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
 
 
 class AiTransport(Protocol):
@@ -191,10 +193,10 @@ class AnthropicTransport:
         return AiResponse(
             parsed=parsed,
             model=str(response.model),
-            input_tokens=usage.input_tokens
-            + (usage.cache_creation_input_tokens or 0)
-            + (usage.cache_read_input_tokens or 0),
+            input_tokens=usage.input_tokens,
             output_tokens=usage.output_tokens,
+            cache_read_tokens=usage.cache_read_input_tokens or 0,
+            cache_write_tokens=usage.cache_creation_input_tokens or 0,
             refused=stop == "refusal",
             stop_reason=stop,
         )
@@ -455,11 +457,26 @@ class Budget:
             self.reserved -= estimate * self.SAFETY
             if response is None:
                 return
-            spent = cost_usd(response.model, response.input_tokens, response.output_tokens)
+            spent = cost_usd(
+                response.model,
+                response.input_tokens,
+                response.output_tokens,
+                response.cache_read_tokens,
+                response.cache_write_tokens,
+            )
             self.info.cost_usd = round(self.info.cost_usd + spent, 6)
             if response.model not in self.info.models_used:
                 self.info.models_used.append(response.model)
-        self.on_cost(spent)
+        self.on_cost(
+            CallCost(
+                model=response.model,
+                input_tokens=response.input_tokens,
+                output_tokens=response.output_tokens,
+                cache_read_tokens=response.cache_read_tokens,
+                cache_write_tokens=response.cache_write_tokens,
+                usd=round(spent, 6),
+            )
+        )
 
 
 @dataclass
@@ -469,7 +486,7 @@ class AiRun:
     notes: str
     budget_usd: float  # min(job limit, what is left of the monthly limit)
     transport: AiTransport
-    on_cost: Callable[[float], None] = lambda usd: None  # ledger
+    on_cost: Callable[[CallCost], None] = lambda call: None  # ledger and the job's cost book
     progress: Callable[[float], None] = lambda p: None
     should_stop: Callable[[], bool] = lambda: False
     questions: list[Question] = field(default_factory=list)

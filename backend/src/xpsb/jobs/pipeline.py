@@ -12,6 +12,7 @@ import asyncio
 import json
 import re
 import shutil
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -34,6 +35,7 @@ from xpsb.jobs.models import (
     AnalysisResult,
     BuildPlan,
     BuildResult,
+    CallCost,
     ExclusionScope,
     ExclusionType,
     InstallResult,
@@ -64,6 +66,21 @@ class AnalysisDeps:
     memory_edits: dict = field(default_factory=dict)
     mapillary_token: str | None = None
     esri_key: str | None = None
+
+
+_COST_LOCK = threading.Lock()
+
+
+def cost_book(job: Job, ledger: UsageLedger, stage: str, item: str | None = None):
+    """on_cost for AI runs: counts the call into the monthly ledger and the job's own
+    list of calls (shown as the cost overview when installing). Thread-safe."""
+
+    def add(call: CallCost) -> None:
+        ledger.add(call.usd)
+        with _COST_LOCK:
+            job.costs.append(call.model_copy(update={"stage": stage, "item": item}))
+
+    return add
 
 
 def ai_budget(job: Job, settings: Settings, ledger: UsageLedger) -> float:
@@ -181,7 +198,7 @@ def analyze_sync(job: Job, deps: AnalysisDeps, log: EventLog) -> AnalysisResult:
             notes=job.brief.notes,
             budget_usd=budget,
             transport=deps.transport_factory(deps.api_key),
-            on_cost=deps.ledger.add,
+            on_cost=cost_book(job, deps.ledger, "analysis"),
             should_stop=lambda: job.state is JobState.CANCELLED,
             questions=questions,
             context=detect.area_context(items),

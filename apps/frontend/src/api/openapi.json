@@ -2787,6 +2787,66 @@
         "title": "BuildingPart",
         "description": "An OSM building:part inside the outline of a building (Simple 3D Buildings):\nthe outline is the object, its parts describe the shape in more detail."
       },
+      "CallCost": {
+        "properties": {
+          "stage": {
+            "type": "string",
+            "title": "Stage",
+            "default": ""
+          },
+          "item": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "input_tokens": {
+            "type": "integer",
+            "title": "Input Tokens",
+            "default": 0
+          },
+          "output_tokens": {
+            "type": "integer",
+            "title": "Output Tokens",
+            "default": 0
+          },
+          "cache_read_tokens": {
+            "type": "integer",
+            "title": "Cache Read Tokens",
+            "default": 0
+          },
+          "cache_write_tokens": {
+            "type": "integer",
+            "title": "Cache Write Tokens",
+            "default": 0
+          },
+          "usd": {
+            "type": "number",
+            "title": "Usd",
+            "default": 0.0
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model"
+        ],
+        "title": "CallCost",
+        "description": "One AI call as billed: the token counts the API reported, priced with the list\nprices in ai/usage.py. `stage`/`item` are filled in by the job's cost book."
+      },
       "CreateJob": {
         "properties": {
           "aoi": {
@@ -3712,6 +3772,13 @@
                 "type": "null"
               }
             ]
+          },
+          "costs": {
+            "items": {
+              "$ref": "#/components/schemas/CallCost"
+            },
+            "type": "array",
+            "title": "Costs"
           },
           "pending_gate": {
             "anyOf": [

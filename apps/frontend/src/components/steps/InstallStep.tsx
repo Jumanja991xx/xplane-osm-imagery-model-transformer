@@ -3,6 +3,7 @@ import { api, ApiError, type JobView } from "../../api/client";
 import { useT } from "../../i18n";
 import { folderName, validPackageName } from "../../names";
 import { useApp } from "../../store";
+import { CostSummary } from "../CostSummary";
 import { PreviewDialog } from "../PreviewDialog";
 import { ProgressList } from "../ProgressList";
 import { Alert, Button, inputClass, Section } from "../ui";
@@ -60,6 +61,7 @@ export function InstallStep({ onInstall }: { onInstall: () => void }) {
           </p>
         )}
         {job.plan && <Alert>{t(job.plan.test_scenery ? "install.test_hint" : "install.scene_hint")}</Alert>}
+        <CostSummary job={job} />
         <p className="text-xs text-zinc-500">{t("install.change_hint")}</p>
         <div className="flex gap-2">
           {back}
@@ -97,6 +99,7 @@ export function InstallStep({ onInstall }: { onInstall: () => void }) {
           )}
         </p>
       )}
+      <CostSummary job={job} />
       <div className="flex justify-end gap-2">
         {back}
         <Button variant="primary" onClick={onInstall} data-testid="install-button">
