@@ -1143,6 +1143,54 @@
         }
       }
     },
+    "/api/jobs/{job_id}/split-row/{item_id}": {
+      "post": {
+        "summary": "Split Row",
+        "operationId": "split_row_api_jobs__job_id__split_row__item_id__post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/basemap/{z}/{x}/{y}": {
       "get": {
         "summary": "Basemap Tile",
@@ -5445,6 +5493,24 @@
             },
             "type": "array",
             "title": "Approaches"
+          },
+          "ground": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Ground"
+          },
+          "row_members": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Row Members"
           }
         },
         "type": "object",

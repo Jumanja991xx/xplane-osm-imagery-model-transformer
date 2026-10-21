@@ -159,6 +159,8 @@ export const api = {
   addItem: (id: string, item: NewItem) => request<JobView>("POST", `/api/jobs/${id}/items`, item),
   updateItem: (id: string, itemId: string, patch: ItemPatch) =>
     request<JobView>("PATCH", `/api/jobs/${id}/items/${itemId}`, patch),
+  splitRow: (id: string, itemId: string) =>
+    request<JobView>("POST", `/api/jobs/${id}/split-row/${itemId}`),
   deleteItem: (id: string, itemId: string) =>
     request<JobView>("DELETE", `/api/jobs/${id}/items/${itemId}`),
   similarEstimate: (id: string, itemId: string) =>

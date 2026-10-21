@@ -136,6 +136,8 @@ def merge(items: list[SceneItem], seen: dict[str, str] | None = None) -> int:
         if union.geom_type != "Polygon" or union.is_empty:
             continue  # the houses do not form one outline after all
         first = members[0]
+        originals = [m.model_dump(mode="json", exclude={"row_members"}) for m in members]
+        first.row_members = originals
         first.geometry = mapping(union.simplify(eps / 3))
         heights = [h for h in (_height(m) for m in members) if h is not None]
         if heights:
@@ -153,3 +155,17 @@ def merge(items: list[SceneItem], seen: dict[str, str] | None = None) -> int:
     if gone:
         items[:] = [it for it in items if it.id not in gone]
     return joined
+
+
+def split(item: SceneItem) -> list[SceneItem]:
+    """The houses of a joined row again, as OSM maps them (they keep the roof colour
+    measured for the row and are not joined again)."""
+    out = []
+    for data in item.row_members:
+        house = SceneItem.model_validate(data)
+        if house.attrs.roof_color is None:
+            house.attrs.roof_color = item.attrs.roof_color
+        house.edited = True  # the user decided: separate houses
+        house.included = item.included
+        out.append(house)
+    return out

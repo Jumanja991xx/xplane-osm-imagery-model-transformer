@@ -207,7 +207,8 @@ class Tools:
     ):
         """Walls with REAL windows from z0 to z1 along `polygon` (and its courtyard
         `holes`): windows set back into the wall with reveals and panes, a door in
-        the middle of the longest side (entrance), and per style pilasters,
+        the middle of the longest side (entrance; a number: that many doors evenly
+        along it, e.g. one per house of a row), and per style pilasters,
         string courses, a main cornice and a rusticated ground storey.
         style: "modern" (window every 2.7 m, 3.1 m storeys), "house" (3.6 m, 2.8 m),
         "classic" (tall windows, 4.2 m, 4.8 m), "arched" (round-arched, 4.6 m, 5.4 m),
@@ -232,7 +233,7 @@ class Tools:
             self._color(trim_color),
             None if top is None else self._mat(top),
             self._color(top_color),
-            bool(entrance),
+            _doors(entrance),
         )
 
     def parapet(self, polygon, z, height=1.0, mat="stone", color=None, holes=None, statues=0):
@@ -1023,6 +1024,16 @@ def polygon_centroid(polygon) -> list[float]:
     """Centre of mass [x, y] of the polygon."""
     c = Polygon(_pts2(polygon, "polygon")).centroid
     return [c.x, c.y]
+
+
+def _doors(entrance) -> int:
+    """facade(entrance=...): True/False, or how many doors (a row of houses)."""
+    if isinstance(entrance, bool):
+        return 1 if entrance else 0
+    n = int(_num(entrance, "entrance"))
+    if not 0 <= n <= 40:
+        raise GeometryError("facade: entrance must be True/False or 0..40 doors")
+    return n
 
 
 def resample(path, spacing) -> list[list[float]]:

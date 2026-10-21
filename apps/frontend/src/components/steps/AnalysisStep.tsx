@@ -712,6 +712,8 @@ function ItemEditor({
   remove: () => Promise<void>;
 }) {
   const { t } = useT();
+  const { setJob } = useApp();
+  const split = async () => setJob(await api.splitRow(jobId, item.id));
   const [height, setHeight] = useState(item.attrs?.height_m?.toString() ?? "");
   const [name, setName] = useState(item.name ?? "");
   useEffect(() => {
@@ -757,6 +759,16 @@ function ItemEditor({
             <p>📍 {t("analysis.site_member", { name: item.tags["site:name"] })}</p>
           )}
           {(item.parts?.length ?? 0) > 0 && <p>🧩 {t("analysis.parts", { count: item.parts!.length })}</p>}
+        </div>
+      )}
+      {(item.row_members?.length ?? 0) > 1 && (
+        <div className="flex items-center justify-between gap-2 text-xs text-zinc-600 dark:text-zinc-300" data-testid="row-info">
+          <span>🏘️ {t("analysis.row_of", { count: item.row_members!.length })}</span>
+          {editable && (
+            <Button onClick={() => void split()} data-testid="split-row">
+              {t("analysis.split_row")}
+            </Button>
+          )}
         </div>
       )}
       {editable && item.kind === "object" && (

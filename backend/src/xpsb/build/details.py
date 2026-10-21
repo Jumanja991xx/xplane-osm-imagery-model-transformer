@@ -418,7 +418,7 @@ def facade(
     trim_color,
     top: str | None,
     top_color,
-    entrance: bool,
+    entrance: int,
 ) -> str:
     """Builds the walls of a building with real windows; returns "detailed" or, when
     the triangle budget is too small, "flat" (painted windows instead)."""
@@ -467,12 +467,18 @@ def facade(
             lower: list[list[Vec2]] = []
             upper: list[list[Vec2]] = []
             if nb and ww >= 0.5:
-                door = nb // 2 if entrance and ring_no == 0 and length == longest else None
+                doors: set[int] = set()
+                if entrance and ring_no == 0 and length == longest:
+                    # one door, or one per house of a row (evenly along the front)
+                    count = max(1, min(int(entrance), nb))
+                    doors = {int((i + 0.5) * nb / count) for i in range(count)}
+                    if count == 1:
+                        doors = {nb // 2}
                 for k in range(n_st):
                     zf = z0 + k * sh
                     for j in range(nb):
                         sc = (j + 0.5) * bw
-                        is_door = k == 0 and j == door
+                        is_door = k == 0 and j in doors
                         if is_door:
                             dw = min(ww * 1.5, bw - 0.6)
                             dh = min(sh - margin, max(2.6, sill + win_h))

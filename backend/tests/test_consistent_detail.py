@@ -167,3 +167,21 @@ def test_named_and_taller_houses_stay_apart():
     items = run(els)
     rows.merge(items)
     assert len(items) == 3  # the row of three, the tall house, the named one
+
+
+def test_a_row_has_a_door_per_house_and_can_be_split_again():
+    items = run(_row(4))
+    img, info = _image([((0, 0, 24, 10), (165, 75, 55))])
+    rows.merge(items, roofs.measure(items, img, info))
+    roofs.apply(items, img, info)  # after the AI, as in the analysis
+    (row,) = [it for it in items if str(it.category) == "buildings"]
+    assert len(row.row_members) == 4
+    mesh = assemble.generate(row, items, "medium")[0]
+    doors = [p for p in mesh.patches if p.material == "door"]
+    assert sum(len(p.tris) for p in doors) >= 4 * 2  # four doors, not one
+    houses = rows.split(row)
+    assert len(houses) == 4 and all(h.edited for h in houses)
+    assert {h.osm_ref for h in houses} == {"way/1", "way/2", "way/3", "way/4"}
+    assert all(h.attrs.roof_color for h in houses)
+    again = houses + []
+    assert rows.merge(again) == 0  # the user's decision stays

@@ -171,6 +171,9 @@ class SceneItem(BaseModel):
     # X-Plane's ground heights along it (and its approaches): [lon, lat, metres
     # above sea level]; bridges meet the banks with them. Empty: unknown.
     ground: list[list[float]] = Field(default_factory=list)
+    # A row of houses joined under one roof (osm/rows.py): the houses as OSM maps
+    # them (SceneItem dicts), to split the row again.
+    row_members: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ItemPatch(BaseModel):

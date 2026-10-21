@@ -334,8 +334,9 @@ def walls(fp, z0, H, look, fstyle, top, top_color, holes, levels):
     if fstyle != None and H - z0 >= 2.4:
         # Raised blocks (upper tower stages, wings over a passage) get windows too,
         # but no door, and their underside closed.
+        doors = int((params.get("tags") or {}).get("xpsb:row_of") or 1)
         facade(fp, z0, H, style=fstyle, storeys=None if raised else levels, color=wall,
-               holes=holes, top=top, top_color=top_color, entrance=not raised,
+               holes=holes, top=top, top_color=top_color, entrance=0 if raised else doors,
                mat=(None if wall_mat in FACADE_OF else wall_mat))
         if raised:
             extrude(fp, z0, z0 + 0.1, mat=look[2], color=wall, top=None, bottom=True,

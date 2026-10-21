@@ -548,6 +548,20 @@ class JobManager:
         self._save(job)
         return job
 
+    def split_row(self, job_id: str, item_id: str) -> Job:
+        """A row of houses joined under one roof back into its houses."""
+        from xpsb.osm import rows
+
+        job = self._analyzed(job_id)
+        item = self._item(job, item_id)
+        if not item.row_members:
+            raise JobConflict("error.not_a_row", item=item_id)
+        assert job.analysis is not None
+        i = job.analysis.items.index(item)
+        job.analysis.items[i : i + 1] = rows.split(item)
+        self._save(job)
+        return job
+
     def imagery_file(self, job_id: str, retouched: bool = False) -> Path | None:
         """The job's aerial image; `retouched`: with the real objects painted out
         under the models that hide them (as the package's ground shows it)."""

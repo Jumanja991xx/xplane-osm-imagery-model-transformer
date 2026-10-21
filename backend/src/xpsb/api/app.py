@@ -458,6 +458,11 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
         ctx.jobs.update_item(job_id, item_id, body)
         return ctx.jobs.view(job_id)
 
+    @app.post("/api/jobs/{job_id}/split-row/{item_id:path}", dependencies=auth)
+    async def split_row(job_id: str, item_id: str) -> JobView:
+        ctx.jobs.split_row(job_id, item_id)
+        return ctx.jobs.view(job_id)
+
     @app.delete("/api/jobs/{job_id}/items/{item_id:path}", dependencies=auth)
     async def delete_item(job_id: str, item_id: str) -> JobView:
         ctx.jobs.delete_item(job_id, item_id)

@@ -417,6 +417,23 @@ export interface paths {
         patch: operations["update_item_api_jobs__job_id__items__item_id__patch"];
         trace?: never;
     };
+    "/api/jobs/{job_id}/split-row/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Split Row */
+        post: operations["split_row_api_jobs__job_id__split_row__item_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/basemap/{z}/{x}/{y}": {
         parameters: {
             query?: never;
@@ -1997,6 +2014,12 @@ export interface components {
             approaches?: {
                 [key: string]: unknown;
             }[];
+            /** Ground */
+            ground?: number[][];
+            /** Row Members */
+            row_members?: {
+                [key: string]: unknown;
+            }[];
         };
         /** SearchResult */
         SearchResult: {
@@ -3034,6 +3057,38 @@ export interface operations {
                 "application/json": components["schemas"]["ItemPatch"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    split_row_api_jobs__job_id__split_row__item_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
