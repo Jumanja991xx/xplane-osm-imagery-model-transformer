@@ -47,6 +47,7 @@ from xpsb.jobs.models import (
     Note,
     PlanItem,
     PlanObject,
+    scan_model,
 )
 from xpsb.osm import bridges as bridges_mod
 from xpsb.osm import classify, overpass, rows
@@ -152,6 +153,10 @@ def _apply_memory(items: list, deps: AnalysisDeps) -> int:
             item.category, item.attrs, item.included = mem.category, mem.attrs, mem.included
             item.name = mem.name or item.name
             item.ai, item.remembered = mem.ai, True
+            # A design from an earlier job is reused (not paid for again) unless it
+            # paints photos of that job onto the walls.
+            if mem.script and "photo:" not in mem.script and not item.script:
+                item.script, item.script_request = mem.script, mem.script_request
             count += 1
     known = [shape(it.geometry) for it in items if it.kind == "object"]
     for n, mem in enumerate(deps.memory_items, start=1):
@@ -246,7 +251,7 @@ def analyze_sync(job: Job, deps: AnalysisDeps, log: EventLog) -> AnalysisResult:
             image = img.convert("RGB")
         questions: list = []
         run = ai.AiRun(
-            model=job.brief.ai_model,
+            model=scan_model(job.brief),
             language=deps.settings.language,
             notes=job.brief.notes,
             budget_usd=budget,
@@ -292,10 +297,10 @@ def analyze_sync(job: Job, deps: AnalysisDeps, log: EventLog) -> AnalysisResult:
             _progress(log, "detect", 1.0, "stage.detect_done", count=len(proposals))
         if items:
             run.progress = lambda p: _progress(
-                log, "ai", p, "stage.ai", count=len(items), model=job.brief.ai_model
+                log, "ai", p, "stage.ai", count=len(items), model=scan_model(job.brief)
             )
             run.progress(0.0)
-            to_rate = [it for it in items if not it.remembered]
+            to_rate = [it for it in items if ai.needs_rating(it)]
             result.ai = ai.run(to_rate, image, info, run, result=run_info)
         else:
             result.ai = run_info
@@ -307,7 +312,7 @@ def analyze_sync(job: Job, deps: AnalysisDeps, log: EventLog) -> AnalysisResult:
             )
         if result.ai.error_key:
             notes.append(Note(key=result.ai.error_key, params={"detail": result.ai.error_detail}))
-        fallback = [m for m in result.ai.models_used if m != job.brief.ai_model]
+        fallback = [m for m in result.ai.models_used if m != scan_model(job.brief)]
         if fallback:
             notes.append(
                 Note(key="analysis.ai_fallback_model", params={"model": ", ".join(fallback)})

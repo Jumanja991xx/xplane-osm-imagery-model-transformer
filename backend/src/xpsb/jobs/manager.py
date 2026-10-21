@@ -39,6 +39,7 @@ from xpsb.jobs.models import (
     JobState,
     JobView,
     PlanObject,
+    scan_model,
     utcnow,
 )
 from xpsb.paths import AppPaths
@@ -80,6 +81,7 @@ ANALYSIS_FIELDS = (
     "surface_types",
     "use_ai",
     "ai_model",
+    "ai_economy",
     "ai_detect",
     "research",
     "notes",
@@ -368,7 +370,10 @@ class JobManager:
                 if not aoi.intersects(geom) or not aoi.contains(geom.representative_point()):
                     continue
                 if it.source == "osm":
-                    if it.osm_ref and (it.edited or it.remembered) and it.osm_ref not in edits:
+                    # The user's corrections - and the AI architect's designs, which
+                    # are not paid for twice when the same area is built again.
+                    known = it.edited or it.remembered or it.script
+                    if it.osm_ref and known and it.osm_ref not in edits:
                         edits[it.osm_ref] = it.model_copy(deep=True)
                     continue
                 if not it.included or any(
@@ -503,7 +508,7 @@ class JobManager:
                 image = img.convert("RGB")
             questions: list = []
             cfg = ai.AiRun(
-                model=job.brief.ai_model,
+                model=scan_model(job.brief),
                 language=self._settings.load().language,
                 notes=job.brief.notes,
                 budget_usd=self._similar_budget(job),
@@ -531,7 +536,7 @@ class JobManager:
                     )
                     target.ai = item.ai
         if info is not None:
-            run = job.analysis.ai or AiRunInfo(model=job.brief.ai_model)
+            run = job.analysis.ai or AiRunInfo(model=scan_model(job.brief))
             run.cost_usd = round(run.cost_usd + info.cost_usd, 6)
             run.analyzed += info.analyzed
             job.analysis.ai = run
@@ -619,9 +624,9 @@ class JobManager:
         assert job.brief is not None and job.analysis is not None
         tiles = len(detect.plan_tiles(job.analysis.imagery))
         return SimilarEstimate(
-            model=job.brief.ai_model,
+            model=scan_model(job.brief),
             tiles=tiles,
-            estimate_usd=round(detect.similar_cost_estimate(tiles, job.brief.ai_model), 3),
+            estimate_usd=round(detect.similar_cost_estimate(tiles, scan_model(job.brief)), 3),
             budget_usd=round(self._similar_budget(job), 4),
         )
 
@@ -639,7 +644,7 @@ class JobManager:
             with Image.open(image_path) as img:
                 image = img.convert("RGB")
             cfg = ai.AiRun(
-                model=job.brief.ai_model,
+                model=scan_model(job.brief),
                 language=self._settings.load().language,
                 notes=job.brief.notes,
                 budget_usd=budget,
@@ -668,7 +673,7 @@ class JobManager:
             item.id = f"ai/{n}"
             used.add(item.id)
         analysis.items.extend(found)
-        run = analysis.ai or AiRunInfo(model=job.brief.ai_model)
+        run = analysis.ai or AiRunInfo(model=scan_model(job.brief))
         run.cost_usd = round(run.cost_usd + info.cost_usd, 6)
         run.tiles_searched += info.tiles_searched
         run.proposals += len(found)

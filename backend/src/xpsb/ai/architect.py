@@ -29,6 +29,7 @@ from xpsb.xplane.library import Catalog
 
 MAX_CALLS = 4  # writing incl. fixes, plus one review
 EFFORT = "medium"
+MAX_PHOTOS = 5  # the most telling ones (they come sorted); more add cost, not detail
 MAX_SCRIPT_CHARS = 30_000
 # Rough token counts for the estimate (system prompt with the tool reference,
 # script, images, and a full script plus thinking as output).
@@ -283,7 +284,7 @@ TOOLS:
 """
 
 
-def _estimate(model: str, script_chars: int, images: int) -> float:
+def _estimate(model: str, script_chars: float, images: float) -> float:
     input_est = SYSTEM_TOKENS_EST + script_chars / 3.2 + images * IMAGE_TOKENS_EST + 600
     return cost_usd(model, int(input_est), OUTPUT_TOKENS_EST)
 
@@ -392,7 +393,11 @@ def design(
         retried = False
         while True:
             chars = sum(len(b.get("text", "")) for b in content)
-            images = sum(1 for b in content if b["type"] == "image")
+            images: float = sum(1 for b in content if b["type"] == "image")
+            if result.calls and content[: len(prefix)] == prefix:
+                # The cached prefix costs a tenth (or less) after the first call.
+                images -= 0.9 * sum(1 for b in prefix if b["type"] == "image")
+                chars -= int(0.9 * sum(len(b.get("text", "")) for b in prefix))
             est = _estimate(cfg.model, chars, images)
             # Longest answer the rest of this budget pays for (input first).
             in_cost = est - cost_usd(cfg.model, 0, OUTPUT_TOKENS_EST)
@@ -469,19 +474,21 @@ def design(
         except ScriptError as exc:
             return None, str(exc)[:1500]
 
-    # The current state: how it looks now (if it builds) and the aerial image.
-    content: list[dict] = [{"type": "text", "text": f"The user asks: {request}"}]
-    content.append({"type": "text", "text": facts})
+    # What stays the same in every call for this object - request, facts, aerial
+    # image, photos - comes first and is cached: the fix and review calls read it
+    # at a fraction of the price instead of paying for the images again.
+    prefix: list[dict] = [{"type": "text", "text": f"The user asks: {request}"}]
+    prefix.append({"type": "text", "text": facts})
     if aerial_png:
-        content += [
+        prefix += [
             {"type": "text", "text": "Aerial image (red outline = this object, north up):"},
             png_block(aerial_png),
         ]
     photo_blocks: list[dict] = []
-    for caption, jpeg in photos or []:
+    for caption, jpeg in (photos or [])[:MAX_PHOTOS]:
         photo_blocks += [{"type": "text", "text": caption}, jpeg_block(jpeg)]
     if photo_blocks:
-        content.append(
+        prefix.append(
             {
                 "type": "text",
                 "text": "Photos of the real object (from the user or open sources; may show "
@@ -489,7 +496,9 @@ def design(
                 "colours and details):",
             }
         )
-        content += photo_blocks
+        prefix += photo_blocks
+    prefix[-1] = {**prefix[-1], "cache_control": {"type": "ephemeral"}}
+    content: list[dict] = list(prefix)
     current_mesh, _ = try_run(current_script)
     if current_mesh is not None:
         content.append({"type": "text", "text": "How the object looks now:"})
@@ -514,8 +523,7 @@ def design(
                 break
             on_step("design.step.fixing", {"attempt": result.calls + 1})
             fix = [
-                {"type": "text", "text": f"The user asks: {request}"},
-                {"type": "text", "text": facts},
+                *prefix,
                 {"type": "text", "text": "Your script:\n" + script},
                 {"type": "text", "text": "It failed in the sandbox:\n" + (error or "")},
                 {"type": "text", "text": "Fix it and return the complete script."},
@@ -532,14 +540,7 @@ def design(
         on_step("design.step.checking", {})
         review = call(
             [
-                {"type": "text", "text": f"The user asked: {request}"},
-                {"type": "text", "text": facts},
-                *(
-                    [{"type": "text", "text": "Aerial image:"}, png_block(aerial_png)]
-                    if aerial_png
-                    else []
-                ),
-                *photo_blocks,
+                *prefix,
                 {"type": "text", "text": "Your result:"},
                 *views_blocks(mesh),
                 {"type": "text", "text": "Your script:\n" + script},

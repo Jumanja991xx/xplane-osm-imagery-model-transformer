@@ -33,9 +33,9 @@ from xpsb.scene import AiAssessment, SceneItem
 
 log = logging.getLogger(__name__)
 
-BATCH_SIZE = 6
+BATCH_SIZE = 12  # the fixed cost of a call (instructions, thinking) shared by more items
 MAX_ITEMS = 300
-CROP_MAX_PX = 768
+CROP_MAX_PX = 576
 CROP_MIN_PX = 256
 MIN_MARGIN_M = 25.0  # enough surroundings to see e.g. the track in front of a stand
 CATEGORY_CHANGE_CONFIDENCE = 0.75
@@ -127,6 +127,9 @@ class AiCallError(RuntimeError):
         self.key = key  # i18n key for the user, if more specific than "call failed"
 
 
+CACHE = {"type": "ephemeral"}
+
+
 class AnthropicTransport:
     """Claude Messages API. The key lives only in this object, never in logs or files."""
 
@@ -165,7 +168,11 @@ class AnthropicTransport:
             with self._client.beta.messages.stream(
                 model=model,
                 max_tokens=max_tokens,
-                system=system,
+                # The system prompt is the same for every call of a stage (and often
+                # thousands of tokens): cached, later calls read it at a fraction of
+                # the price. Content blocks may carry their own cache_control (a
+                # prefix shared by several calls, e.g. the architect's photos).
+                system=[{"type": "text", "text": system, "cache_control": CACHE}],
                 messages=[{"role": "user", "content": content}],
                 output_config=output_config,
                 # If the model declines, the server retries on its default fallback
@@ -200,6 +207,20 @@ class AnthropicTransport:
             refused=stop == "refusal",
             stop_reason=stop,
         )
+
+
+def needs_rating(item: SceneItem) -> bool:
+    """Whether the AI can add anything: not for items left out of the plan, fences
+    and walls (thin lines it hardly sees), or buildings OSM already describes fully
+    (height, roof form and both colours)."""
+    if not item.included or item.remembered or str(item.category) == "barriers":
+        return False
+    a = item.attrs
+    if str(item.category) == "buildings" and item.name is None:
+        known = (a.height_m is not None or a.levels is not None) and a.roof_shape
+        if known and a.roof_color and a.wall_color:
+            return False
+    return True
 
 
 # ---- prompt --------------------------------------------------------------------

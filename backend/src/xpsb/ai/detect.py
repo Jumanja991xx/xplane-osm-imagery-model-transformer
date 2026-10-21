@@ -433,6 +433,7 @@ class _Scan:
         self.lock = threading.Lock()
         self.tiles = plan_tiles(info)
         self.finds: list[tuple[float, SceneItem, Polygon]] = []
+        self.found_in: set[int] = set()  # tiles where something new was found
 
     def known(self) -> list[SceneItem]:
         return self.items + [item for _, item, _ in self.finds]
@@ -441,9 +442,18 @@ class _Scan:
         with self.lock:
             self.result.dropped[reason] = self.result.dropped.get(reason, 0) + 1
 
-    def run(self, system: str, extra: list[dict], prefix: str, step: int, steps: int) -> bool:
-        """One look at every tile, several tiles in parallel. False if the run has to
-        stop (limit, error, cancel)."""
+    def run(
+        self,
+        system: str,
+        extra: list[dict],
+        prefix: str,
+        step: int,
+        steps: int,
+        tiles: list[Tile] | None = None,
+    ) -> bool:
+        """One look at every tile (or `tiles`), several in parallel. False if the run
+        has to stop (limit, error, cancel)."""
+        tiles = self.tiles if tiles is None else tiles
         known_objects = [shape(it.geometry) for it in self.items if it.kind == "object"]
         known_surfaces = [shape(it.geometry) for it in self.items if it.kind == "surface"]
         outlined = self.known()  # what this look already sees outlined in magenta
@@ -514,9 +524,10 @@ class _Scan:
                     self.finds.append(
                         (confidence, _proposal(find, poly, response.model, confidence), poly)
                     )
+                    self.found_in.add(tile.index)
 
         with ThreadPoolExecutor(max_workers=PARALLEL_CALLS) as pool:
-            list(pool.map(look, self.tiles))
+            list(pool.map(look, tiles))
         return not (self.result.error_key or self.result.limit_reached or self.cfg.should_stop())
 
     def proposals(self) -> list[SceneItem]:
@@ -550,12 +561,31 @@ def search(
     scan = _Scan(items, aoi, image, info, cfg, objects, surfaces)
     system = system_prompt(cfg.language, cfg.notes, objects, surfaces, area_context(items))
     for step in range(passes):
+        tiles = scan.tiles if step == 0 else around(scan.tiles, scan.found_in)
+        if not tiles:
+            break  # nothing new anywhere: another look would find nothing either
         if on_pass:
             on_pass(step + 1, passes)  # tells the user which look is running
         prefix = "" if step == 0 else SECOND_PASS + "\n"
-        if not scan.run(system, [], prefix, step, passes):
+        if not scan.run(system, [], prefix, step, passes, tiles):
             break
     return scan.proposals(), scan.result
+
+
+def around(tiles: list[Tile], found: set[int]) -> list[Tile]:
+    """The tiles where something was found and their neighbours: where a second
+    look pays (stands next to stands, the rest of a row). Elsewhere the first look
+    already saw everything there is."""
+    hits = [t for t in tiles if t.index in found]
+    out = []
+    for t in tiles:
+        w, h = t.x1 - t.x0, t.y1 - t.y0
+        if any(
+            t.x0 - w < o.x1 and o.x0 < t.x1 + w and t.y0 - h < o.y1 and o.y0 < t.y1 + h
+            for o in hits
+        ):
+            out.append(t)
+    return out
 
 
 def find_similar(

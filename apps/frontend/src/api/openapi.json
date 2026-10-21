@@ -2809,6 +2809,11 @@
             "title": "Ai Model",
             "default": "claude-opus-5-5"
           },
+          "ai_economy": {
+            "type": "boolean",
+            "title": "Ai Economy",
+            "default": true
+          },
           "ai_cost_limit_usd": {
             "type": "number",
             "maximum": 1000.0,

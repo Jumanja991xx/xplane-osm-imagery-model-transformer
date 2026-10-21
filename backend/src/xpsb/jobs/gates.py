@@ -18,7 +18,7 @@ from xpsb.ai import detect
 from xpsb.geo import METERS_PER_DEG_LAT, meters_per_deg_lon
 from xpsb.imagery.sources import resolve_source
 from xpsb.imagery.wms import MARGIN_M
-from xpsb.jobs.models import GateId, GateItem, Job, JobState, PendingGate
+from xpsb.jobs.models import GateId, GateItem, Job, JobState, PendingGate, scan_model
 from xpsb.settings import Settings
 from xpsb.xplane_detect import check_xplane_path
 
@@ -133,7 +133,7 @@ def _gate_a(job: Job, ctx: GateContext):
                 kind="cost",
                 key="gate.a.ai_cost",
                 params={
-                    "model": b.ai_model,
+                    "model": scan_model(b),
                     "limit_usd": round(min(b.ai_cost_limit_usd, month_left), 2),
                 },
             )
@@ -150,7 +150,7 @@ def _gate_a(job: Job, ctx: GateContext):
         )
         if source is not None:
             items.append(
-                GateItem(kind="action", key="gate.a.ai_upload", params={"model": b.ai_model})
+                GateItem(kind="action", key="gate.a.ai_upload", params={"model": scan_model(b)})
             )
             if b.ai_detect:
                 tiles = _tile_count(job)
@@ -162,7 +162,7 @@ def _gate_a(job: Job, ctx: GateContext):
                             "tiles": tiles,
                             "passes": detect.PASSES,
                             "estimate_usd": round(
-                                tiles * detect.PASSES * detect.estimate_tile_cost(b.ai_model), 3
+                                tiles * detect.PASSES * detect.estimate_tile_cost(scan_model(b)), 3
                             ),
                         },
                     )
@@ -211,7 +211,7 @@ def _minutes(lo: float, hi: float) -> tuple[int, int]:
 def analysis_minutes(b, tiles: int, imagery: bool) -> tuple[int, int]:
     """Usual duration of the analysis in minutes (shown before it starts)."""
     lo, hi = 0.2, 1.0  # OSM and aerial image
-    f = _speed(b.ai_model)
+    f = _speed(scan_model(b))
     if b.use_ai:
         lo, hi = lo + 0.3 * f, hi + 1.5 * f  # rating every item
         if b.ai_detect and imagery:  # up to 4 images at a time, each pass

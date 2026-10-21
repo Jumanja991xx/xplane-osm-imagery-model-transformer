@@ -67,6 +67,16 @@ class DetailLevel(StrEnum):
 PACKAGE_NAME_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9 _\-]{0,59}$"
 
 
+SCAN_MODEL = "claude-sonnet-5-5"
+
+
+def scan_model(brief) -> str:
+    """The model for looking at the aerial image (object search, rating)."""
+    if brief.ai_economy and "opus" in brief.ai_model:
+        return SCAN_MODEL
+    return brief.ai_model
+
+
 class Brief(BaseModel):
     """Step 2: what exactly should be built (answers of the clarification dialog)."""
 
@@ -77,6 +87,9 @@ class Brief(BaseModel):
     exclusion_scope: ExclusionScope = ExclusionScope.OBJECTS
     use_ai: bool = True
     ai_model: AiModel = "claude-opus-5-5"
+    # Saves money: looking at the aerial image (search, rating, "find similar") runs
+    # on Sonnet when Opus is chosen; the AI architect keeps the chosen model.
+    ai_economy: bool = True
     ai_cost_limit_usd: float = Field(default=5.0, ge=0, le=1000)
     # Search the aerial image for objects OSM does not know (proposals for the user).
     ai_detect: bool = True

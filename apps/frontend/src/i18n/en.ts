@@ -383,6 +383,8 @@ export const en: Record<MessageKey, string> = {
   "error.invalid_item": "Invalid change: {detail}",
   "error.no_imagery": "No aerial image available.",
   "brief.ai_detect": "AI object search in the aerial image (finds what OSM lacks)",
+  "brief.ai_economy": "Save costs (recommended)",
+  "brief.ai_economy_hint": "Search and rating on the aerial image run on Sonnet instead of Opus (about half the price, hardly any difference in recognition); the AI architect keeps building with the chosen model. Always: repeated instructions and images are cached, the second search pass only looks where the first found something, objects OSM already describes fully are not rated, earlier designs in the same area are reused.",
   "brief.ai_detect_hint": "Finds appear as proposals – you decide what is used.",
   "gate.a.ai_detect": "AI object search: the aerial image goes to the AI as {tiles} picture(s) (small areas as one picture of the whole site), {passes} passes, estimated at most {estimate_usd} USD.",
   "gate.b.open_proposals": "{count} AI proposals were not accepted and stay out of the plan.",

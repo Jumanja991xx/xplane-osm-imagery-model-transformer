@@ -55,6 +55,7 @@ export function BriefStep({ onSubmitted }: { onSubmitted: () => void }) {
         ai_model: settings?.ai?.model ?? "claude-opus-5-5",
         ai_cost_limit_usd: settings?.ai?.job_limit_usd ?? 5,
         ai_detect: true,
+        ai_economy: true,
         research: true,
         ai_design: "important",
         detail: "medium",
@@ -260,6 +261,12 @@ export function BriefStep({ onSubmitted }: { onSubmitted: () => void }) {
                 onChange={(on) => update({ ai_detect: on })}
               />
               <p className="pl-6 text-xs text-zinc-500">{t("brief.ai_detect_hint")}</p>
+              <Checkbox
+                label={t("brief.ai_economy")}
+                checked={brief.ai_economy ?? true}
+                onChange={(on) => update({ ai_economy: on })}
+              />
+              <p className="pl-6 text-xs text-zinc-500">{t("brief.ai_economy_hint")}</p>
             </div>
             <div className="col-span-2 space-y-1">
               <div className="text-xs font-semibold text-zinc-500 uppercase">{t("brief.ai_design")}</div>

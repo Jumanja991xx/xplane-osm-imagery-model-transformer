@@ -996,6 +996,11 @@ export interface components {
              */
             ai_model: "claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-5-5";
             /**
+             * Ai Economy
+             * @default true
+             */
+            ai_economy: boolean;
+            /**
              * Ai Cost Limit Usd
              * @default 5
              */

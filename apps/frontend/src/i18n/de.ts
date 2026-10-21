@@ -381,6 +381,8 @@ export const de = {
   "error.invalid_item": "Ungültige Änderung: {detail}",
   "error.no_imagery": "Kein Luftbild vorhanden.",
   "brief.ai_detect": "KI-Objektsuche im Luftbild (findet, was in OSM fehlt)",
+  "brief.ai_economy": "Kosten sparen (empfohlen)",
+  "brief.ai_economy_hint": "Suche und Bewertung im Luftbild laufen mit Sonnet statt Opus (etwa halber Preis, kaum Unterschied beim Erkennen); die KI-Architektin baut weiter mit dem gewählten Modell. Dazu immer: Zwischenspeichern wiederholter Anweisungen und Bilder, zweiter Suchdurchgang nur wo der erste etwas fand, keine Bewertung von Objekten, die OSM schon vollständig beschreibt, frühere Entwürfe im selben Gebiet werden wiederverwendet.",
   "brief.ai_detect_hint": "Funde erscheinen als Vorschläge – du entscheidest, was übernommen wird.",
   "gate.a.ai_detect": "KI-Objektsuche: Das Luftbild geht als {tiles} Bild(er) an die KI (bei kleinen Gebieten das ganze Gelände auf einmal), {passes} Durchgänge, geschätzt höchstens {estimate_usd} USD.",
   "gate.b.open_proposals": "{count} KI-Vorschläge wurden nicht übernommen und kommen nicht in den Bauplan.",

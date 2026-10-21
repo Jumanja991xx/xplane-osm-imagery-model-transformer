@@ -131,7 +131,7 @@ def test_crop_has_outline_and_sensible_size(tmp_path):
         with Image.open(io.BytesIO(png)) as crop:
             assert ai.CROP_MIN_PX <= max(crop.size) <= ai.CROP_MAX_PX
             assert ai.OUTLINE in {c for _, c in crop.getcolors(1 << 20)}
-        assert 0 < gsd <= info.gsd_m
+        assert 0 < gsd <= info.gsd_m * 1.5  # big objects: a little coarser (cheaper)
 
 
 def test_apply_result_keeps_osm_facts():
@@ -226,12 +226,13 @@ def test_analysis_with_ai_questions_and_editor(client, fake_ai, app_ctx):
     a = job["analysis"]
     assert a["imagery"]["attribution"] == "Test-Luftbild"
     assert len(a["items"]) == 10
-    assert a["ai"]["analyzed"] == 10 and a["ai"]["models_used"] == ["claude-sonnet-5-5"]
-    # 2 calls à 3000 in / 1500 out on Sonnet ($2/$10 per MTok)
-    assert len(fake_ai.calls) == 2
-    assert abs(a["ai"]["cost_usd"] - 2 * 0.021) < 1e-9
+    # The fence is not rated (a thin line the AI hardly sees; nothing to gain).
+    assert a["ai"]["analyzed"] == 9 and a["ai"]["models_used"] == ["claude-sonnet-5-5"]
+    # 1 call (all 9 in one batch) à 3000 in / 1500 out on Sonnet ($2/$10 per MTok)
+    assert len(fake_ai.calls) == 1
+    assert abs(a["ai"]["cost_usd"] - 0.021) < 1e-9
     # every call is in the job's cost book (the overview when installing)
-    assert [c["stage"] for c in job["costs"]] == ["analysis", "analysis"]
+    assert [c["stage"] for c in job["costs"]] == ["analysis"]
     assert job["costs"][0]["input_tokens"] == 3000 and job["costs"][0]["output_tokens"] == 1500
     assert abs(sum(c["usd"] for c in job["costs"]) - a["ai"]["cost_usd"]) < 1e-9
     assert fake_ai.keys == ["sk-ant-test"]
@@ -338,8 +339,9 @@ def test_analysis_with_ai_questions_and_editor(client, fake_ai, app_ctx):
     assert r.status_code == 409
 
 
-def test_cost_limit_stops_before_spending(client, fake_ai):
+def test_cost_limit_stops_before_spending(client, fake_ai, monkeypatch):
     # First call costs more than estimated ($0.056): the next estimate no longer fits.
+    monkeypatch.setattr(ai, "BATCH_SIZE", 5)  # two batches for the 9 items rated
     fake_ai.tokens = (3000, 5000)
     job = analyze(client, setup(client, brief={**ALL, "ai_cost_limit_usd": 0.07}))
     a = job["analysis"]
