@@ -1001,6 +1001,18 @@ export interface components {
              */
             ai_economy: boolean;
             /**
+             * Mode
+             * @default objects
+             * @enum {string}
+             */
+            mode: "objects" | "city";
+            /**
+             * City Preset
+             * @default central_europe
+             * @enum {string}
+             */
+            city_preset: "central_europe" | "central_europe_city";
+            /**
              * Ai Cost Limit Usd
              * @default 5
              */
@@ -1079,6 +1091,10 @@ export interface components {
             foreign_zones?: {
                 [key: string]: unknown;
             }[];
+            /** City */
+            city?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Test Scenery
              * @default false

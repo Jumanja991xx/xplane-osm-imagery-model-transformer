@@ -56,6 +56,8 @@ export function BriefStep({ onSubmitted }: { onSubmitted: () => void }) {
         ai_cost_limit_usd: settings?.ai?.job_limit_usd ?? 5,
         ai_detect: true,
         ai_economy: true,
+        mode: "objects",
+        city_preset: "central_europe",
         research: true,
         ai_design: "important",
         detail: "medium",
@@ -179,6 +181,42 @@ export function BriefStep({ onSubmitted }: { onSubmitted: () => void }) {
           </div>
         </Alert>
       )}
+      <Section title={t("brief.mode")}>
+        {(["objects", "city"] as const).map((mode) => (
+          <label key={mode} className="flex items-start gap-2 text-sm">
+            <input
+              type="radio"
+              name="build_mode"
+              className="mt-1"
+              checked={(brief.mode ?? "objects") === mode}
+              onChange={() => update({ mode })}
+              data-testid={`build-mode-${mode}`}
+            />
+            <span>
+              {t(`brief.mode.${mode}`)}
+              <span className="block text-xs text-zinc-500">{t(`brief.mode.${mode}_hint`)}</span>
+            </span>
+          </label>
+        ))}
+        {brief.mode === "city" && (
+          <label className="block text-sm">
+            <span className="mb-1 block text-zinc-600 dark:text-zinc-300">{t("brief.city_preset")}</span>
+            <select
+              className={inputClass}
+              value={brief.city_preset ?? "central_europe"}
+              onChange={(e) => update({ city_preset: e.target.value as Brief["city_preset"] })}
+              data-testid="city-preset"
+            >
+              {(["central_europe", "central_europe_city"] as const).map((p) => (
+                <option key={p} value={p}>
+                  {t(`brief.city_preset.${p}`)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </Section>
+
       <Section title={t("brief.surface_mode")}>
         {(["material", "imagery", "none"] as const).map((mode) => (
           <label key={mode} className="flex items-center gap-2 text-sm">

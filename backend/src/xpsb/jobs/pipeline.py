@@ -194,6 +194,119 @@ def _apply_memory(items: list, deps: AnalysisDeps) -> int:
     return count
 
 
+CITY_DIR = "city"
+
+
+def _city_data_stage(job: Job, deps: AnalysisDeps, log: EventLog, notes: list[Note]) -> None:
+    """City mode in Bavaria: the official 3D buildings (real roof shapes) of the area,
+    stored with the job; elsewhere the OSM buildings are used when planning."""
+    from dataclasses import asdict
+
+    from xpsb.city import build as city
+    from xpsb.city import lod2
+
+    lon, lat = job.aoi_center
+    if not lod2.covers(lon, lat):
+        return
+    _progress(log, "city", 0.0, "stage.city_data")
+    try:
+        buildings = city.lod2_buildings(
+            [tuple(p) for p in job.aoi.ring],
+            deps.cache_dir / "lod2",
+            lambda n, total: _progress(
+                log, "city", n / max(1, total), "stage.city_data", done=n, total=total
+            ),
+        )
+    except (lod2.Lod2Error, OSError, ValueError) as exc:
+        notes.append(Note(key="analysis.city_lod2_failed", params={"detail": str(exc)[:300]}))
+        return
+    folder = deps.job_dir / CITY_DIR
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "lod2.json").write_text(json.dumps([asdict(b) for b in buildings]), "utf-8")
+    _progress(log, "city", 1.0, "stage.city_data_done", count=len(buildings))
+
+
+def city_items(job: Job) -> list:
+    """The ordinary buildings the city mode builds in blocks: not the landmarks (worth
+    a single detailed object), nor anything with a design of its own."""
+    if job.brief is None or job.brief.mode != "city" or job.analysis is None:
+        return []
+    return [
+        it
+        for it in job.analysis.items
+        if it.kind == "object"
+        and str(it.category) == "buildings"
+        and it.included
+        and not it.proposal
+        and not it.script
+        and research.score(it) < 30
+    ]
+
+
+def _city_buildings(job: Job, job_dir: Path) -> tuple[list, str]:
+    """(city buildings, source): the official 3D data if loaded, else OSM."""
+    from xpsb.city import build as city
+    from xpsb.city.model import CityBuilding
+
+    assert job.analysis is not None
+    ordinary = city_items(job)
+    stored = job_dir / CITY_DIR / "lod2.json"
+    if stored.is_file():
+        raw = json.loads(stored.read_text("utf-8"))
+        buildings = [
+            CityBuilding(
+                **{
+                    **b,
+                    "footprint": [[tuple(p) for p in r] for r in b["footprint"]],
+                    "walls": [[tuple(p) for p in w] for w in b["walls"]],
+                    "roofs": [[tuple(p) for p in r] for r in b["roofs"]],
+                    "roof_color": tuple(b["roof_color"]) if b.get("roof_color") else None,
+                }
+            )
+            for b in raw
+        ]
+        ids = {it.id for it in ordinary}
+        single = [
+            shape(it.geometry)
+            for it in job.analysis.items
+            if it.kind == "object" and it.included and not it.proposal and it.id not in ids
+        ]
+        return city.without(buildings, single), "lod2"
+    return city.from_items(ordinary), "osm"
+
+
+def _aerial(job: Job, job_dir: Path):
+    """The aerial image for real roofs, if it may go into the package."""
+    info = job.analysis.imagery if job.analysis else None
+    if info is None or not info.package_ok:
+        return None
+    path = job_dir / "imagery" / info.file
+    if not path.is_file():
+        return None
+    with Image.open(path) as img:
+        image = retouch.apply(
+            img.convert("RGB"), (info.west, info.south, info.east, info.north), []
+        )
+    return image, (info.west, info.south, info.east, info.north)
+
+
+def build_city(job: Job, job_dir: Path, out_dir: Path, preview_dir: Path | None):
+    """The city blocks (city mode) into out_dir; returns (blocks, source, buildings)."""
+    from xpsb.city import build as city
+
+    assert job.brief is not None
+    buildings, source = _city_buildings(job, job_dir)
+    blocks = city.build(
+        buildings,
+        job.brief.city_preset,
+        job.aoi_center,
+        out_dir,
+        aerial=_aerial(job, job_dir),
+        preview_dir=preview_dir,
+    )
+    return blocks, source, len(buildings)
+
+
 def _terrain_stage(
     job: Job, items: list, deps: AnalysisDeps, log: EventLog, notes: list[Note]
 ) -> None:
@@ -244,6 +357,8 @@ def analyze_sync(job: Job, deps: AnalysisDeps, log: EventLog) -> AnalysisResult:
     if not items:
         notes.append(Note(key="analysis.nothing_found"))
     _terrain_stage(job, items, deps, log, notes)
+    if job.brief.mode == "city":
+        _city_data_stage(job, deps, log, notes)
     info = _imagery_stage(job, deps, log, notes)
     if info is not None:
         # The aerial image knows the roofs better than the map: their colours, and
@@ -525,6 +640,15 @@ def _exclusions(job: Job) -> list[tuple[str, Bounds]]:
             kind_rects = rects + _surface_rects(job)
         out += [(kind.value, r) for r in kind_rects]
     out += [(z["kind"], tuple(z["bounds"])) for z in job.plan.foreign_zones]
+    if job.brief.mode == "city":  # the whole city is ours: X-Plane's own houses go
+        ring = job.aoi.ring
+        area = (
+            min(p[0] for p in ring),
+            min(p[1] for p in ring),
+            max(p[0] for p in ring),
+            max(p[1] for p in ring),
+        )
+        out += [(kind, area) for kind in ("objects", "facades")]
     return out
 
 
@@ -538,7 +662,7 @@ def object_files(objects: list[PlanObject]) -> list[str]:
     return [
         f"objects/{o.stem}{suffix}"
         for o in objects
-        if o.status == "ok" and o.has_mesh
+        if o.status == "ok" and o.has_mesh and o.category != "city"  # see plan.city
         for suffix in (".obj", ".png", "_nml.png") + (("_lit.png",) if o.lit else ())
     ]
 
@@ -555,7 +679,7 @@ OBJECT_ITEM_KINDS = (
 
 def object_items(objects: list[PlanObject]) -> list[PlanItem]:
     """Plan lines about the 3D objects (recomputed when single objects change)."""
-    ok = [o for o in objects if o.status == "ok"]
+    ok = [o for o in objects if o.status == "ok" and o.category != "city"]
     items = [PlanItem(kind="objects", label_key="plan.objects", count=sum(o.has_mesh for o in ok))]
     designed = sum(o.designed for o in ok)
     if designed:
@@ -630,10 +754,42 @@ def make_plan(
     preview_dir = job_dir / "preview"
     if preview_dir.exists():
         shutil.rmtree(preview_dir)
+    in_blocks = {it.id for it in city_items(job)}
     results = assemble.generate_all(
-        job.analysis.items, detail, preview_dir, True, None, library, job_dir / "photos"
+        [it for it in job.analysis.items if it.id not in in_blocks],
+        detail,
+        preview_dir,
+        True,
+        None,
+        library,
+        job_dir / "photos",
     )
     objects = [PlanObject(**r.__dict__) for r in results]
+    city_summary = None
+    if job.brief.mode == "city":
+        blocks, source, count = build_city(job, job_dir, job_dir / CITY_DIR / "build", preview_dir)
+        for b in blocks:
+            for obj in b.objects:
+                objects.append(
+                    PlanObject(
+                        item_id=f"city/{b.n}",
+                        stem=obj[:-4],
+                        category="city",
+                        anchor=b.anchor,
+                        status="ok",
+                        triangles=b.triangles if obj.endswith("_walls.obj") else 0,
+                    )
+                )
+        city_summary = {
+            "source": source,
+            "buildings": sum(b.buildings for b in blocks),
+            "blocks": len(blocks),
+            "triangles": sum(b.triangles for b in blocks),
+            "files": sorted(
+                {f"objects/{f}" for b in blocks for f in b.files}
+                | {"objects/city_atlas.png", "objects/city_atlas_LIT.png"}
+            ),
+        }
     surfaces = [
         it for it in job.analysis.items if it.kind == "surface" and it.included and not it.proposal
     ]
@@ -646,6 +802,15 @@ def make_plan(
     ]
     ok = [o for o in objects if o.status == "ok"]
     items += object_items(objects)
+    if city_summary:
+        items.append(
+            PlanItem(
+                kind="city",
+                label_key="plan.city_lod2" if city_summary["source"] == "lod2" else "plan.city_osm",
+                count=city_summary["blocks"],
+                params={"buildings": city_summary["buildings"]},
+            )
+        )
     info = job.analysis.imagery
     ortho = job.brief.surface_mode.value == "imagery" and info is not None and info.package_ok
     items.append(
@@ -656,6 +821,8 @@ def make_plan(
         )
     )
     files = [tile.dsf_relative_path, "README.txt"] + object_files(objects)
+    if city_summary:
+        files += city_summary["files"]
     kinds = ["ortho"] if ortho and surfaces else sorted({str(s.category) for s in surfaces})
     files += [f"polygons/xpsb_{k}.{ext}" for k in kinds for ext in ("pol", "png")]
     rects = _exclusion_rects(job, ok)
@@ -696,6 +863,7 @@ def make_plan(
         exclusion_scope=job.brief.exclusion_scope.value,
         exclusion_rects=len(rects),
         foreign_zones=zones,
+        city=city_summary,
         items=items,
         files=sorted(files),
     )
@@ -727,6 +895,10 @@ def _readme(plan: BuildPlan, job: Job) -> str:
     info = job.analysis.imagery if job.analysis else None
     if info is not None:
         text += f"Aerial imagery: {info.attribution} ({info.license})\n"
+    if plan.city and plan.city.get("source") == "lod2":
+        from xpsb.city.lod2 import ATTRIBUTION_BAYERN
+
+        text += f"{ATTRIBUTION_BAYERN}\n"
     packs = library_packs(plan.objects)
     if packs:
         text += (
@@ -796,6 +968,13 @@ def build_package(
     items = job.analysis.items
     if job.brief.surface_mode is SurfaceMode.NONE:  # no surfaces: the ground stays as it is
         items = [it for it in items if it.kind != "surface"]
+    extra: list[tuple[str, float, float]] = []
+    if job.brief.mode == "city":
+        log.publish_threadsafe(type="progress", stage="city", progress=0.0, key="stage.city_build")
+        in_blocks = {it.id for it in city_items(job)}
+        items = [it for it in items if it.id not in in_blocks]
+        blocks, _, _ = build_city(job, job_dir, package / "objects", None)
+        extra = [(f"objects/{obj}", *b.anchor) for b in blocks for obj in b.objects]
     result = assemble.write_package(
         items,
         package,
@@ -830,8 +1009,11 @@ def build_package(
             key=write_key,
             params={"done": n, "total": total, "name": name},
         ),
+        extra_objects=extra,
     )
     text_file = result.dsf_text
+    if result.outside:  # city blocks in a neighbouring tile: that tile's own DSF
+        _write_other_tiles(result.outside, package, exe)
     meshes = [o for o in result.objects if o.status == "ok" and o.has_mesh]
     shaded = sum(o.shaded for o in meshes)
     detailed = sum(o.detailed for o in meshes)
@@ -943,6 +1125,22 @@ def replace_placements(job: Job, job_dir: Path, exe: Path) -> list[Path]:
             shutil.copyfile(written[0], installed)
             written.append(installed)
     return written
+
+
+def _write_other_tiles(outside: list, package: Path, exe: Path) -> None:
+    from xpsb.xplane.dsf_text import DsfText
+
+    by_tile: dict[str, tuple[Tile, list]] = {}
+    for path, lon, lat in outside:
+        tile = Tile.containing(lon, lat)
+        by_tile.setdefault(tile.dsf_relative_path, (tile, []))[1].append((path, lon, lat))
+    for rel, (tile, objs) in by_tile.items():
+        dsf = DsfText(tile=tile)
+        for path, lon, lat in objs:
+            dsf.add_object(dsf.add_object_def(path), lon, lat, 0.0)
+        text = package.parent / f"{package.name}.{tile.lon}_{tile.lat}.dsf.txt"
+        text.write_text(dsf.to_text(), encoding="ascii", newline="\n")
+        dsftool.text2dsf(exe, text, package / rel)
 
 
 def _count(pattern: str, text: str) -> int:

@@ -82,6 +82,7 @@ ANALYSIS_FIELDS = (
     "use_ai",
     "ai_model",
     "ai_economy",
+    "mode",
     "ai_detect",
     "research",
     "notes",
@@ -1425,6 +1426,8 @@ class JobManager:
         job = self.get(job_id)
         if job.plan is None or not all(c.isalnum() or c in "_." for c in name):
             return None
+        if name.startswith("city_") and name.endswith("_walls.png"):
+            name = "city_atlas.png"  # every city block's walls share the facade atlas
         path = self.job_dir(job_id) / "preview" / name
         return path if path.is_file() and path.suffix in (".json", ".png") else None
 

@@ -2814,6 +2814,24 @@
             "title": "Ai Economy",
             "default": true
           },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "objects",
+              "city"
+            ],
+            "title": "Mode",
+            "default": "objects"
+          },
+          "city_preset": {
+            "type": "string",
+            "enum": [
+              "central_europe",
+              "central_europe_city"
+            ],
+            "title": "City Preset",
+            "default": "central_europe"
+          },
           "ai_cost_limit_usd": {
             "type": "number",
             "maximum": 1000.0,
@@ -2948,6 +2966,18 @@
             },
             "type": "array",
             "title": "Foreign Zones"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
           },
           "test_scenery": {
             "type": "boolean",

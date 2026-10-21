@@ -90,6 +90,10 @@ class Brief(BaseModel):
     # Saves money: looking at the aerial image (search, rating, "find similar") runs
     # on Sonnet when Opus is chosen; the AI architect keeps the chosen model.
     ai_economy: bool = True
+    # "city": every ordinary building of the area is built in blocks (city mode,
+    # few draw calls); landmarks stay single detailed objects. "objects": each one.
+    mode: Literal["objects", "city"] = "objects"
+    city_preset: Literal["central_europe", "central_europe_city"] = "central_europe"
     ai_cost_limit_usd: float = Field(default=5.0, ge=0, le=1000)
     # Search the aerial image for objects OSM does not know (proposals for the user).
     ai_detect: bool = True
@@ -254,6 +258,8 @@ class BuildPlan(BaseModel):
     # Objects/polygons of other packs on our objects' places (xplane/foreign.py):
     # {kind, bounds [w, s, e, n], pack, path} - each gets its own exclusion zone.
     foreign_zones: list[dict] = Field(default_factory=list)
+    # City mode: where the buildings come from and how many blocks they make.
+    city: dict | None = None
     test_scenery: bool = False
     cube_height_m: float | None = None
 

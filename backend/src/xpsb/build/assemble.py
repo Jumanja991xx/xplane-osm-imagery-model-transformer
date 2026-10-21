@@ -842,6 +842,7 @@ class PackageResult:
     dsf_text: Path
     objects: list[ItemResult]
     surfaces: int
+    outside: list = field(default_factory=list)  # extra objects of other tiles
 
 
 def write_package(
@@ -858,7 +859,11 @@ def write_package(
     blender_progress: Callable[[BlenderStatus], None] | None = None,
     blender_stop: Callable[[], bool] = lambda: False,
     blender_cpu: bool = False,
+    extra_objects: list[tuple[str, float, float]] = (),  # type: ignore[assignment]
 ) -> PackageResult:
+    """`extra_objects`: further OBJs already in the package (path, lon, lat), e.g. the
+    blocks of the city mode; those outside this DSF's tile come back in
+    PackageResult.outside (they need the DSF of their own tile)."""
     objects_dir = package / "objects"
     polygons_dir = package / "polygons"
     results = generate_all(
@@ -872,6 +877,12 @@ def write_package(
     dsf = DsfText(tile=tile)
     for kind, bounds in exclusions:
         dsf.add_exclusion(kind, *bounds)
+    outside = []
+    for path, lon, lat in extra_objects:
+        if tile.contains(lon, lat):
+            dsf.add_object(dsf.add_object_def(path), lon, lat, 0.0)
+        else:
+            outside.append((path, lon, lat))
     lib_defs: dict[str, int] = {}
     for res in results:
         if res.status != "ok":
@@ -940,4 +951,4 @@ def write_package(
         raise ValueError("nothing could be built")
     text_path = package.parent / f"{package.name}.dsf.txt"
     text_path.write_text(dsf.to_text(), encoding="ascii", newline="\n")
-    return PackageResult(dsf_text=text_path, objects=results, surfaces=surfaces)
+    return PackageResult(dsf_text=text_path, objects=results, surfaces=surfaces, outside=outside)
