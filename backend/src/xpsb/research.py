@@ -221,6 +221,7 @@ class Found:
     research: Research
     candidates: list[PhotoCandidate] = field(default_factory=list)
     height_m: float | None = None
+    entity: dict | None = None  # the Wikidata item (for its 3D scan)
 
 
 def research_item(item: SceneItem, language: str, mapillary_token: str | None) -> Found:
@@ -344,7 +345,18 @@ def research_item(item: SceneItem, language: str, mapillary_token: str | None) -
         ),
         candidates=chosen,
         height_m=height,
+        entity=entity,
     )
+
+
+def attach_scan(entity: dict, folder: Path):
+    """A free 3D scan linked from the Wikidata item, reduced and stored (or None)."""
+    from xpsb import scans
+
+    try:
+        return scans.fetch(entity, folder)
+    except (scans.ScanError, PhotoError, OSError, ValueError):
+        return None
 
 
 def attach_photos(item: SceneItem, found: Found, folder: Path) -> int:

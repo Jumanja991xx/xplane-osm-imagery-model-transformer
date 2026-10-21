@@ -66,6 +66,8 @@ export const de = {
   "category.barriers": "Zäune, Mauern, Leitplanken",
   "category.masts": "Masten (Flutlicht, Fahnen)",
   "category.monuments": "Statuen & Denkmäler",
+  "adjust.scan_info": "Echter 3D-Scan von Wikimedia Commons ({author}, {license}) – wird verwendet und in der README genannt.",
+  "adjust.use_scan": "3D-Scan verwenden (sonst Figur aus dem Baukasten)",
   "adjust.monument_kind": "Art",
   "adjust.pose": "Haltung",
   "adjust.holding": "Hält in der Hand",

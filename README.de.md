@@ -24,6 +24,13 @@ und wohin geschrieben wird*.
 > - **Stadion-Baukasten:** zwei Ränge mit Sitzreihen, Werbebande, Lamellenfassade,
 >   durchscheinendes Dachinnenteil, Dachträger, Flutlicht.
 > - **Wehende Fahnen** (Animation, drehen sich mit dem Wind).
+> - **Statuen & Denkmäler** (aus OSM: Statuen, Büsten, Reiterstandbilder, Obelisken,
+>   Säulen): Figuren-Baukasten mit Haltungen, Gewand und Gegenständen auf einem Sockel
+>   (etwa 1 000–2 500 Dreiecke). Gibt es zur Statue einen freien 3D-Scan auf Wikimedia
+>   Commons (über Wikidata, nur CC0/PD/CC BY/CC BY-SA), wird der echte Scan verkleinert
+>   verwendet und in der README des Pakets genannt.
+> - **„Blender testen“** in den Einstellungen: schattiert ein Testgebäude und zeigt die
+>   Zeiten für Start, Grafikkartensuche und Schattieren; „Nur Prozessor“ überspringt die Suche.
 > - **Blender (optional, vom Nutzer installiert):** backt beim Paketbau weiche Schatten
 >   (Ambient Occlusion) in die Texturen – mit einem festen Skript, nie mit KI-Code.
 

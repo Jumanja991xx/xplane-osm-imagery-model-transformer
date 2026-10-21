@@ -36,6 +36,7 @@ GEOMETRY_TOOLS = (
     "flag",
     "figure",
     "pedestal",
+    "scan",
 )
 HELPER_TOOLS = ("oriented_rect", "offset_polygon", "polygon_area", "polygon_centroid", "resample")
 DEFAULT_TIMEOUT_S = 5.0
@@ -54,6 +55,7 @@ class ScriptInputs:
     # Photo textures of the object: name -> {"width", "height", "repeat", "walls"}
     # (used as mat="photo:<name>").
     textures: dict[str, dict] = field(default_factory=dict)
+    scan: str | None = None  # path of the object's prepared 3D scan (.npz), if it has one
 
 
 def _dialect() -> sl.Dialect:
@@ -74,7 +76,7 @@ def run_script(
     if len(source.encode("utf-8")) > MAX_SOURCE_BYTES:
         raise ScriptError("script too long")
     mesh = Mesh(max_triangles=max_triangles)
-    t = tools.Tools(mesh, library, frozenset(inputs.textures))
+    t = tools.Tools(mesh, library, frozenset(inputs.textures), inputs.scan)
     module = sl.Module()
     for fname in GEOMETRY_TOOLS:
         module.add_callable(fname, getattr(t, fname))
@@ -88,6 +90,7 @@ def run_script(
     module["courtyards"] = inputs.courtyards
     module["params"] = inputs.params
     module["textures"] = inputs.textures
+    module["has_scan"] = inputs.scan is not None
 
     try:
         ast = sl.parse(name, source, _dialect())

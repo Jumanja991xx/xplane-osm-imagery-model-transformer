@@ -1230,6 +1230,8 @@ export interface components {
             holding?: ("none" | "palm" | "wreath" | "sword" | "torch" | "book" | "flag") | null;
             /** Robe */
             robe?: boolean | null;
+            /** Use Scan */
+            use_scan?: boolean | null;
         };
         /**
          * ItemPatch
@@ -1577,6 +1579,11 @@ export interface components {
             /** Photo Textures */
             photo_textures?: string[];
             /**
+             * Scan
+             * @default false
+             */
+            scan: boolean;
+            /**
              * Shaded
              * @default false
              */
@@ -1654,6 +1661,33 @@ export interface components {
             /** Sources */
             sources?: string[];
         };
+        /**
+         * Scan
+         * @description A free 3D scan of the object (Wikimedia Commons), reduced and stored with the
+         *     job (file relative to the job folder); built with scan() in the build script.
+         */
+        Scan: {
+            /** File */
+            file: string;
+            /** Title */
+            title: string;
+            /** Author */
+            author?: string | null;
+            /** License */
+            license?: string | null;
+            /** Page Url */
+            page_url?: string | null;
+            /**
+             * Triangles
+             * @default 0
+             */
+            triangles: number;
+            /**
+             * Up
+             * @default z
+             */
+            up: string;
+        };
         /** SceneItem */
         SceneItem: {
             /** Id */
@@ -1718,6 +1752,7 @@ export interface components {
             /** Textures */
             textures?: components["schemas"]["PhotoTexture"][];
             research?: components["schemas"]["Research"] | null;
+            scan?: components["schemas"]["Scan"] | null;
             /** Parts */
             parts?: components["schemas"]["BuildingPart"][];
         };

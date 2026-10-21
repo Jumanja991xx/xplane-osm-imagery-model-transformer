@@ -738,6 +738,22 @@ function ObjectControls({
             disabled={busy}
           />
         ))}
+      {has("monument") && item.scan && (
+        <div className="space-y-1 rounded bg-emerald-50 p-1.5 text-xs dark:bg-emerald-500/10" data-testid="scan-info">
+          <div>
+            {t("adjust.scan_info", {
+              author: item.scan.author ?? "?",
+              license: item.scan.license ?? "?",
+            })}
+          </div>
+          <Checkbox
+            label={t("adjust.use_scan")}
+            checked={attrs.use_scan !== false}
+            disabled={busy}
+            onChange={(on) => apply({ use_scan: on })}
+          />
+        </div>
+      )}
       {has("monument") && (
         <>
           <SelectField

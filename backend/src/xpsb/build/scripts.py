@@ -587,6 +587,9 @@ def main():
                 "stone": 2.2}
     H = g("height", defaults.get(kind, 6.0))
     stone = "stone" if mat == "bronze" else mat
+    if has_scan:  # the real statue, scanned (usually with the base it stands on)
+        scan(x, y, 0, H, heading=heading, mat=mat)
+        return
     if kind == "obelisk":
         w = size * 0.6 if size > 0 else max(0.8, H * 0.1)
         top = pedestal(x, y, H * 0.12, w * 1.6, heading=heading, mat=stone)

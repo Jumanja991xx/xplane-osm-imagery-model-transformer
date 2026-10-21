@@ -123,6 +123,7 @@ class Mesh:
     placements: list[Placement] = field(default_factory=list)
     lights: list[Light] = field(default_factory=list)
     anims: list[Anim] = field(default_factory=list)
+    used_scan: bool = False  # the object's 3D scan was placed (credited in the README)
 
     def add_light(self, light: Light) -> None:
         if len(self.lights) >= MAX_LIGHTS:

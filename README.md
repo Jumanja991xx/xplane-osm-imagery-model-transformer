@@ -50,6 +50,14 @@ happen, what it costs and where it writes*. Nothing happens without your approva
   lamps, using X-Plane 12's own lights.
 - **Levels of detail** – real windows close up, painted facades further away.
 - **Waving flags** that turn with the wind.
+- **Statues and monuments** (OSM statues, busts, equestrian statues, obelisks, columns):
+  a figure kit with poses (arm raised, both arms up holding something, pointing,
+  seated, rider, bust), robe and held things on a pedestal, about 1 000-2 500
+  triangles. If the statue's Wikidata item links a free 3D scan on Wikimedia Commons
+  (CC0/PD/CC BY/CC BY-SA), the real scan is used instead, reduced to a few thousand
+  triangles and credited in the package README.
+- **"Test Blender"** in the settings: bakes a test building and shows how long Blender's
+  start, the graphics card search and the bake take; "CPU only" skips the search.
 - **X-Plane library objects** – lamps, trees, vehicles and the like are placed from the
   libraries you have installed instead of being modelled.
 - **Blender (optional)** – if you have [Blender](https://www.blender.org) installed, the app

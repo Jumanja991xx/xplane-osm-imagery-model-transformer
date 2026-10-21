@@ -114,6 +114,7 @@ class ItemResult:
     lit: bool = False  # has a night texture
     lights: int = 0
     photo_textures: list[str] = field(default_factory=list)  # ids of photos painted on it
+    scan: bool = False  # its free 3D scan was placed (credited in the README)
     shaded: bool = False  # ambient occlusion baked in by Blender
     detailed: bool = False  # fine detail (surrounds, dentils) baked into its normal map
     blender_input: str | None = None  # prepared for Blender (package build only)
@@ -343,6 +344,9 @@ def generate(
         raise LookupError("no generator yet")
     budget, atlas, max_ppm = DETAIL.get(detail, DETAIL["medium"])
     inputs = _script_inputs(item, items, detail)
+    if item.scan is not None and photo_dir is not None and item.attrs.use_scan is not False:
+        scan_path = photo_dir.parent / item.scan.file
+        inputs.scan = str(scan_path) if scan_path.is_file() else None
     if (
         inputs.footprint is None
         and inputs.path is None
@@ -406,6 +410,7 @@ def generate_one(
     else:
         res.triangles = mesh.triangle_count
         res.photo_textures = photo_ids
+        res.scan = mesh.used_scan
         res.library = [
             {
                 "path": p.path,

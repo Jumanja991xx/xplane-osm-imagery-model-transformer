@@ -68,6 +68,8 @@ export const en: Record<MessageKey, string> = {
   "category.barriers": "Fences, walls, guard rails",
   "category.masts": "Masts (floodlights, flags)",
   "category.monuments": "Statues & monuments",
+  "adjust.scan_info": "Real 3D scan from Wikimedia Commons ({author}, {license}) – used and credited in the README.",
+  "adjust.use_scan": "Use the 3D scan (otherwise a figure from the kit)",
   "adjust.monument_kind": "Kind",
   "adjust.pose": "Pose",
   "adjust.holding": "Holds",

@@ -3380,6 +3380,17 @@
               }
             ],
             "title": "Robe"
+          },
+          "use_scan": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Use Scan"
           }
         },
         "type": "object",
@@ -4289,6 +4300,11 @@
             "type": "array",
             "title": "Photo Textures"
           },
+          "scan": {
+            "type": "boolean",
+            "title": "Scan",
+            "default": false
+          },
           "shaded": {
             "type": "boolean",
             "title": "Shaded",
@@ -4531,6 +4547,68 @@
         "title": "Research",
         "description": "What the research found out about an object (free sources, no AI)."
       },
+      "Scan": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "title": "File"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author"
+          },
+          "license": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License"
+          },
+          "page_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Url"
+          },
+          "triangles": {
+            "type": "integer",
+            "title": "Triangles",
+            "default": 0
+          },
+          "up": {
+            "type": "string",
+            "title": "Up",
+            "default": "z"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "title"
+        ],
+        "title": "Scan",
+        "description": "A free 3D scan of the object (Wikimedia Commons), reduced and stored with the\njob (file relative to the job folder); built with scan() in the build script."
+      },
       "SceneItem": {
         "properties": {
           "id": {
@@ -4678,6 +4756,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/Research"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Scan"
               },
               {
                 "type": "null"

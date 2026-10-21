@@ -282,6 +282,10 @@ def _research_stage(
                 failed += 1
             else:
                 item.research = found.research
+                if found.entity is not None and str(item.category) == "monuments":
+                    scan = research.attach_scan(found.entity, deps.job_dir / "scans")
+                    if scan is not None:
+                        item.scan = scan
                 if found.height_m and item.attrs.height_m is None and found.height_m < 400:
                     item.attrs.height_m = round(found.height_m, 1)
                 photos_added += research.attach_photos(item, found, deps.job_dir / "photos")
@@ -538,6 +542,14 @@ def _readme(plan: BuildPlan, job: Job) -> str:
             "\nRequires these library packs in Custom Scenery (objects are referenced, "
             "not included): " + ", ".join(packs) + "\n"
         )
+    scanned = {o.item_id for o in plan.objects if o.status == "ok" and o.scan}
+    items = job.analysis.items if job.analysis else []
+    scans = [it.scan for it in items if it.id in scanned and it.scan]
+    if scans:
+        text += "\n3D scans used (reduced, from Wikimedia Commons):\n"
+        for s in scans:
+            author = s.author or "unknown author"
+            text += f"- {s.title}: {author}, {s.license or ''}, {s.page_url or ''}\n"
     used = photo_texture_photos(plan.objects, job)
     if used:
         text += "\nPhotos used as textures (straightened and cropped):\n" + "\n".join(

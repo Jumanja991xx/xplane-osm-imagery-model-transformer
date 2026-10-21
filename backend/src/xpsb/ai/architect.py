@@ -215,7 +215,9 @@ HOW TO BUILD COMMON THINGS (adapt to the facts and photos):
   (pedestal and figure separately if known) and turn it to face where the real statue
   faces. Bronze statues mat="bronze" (green patina: color="#5E8C77"), marble or
   sandstone mat="stone". Several figures (groups, reliefs around a pedestal): several
-  figure() calls, smaller. Obelisks and columns with the basic tools.
+  figure() calls, smaller. Obelisks and columns with the basic tools. If has_scan is
+  True, the object has a real 3D scan: prefer scan() (it is the statue itself, usually
+  with its base) and add only what the scan lacks (a higher pedestal, the plaza).
 - Painted facade materials (only where real windows are not wanted): windows (modern),
   windows_house, windows_classic, windows_arched; plain walls: plaster, stone, brick,
   glass, metal_sheet, concrete.

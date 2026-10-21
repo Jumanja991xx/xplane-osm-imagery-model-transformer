@@ -8,6 +8,7 @@ else than add geometry through them.
 from __future__ import annotations
 
 import math
+from pathlib import Path
 from typing import Any
 
 from shapely.geometry import Polygon
@@ -102,8 +103,10 @@ class Tools:
         mesh: Mesh,
         library: frozenset[str] | None = None,
         photos: frozenset[str] = frozenset(),
+        scan: str | None = None,
     ):
         self.mesh = mesh
+        self.scan_file = scan
         self.library = library or frozenset()
         self.photos = photos  # names of the item's photo textures ("photo:<name>")
 
@@ -868,6 +871,52 @@ class Tools:
                 top_color=color,
             )
         return h
+
+    def scan(self, x, y, z=0.0, height=5.0, heading=0.0, mat="bronze", color=None):
+        """Places the object's real 3D scan (only if `has_scan` is True: a free scan
+        from Wikimedia Commons, reduced to a few thousand triangles) with its foot at
+        (x, y, z), `height` metres tall, turned by `heading` degrees (clockwise; turn
+        it until it faces where the real statue faces). Usually includes the base the
+        scanned statue stands on. Returns the triangles used."""
+        if self.scan_file is None:
+            raise GeometryError("scan: this object has no 3D scan (check has_scan)")
+        from xpsb import scans
+
+        data = scans.load(Path(self.scan_file))
+        h = _num(height, "height")
+        if not 0.2 <= h <= 200:
+            raise GeometryError("scan: height must be between 0.2 and 200 m")
+        cx, cy, cz = _num(x, "x"), _num(y, "y"), _num(z, "z")
+        t = math.radians(_num(heading, "heading"))
+        cos, sin = math.cos(t), math.sin(t)
+        mat_, col = self._mat(mat), self._color(color)
+        before = self.mesh.triangle_count
+        for lod in ("near", "far"):
+            v = data[f"{lod}_v"].astype(float) * h
+            tris = data[f"{lod}_t"]
+            # clockwise turn seen from above: x' = x cos + y sin, y' = -x sin + y cos
+            px = cx + v[:, 0] * cos + v[:, 1] * sin
+            py = cy - v[:, 0] * sin + v[:, 1] * cos
+            pz = cz + v[:, 2]
+            pts = list(zip(px.tolist(), py.tolist(), pz.tolist(), strict=True))
+            normals = [[0.0, 0.0, 0.0] for _ in pts]
+            for a, b, c in tris.tolist():
+                n = cross(sub(pts[b], pts[a]), sub(pts[c], pts[a]))
+                for i in (a, b, c):
+                    normals[i][0] += n[0]
+                    normals[i][1] += n[1]
+                    normals[i][2] += n[2]
+            # The wrap overlaps itself (arms in front of the body): a shared texture,
+            # no baked shading painted into it.
+            patch = Patch(mat_, col, lod=lod, shared_uv=True)
+            for p, n in zip(pts, normals, strict=True):
+                # wrapped around the vertical axis: u along the girth, v up
+                u = math.atan2(p[1] - cy, p[0] - cx) * h * 0.15
+                patch.add_vertex(p, norm((n[0], n[1], n[2])), (u, p[2] - cz))
+            patch.tris = [tuple(t_) for t_ in tris.tolist()]
+            self.mesh.add(patch)
+        self.mesh.used_scan = True
+        return self.mesh.triangle_count - before
 
     def quad(self, a, b, c, d, mat="concrete", color=None, two_sided=True):
         """Free quadrilateral (roof planes, panels, screens)."""

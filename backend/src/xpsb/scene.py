@@ -71,6 +71,20 @@ class ItemAttrs(BaseModel):
     pose: StatuePose | None = None
     holding: StatueHeld | None = None
     robe: bool | None = None
+    use_scan: bool | None = None  # False: build the figure instead of the 3D scan
+
+
+class Scan(BaseModel):
+    """A free 3D scan of the object (Wikimedia Commons), reduced and stored with the
+    job (file relative to the job folder); built with scan() in the build script."""
+
+    file: str
+    title: str
+    author: str | None = None
+    license: str | None = None
+    page_url: str | None = None
+    triangles: int = 0
+    up: str = "z"
 
 
 class BuildingPart(BaseModel):
@@ -138,6 +152,7 @@ class SceneItem(BaseModel):
     # licence allows sharing them go into the package).
     textures: list[PhotoTexture] = Field(default_factory=list)
     research: Research | None = None
+    scan: Scan | None = None
     parts: list[BuildingPart] = Field(default_factory=list)
 
 
