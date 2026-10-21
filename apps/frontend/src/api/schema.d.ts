@@ -184,6 +184,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/blender/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Blender
+         * @description Bakes one test object with the Blender as entered and times it.
+         */
+        post: operations["test_blender_api_blender_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/secrets/esri/check": {
         parameters: {
             query?: never;
@@ -769,6 +789,49 @@ export interface components {
         Approve: {
             /** Hash */
             hash: string;
+        };
+        /** BlenderTest */
+        BlenderTest: {
+            /** Ok */
+            ok: boolean;
+            /** Version */
+            version?: string | null;
+            /**
+             * Device
+             * @default
+             */
+            device: string;
+            /** Start S */
+            start_s?: number | null;
+            /** Gpu Search S */
+            gpu_search_s?: number | null;
+            /** Bake S */
+            bake_s?: number | null;
+            /**
+             * Total S
+             * @default 0
+             */
+            total_s: number;
+            /**
+             * Gpu Search Hung
+             * @default false
+             */
+            gpu_search_hung: boolean;
+            /** Problem */
+            problem?: string | null;
+            /** Log */
+            log?: string | null;
+        };
+        /** BlenderTestBody */
+        BlenderTestBody: {
+            /** Path */
+            path?: string | null;
+            /**
+             * Device
+             * @default auto
+             * @enum {string}
+             */
+            device: "auto" | "cpu";
         };
         /**
          * Brief
@@ -1685,6 +1748,12 @@ export interface components {
             use_blender: boolean;
             /** Blender Path */
             blender_path?: string | null;
+            /**
+             * Blender Device
+             * @default auto
+             * @enum {string}
+             */
+            blender_device: "auto" | "cpu";
         };
         /** SimilarBody */
         SimilarBody: {
@@ -2171,6 +2240,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SourceTest"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_blender_api_blender_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BlenderTestBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlenderTest"];
                 };
             };
             /** @description Validation Error */

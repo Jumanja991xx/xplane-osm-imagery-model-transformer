@@ -575,6 +575,7 @@ def build_package(
     blender_exe: str | None = None,
     blender_version: str | None = None,
     blender_stop: Callable[[], bool] = lambda: False,
+    blender_cpu: bool = False,
 ) -> BuildResult:
     """Runs in a worker thread."""
     plan = job.plan
@@ -600,6 +601,7 @@ def build_package(
         photo_dir=job_dir / "photos",
         blender_exe=blender_exe,
         blender_stop=blender_stop,
+        blender_cpu=blender_cpu,
         blender_progress=lambda s: log.publish_threadsafe(
             type="progress",
             stage="blender",

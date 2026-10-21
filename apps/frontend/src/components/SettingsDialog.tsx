@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api, ApiError, type ImagerySettings, type Settings, type XPlaneCheck } from "../api/client";
+import { api, ApiError, type BlenderTest, type ImagerySettings, type Settings, type XPlaneCheck } from "../api/client";
 import { useT } from "../i18n";
 import { useApp } from "../store";
 import { IMAGERY_PRESETS } from "../imagery/presets";
@@ -118,6 +118,19 @@ export function SettingsDialog() {
     run(async () => {
       const preset = IMAGERY_PRESETS.find((p) => p.id === presetId);
       setSourceTest(await api.testImagery(imagery, preset?.test[0], preset?.test[1]));
+    });
+  const [blenderTest, setBlenderTest] = useState<BlenderTest | "running" | null>(null);
+  const testBlender = () =>
+    run(async () => {
+      setBlenderTest("running");
+      try {
+        setBlenderTest(
+          await api.testBlender(draft.blender_path ?? null, draft.blender_device === "cpu" ? "cpu" : "auto"),
+        );
+      } catch (e) {
+        setBlenderTest(null);
+        throw e;
+      }
     });
   const [esriCheck, setEsriCheck] = useState<{ ok?: boolean | null; detail?: string | null } | null>(null);
   const saveEsri = () =>
@@ -272,6 +285,23 @@ export function SettingsDialog() {
                 </Button>
               </div>
             </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-zinc-600 dark:text-zinc-300">{t("settings.blender_device")}</span>
+              <select
+                className={inputClass}
+                value={draft.blender_device ?? "auto"}
+                onChange={(e) => setDraft({ ...draft, blender_device: e.target.value as "auto" | "cpu" })}
+              >
+                <option value="auto">{t("settings.blender_device_auto")}</option>
+                <option value="cpu">{t("settings.blender_device_cpu")}</option>
+              </select>
+            </label>
+            <div className="space-y-1">
+              <Button onClick={testBlender} disabled={busy} data-testid="blender-test">
+                {t("settings.blender_test")}
+              </Button>
+              <BlenderTestResult result={blenderTest} />
+            </div>
           </Section>
 
           <Section title={t("settings.api_key")}>
@@ -570,6 +600,33 @@ export function SettingsDialog() {
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function BlenderTestResult({ result }: { result: BlenderTest | "running" | null }) {
+  const { t } = useT();
+  if (!result) return null;
+  if (result === "running") return <p className="text-xs text-zinc-500">{t("settings.blender_test_running")}</p>;
+  const sec = (v?: number | null) => (v == null ? "–" : v.toFixed(1));
+  return (
+    <div className="text-xs" data-testid="blender-test-result">
+      {result.ok ? (
+        <p className="text-emerald-600">
+          {t("settings.blender_test_ok", { bake: sec(result.bake_s), total: sec(result.total_s) })}
+        </p>
+      ) : (
+        <p className="text-red-600">{t("settings.blender_test_failed", { problem: result.problem ?? "" })}</p>
+      )}
+      <p className="text-zinc-600 dark:text-zinc-300">
+        {t("settings.blender_test_steps", {
+          start: sec(result.start_s),
+          search: sec(result.gpu_search_s),
+          device: result.device || "–",
+        })}
+      </p>
+      {result.gpu_search_hung && <p className="text-amber-600">{t("settings.blender_test_hung")}</p>}
+      {result.log && <p className="break-all text-zinc-500">{t("settings.blender_test_log", { path: result.log })}</p>}
     </div>
   );
 }

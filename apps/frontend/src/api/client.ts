@@ -9,6 +9,7 @@ export type GateItem = S["GateItem"];
 export type Settings = S["Settings"];
 export type SystemStatus = S["SystemStatus"];
 export type XPlaneCheck = S["XPlaneCheck"];
+export type BlenderTest = S["BlenderTest"];
 export type DsfToolStatus = S["DsfToolStatus"];
 export type GeoJsonPolygon = S["GeoJsonPolygon"];
 export type JobState = JobView["state"];
@@ -135,6 +136,8 @@ export const api = {
   checkEsriKey: () => request<S["KeyCheck"]>("POST", "/api/secrets/esri/check"),
   testImagery: (imagery: ImagerySettings, lon?: number, lat?: number) =>
     request<S["SourceTest"]>("POST", "/api/imagery/test", { imagery, lon, lat }),
+  testBlender: (path: string | null, device: "auto" | "cpu") =>
+    request<S["BlenderTest"]>("POST", "/api/blender/test", { path, device }),
   deleteEsriKey: () => request<unknown>("DELETE", "/api/secrets/esri"),
   setMapillaryToken: (token: string) => request<unknown>("PUT", "/api/secrets/mapillary", { token }),
   deleteMapillaryToken: () => request<unknown>("DELETE", "/api/secrets/mapillary"),

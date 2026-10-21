@@ -401,6 +401,45 @@
         }
       }
     },
+    "/api/blender/test": {
+      "post": {
+        "summary": "Test Blender",
+        "description": "Bakes one test object with the Blender as entered and times it.",
+        "operationId": "test_blender_api_blender_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlenderTestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlenderTest"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/secrets/esri/check": {
       "post": {
         "summary": "Check Esri Key",
@@ -2174,6 +2213,126 @@
           "hash"
         ],
         "title": "Approve"
+      },
+      "BlenderTest": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "device": {
+            "type": "string",
+            "title": "Device",
+            "default": ""
+          },
+          "start_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start S"
+          },
+          "gpu_search_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gpu Search S"
+          },
+          "bake_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bake S"
+          },
+          "total_s": {
+            "type": "number",
+            "title": "Total S",
+            "default": 0.0
+          },
+          "gpu_search_hung": {
+            "type": "boolean",
+            "title": "Gpu Search Hung",
+            "default": false
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problem"
+          },
+          "log": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Log"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "title": "BlenderTest"
+      },
+      "BlenderTestBody": {
+        "properties": {
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "device": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "cpu"
+            ],
+            "title": "Device",
+            "default": "auto"
+          }
+        },
+        "type": "object",
+        "title": "BlenderTestBody"
       },
       "Brief": {
         "properties": {
@@ -4557,6 +4716,15 @@
               }
             ],
             "title": "Blender Path"
+          },
+          "blender_device": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "cpu"
+            ],
+            "title": "Blender Device",
+            "default": "auto"
           }
         },
         "type": "object",

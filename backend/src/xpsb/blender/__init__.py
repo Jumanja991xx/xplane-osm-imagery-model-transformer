@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import queue
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -219,6 +220,7 @@ def bake_batch(
     should_stop: Callable[[], bool] = lambda: False,
     log: list[str] | None = None,
     log_file: Path | None = None,
+    cpu: bool = False,
 ) -> set[int]:
     """One Blender run for all objects: (input .npz, AO .png, normal .png) per object.
     Returns the indices that were baked. Small objects go first, so the time left
@@ -249,7 +251,7 @@ def bake_batch(
     done: set[int] = set()
     failed: set[int] = set()
     try:
-        cpu = exe in _GPU_SEARCH_HANGS
+        cpu = cpu or exe in _GPU_SEARCH_HANGS
         while True:
             retry = _run(
                 exe,
@@ -437,3 +439,84 @@ def detail_normals(npz: Path, png: Path, normal_texture: Path) -> bool:
     nml[hit, :3] = (mixed[hit] + 1.0) * 127.5
     Image.fromarray(np.clip(nml, 0, 255).astype(np.uint8), "RGBA").save(normal_texture)
     return True
+
+
+@dataclass
+class SelfTest:
+    ok: bool
+    device: str  # what Blender used, with the reason when it is the CPU
+    start_s: float | None  # until Blender runs our script (its own start-up)
+    gpu_search_s: float | None  # time from Blender's start to the device decision
+    bake_s: float | None  # one palace-like test object (walls, windows, relief)
+    total_s: float
+    gpu_search_hung: bool
+    problem: str | None
+
+
+def self_test(exe: str, work_dir: Path, cpu: bool = False, popen=subprocess.Popen) -> SelfTest:
+    """Bakes one small test object the way a build does and times the steps, so the
+    user sees whether Blender works on this PC (and how fast) without a build."""
+    from xpsb.build.bake import bake
+    from xpsb.build.sandbox import ScriptInputs, run_script
+    from xpsb.build.scripts import DEFAULT_SCRIPTS
+
+    shutil.rmtree(work_dir, ignore_errors=True)
+    work_dir.mkdir(parents=True)
+    footprint = [[0, 0], [24, 0], [24, 14], [0, 14]]
+    params = {"building": "palace", "height": 16, "levels": 3, "roof_shape": "hipped"}
+    mesh = run_script(
+        DEFAULT_SCRIPTS["buildings"],
+        ScriptInputs(
+            footprint=footprint,
+            path=None,
+            params={**params, "detail": "medium", "tags": {"historic": "yes"}},
+        ),
+        40_000,
+    )
+    npz = work_dir / "test.npz"
+    prepare(mesh, bake(mesh, 1024, 24.0), npz)
+    marks: dict[str, float] = {}
+    hung = False
+    t0 = time.monotonic()
+    device = ""
+
+    def seen(s: Status) -> None:
+        nonlocal device, hung
+        now = time.monotonic() - t0
+        if s.phase == "retry_cpu":
+            hung = True
+            marks.pop("start", None)
+        if s.phase == "gpu" and "start" not in marks:
+            marks["start"] = now
+        if s.device and "device" not in marks:
+            marks["device"] = now
+        if s.phase == "retry_cpu":
+            marks.pop("device", None)
+        if s.done and "done" not in marks:
+            marks["done"] = now
+        device = s.device or device
+
+    log: list[str] = []
+    done = bake_batch(
+        exe,
+        [(npz, work_dir / "test_ao.png", work_dir / "test_detail.png")],
+        seen,
+        popen=popen,
+        log=log,
+        log_file=work_dir / "blender-test.log",
+        cpu=cpu,
+    )
+    total = time.monotonic() - t0
+    gpu = marks["device"] - marks["start"] if "device" in marks and "start" in marks else None
+    baked = marks["done"] - marks["device"] if "done" in marks and "device" in marks else None
+    ok = 0 in done
+    return SelfTest(
+        ok=ok,
+        device=device,
+        start_s=marks.get("start"),
+        gpu_search_s=None if cpu else gpu,
+        bake_s=baked,
+        total_s=total,
+        gpu_search_hung=hung,
+        problem=None if ok else problem(log),
+    )

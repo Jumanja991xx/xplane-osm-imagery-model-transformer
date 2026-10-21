@@ -69,6 +69,8 @@ class Settings(BaseModel):
     # Blender (installed by the user) bakes soft shading into the textures at build time.
     use_blender: bool = True
     blender_path: str | None = None
+    # "auto": the graphics card if Cycles finds one; "cpu": skip the search (it can hang).
+    blender_device: Literal["auto", "cpu"] = "auto"
 
 
 class SettingsStore:

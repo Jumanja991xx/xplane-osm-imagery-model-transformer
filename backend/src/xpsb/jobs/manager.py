@@ -1303,6 +1303,7 @@ class JobManager:
             info.path if info else None,
             info.version if info else None,
             lambda: job.id in self._skip_blender,
+            self._settings.load().blender_device == "cpu",
         )
         self._skip_blender.discard(job.id)
         self._set_state(job, JobState.BUILT)

@@ -160,7 +160,7 @@ def main(list_file: str, cpu: bool = False) -> None:
     scene.world = bpy.data.worlds.new("world")
     if cpu:
         scene.cycles.device = "CPU"
-        print("XPSB_DEVICE CPU (graphics card search skipped: it did not answer)", flush=True)
+        print("XPSB_DEVICE CPU (graphics card search skipped)", flush=True)
     else:
         print("XPSB_DEVICE", _use_gpu(scene), flush=True)
     with open(list_file, encoding="utf-8") as f:

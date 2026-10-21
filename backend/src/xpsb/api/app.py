@@ -25,6 +25,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
 from xpsb import __version__
+from xpsb import blender as blender_mod
 from xpsb.geo import GeoJsonPolygon
 from xpsb.imagery import basemap, xyz
 from xpsb.imagery.sources import ESRI_ACCOUNT, custom_from_settings, esri_source, map_source
@@ -154,6 +155,24 @@ class SourceTestBody(BaseModel):
 class SourceTest(BaseModel):
     ok: bool
     detail: str | None = None
+
+
+class BlenderTestBody(BaseModel):
+    path: str | None = None  # as entered in the settings (before saving)
+    device: Literal["auto", "cpu"] = "auto"
+
+
+class BlenderTest(BaseModel):
+    ok: bool
+    version: str | None = None
+    device: str = ""
+    start_s: float | None = None
+    gpu_search_s: float | None = None
+    bake_s: float | None = None
+    total_s: float = 0.0
+    gpu_search_hung: bool = False
+    problem: str | None = None
+    log: str | None = None  # where Blender's own messages are
 
 
 class KeyCheck(BaseModel):
@@ -310,6 +329,18 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
             return SourceTest(ok=False, detail="incomplete URL ({z}, {x}, {y}; subdomains for {s})")
         ok, detail = await asyncio.to_thread(xyz.check_at, source, body.lon, body.lat)
         return SourceTest(ok=ok, detail=detail)
+
+    @app.post("/api/blender/test", dependencies=auth)
+    async def test_blender(body: BlenderTestBody) -> BlenderTest:
+        """Bakes one test object with the Blender as entered and times it."""
+        info = await asyncio.to_thread(blender_mod.find, body.path or None)
+        if info is None:
+            return BlenderTest(ok=False, problem="Blender not found")
+        work = ctx.paths.cache / "blender-test"
+        result = await asyncio.to_thread(
+            blender_mod.self_test, info.path, work, body.device == "cpu"
+        )
+        return BlenderTest(version=info.version, log=str(work / "blender-test.log"), **vars(result))
 
     @app.post("/api/secrets/esri/check", dependencies=auth)
     async def check_esri_key() -> KeyCheck:

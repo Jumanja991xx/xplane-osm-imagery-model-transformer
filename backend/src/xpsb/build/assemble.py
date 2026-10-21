@@ -568,6 +568,7 @@ def _shade_with_blender(
     blender_exe: str,
     progress: Callable[[BlenderStatus], None] | None,
     should_stop: Callable[[], bool] = lambda: False,
+    cpu: bool = False,
 ) -> None:
     """One Blender run bakes the soft shading of all prepared objects, which is then
     multiplied into their colour textures."""
@@ -590,7 +591,8 @@ def _shade_with_blender(
             progress or (lambda s: None),
             should_stop=should_stop,
             log=log,
-            log_file=log_path,  # written as Blender works: can be watched while it runs
+            log_file=log_path,
+            cpu=cpu,  # written as Blender works: can be watched while it runs
         )
         for i in sorted(done):
             res = todo[i]
@@ -635,6 +637,7 @@ def write_package(
     blender_exe: str | None = None,
     blender_progress: Callable[[BlenderStatus], None] | None = None,
     blender_stop: Callable[[], bool] = lambda: False,
+    blender_cpu: bool = False,
 ) -> PackageResult:
     objects_dir = package / "objects"
     polygons_dir = package / "polygons"
@@ -642,7 +645,9 @@ def write_package(
         items, detail, objects_dir, False, progress, library, photo_dir, blender_exe
     )
     if blender_exe:
-        _shade_with_blender(results, objects_dir, blender_exe, blender_progress, blender_stop)
+        _shade_with_blender(
+            results, objects_dir, blender_exe, blender_progress, blender_stop, blender_cpu
+        )
 
     dsf = DsfText(tile=tile)
     for kind, bounds in exclusions:

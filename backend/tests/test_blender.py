@@ -201,3 +201,17 @@ def test_a_hanging_graphics_card_search_starts_blender_again_on_the_cpu(tmp_path
     # remembered: the next build skips the search right away
     blender.bake_batch(exe, jobs, popen=popen)
     assert "--cpu" in calls[2]
+
+
+def test_self_test_times_the_steps_of_a_test_object(tmp_path):
+    result = blender.self_test(
+        "blender", tmp_path / "t", popen=lambda cmd, **kw: FakeProc(cmd, **kw)
+    )
+    assert result.ok and result.problem is None
+    assert result.device == "OPTIX NVIDIA RTX"
+    assert result.bake_s is not None and result.gpu_search_s is not None
+    assert (tmp_path / "t" / "blender-test.log").is_file()
+    cpu = blender.self_test(
+        "blender", tmp_path / "t", cpu=True, popen=lambda cmd, **kw: FakeProc(cmd, **kw)
+    )
+    assert cpu.ok and cpu.gpu_search_s is None
