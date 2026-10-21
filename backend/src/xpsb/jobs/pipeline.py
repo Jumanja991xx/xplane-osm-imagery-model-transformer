@@ -718,7 +718,8 @@ def build_package(
     readme = _readme(plan, job)
     if shaded:
         readme += (
-            f"\nSoft shading (ambient occlusion) of {shaded} of {len(meshes)} objects "
+            f"\nSoft shading (ambient occlusion), weathering and rounded edges of {shaded} of "
+            f"{len(meshes)} objects "
             f"baked with Blender {blender_version or ''}"
             + (f"; fine facade detail baked into {detailed} of them" if detailed else "")
             + ".\n"

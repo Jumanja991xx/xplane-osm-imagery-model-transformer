@@ -221,6 +221,7 @@ class PlanObject(BaseModel):
     top_m: float | None = None  # highest point as built (for "make them 20 % lower")
     shaded: bool = False  # soft shading baked in by Blender (package build only)
     detailed: bool = False  # fine detail baked into the normal map by Blender
+    weathered: bool = False  # weathering baked into the texture by Blender
     library: list[LibraryPlacement] = Field(default_factory=list)
 
 

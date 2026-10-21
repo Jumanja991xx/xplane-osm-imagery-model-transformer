@@ -1,8 +1,10 @@
 """Blender as an optional finishing tool (the user installs it; it is not shipped).
 
 Only fixed scripts of this folder run in Blender - never code from the AI. What
-it adds today: ambient occlusion baked into each object's texture, the soft
-shading in corners and under ledges that makes hand-made sceneries look solid.
+it adds: ambient occlusion baked into each object's texture (the soft shading in
+corners and under ledges that makes hand-made sceneries look solid), weathering
+(grime, rain streaks, splashes, moss, worn edges), rounded edges and the relief of
+the fine facade detail in the normal map.
 Without Blender everything else works the same.
 """
 
@@ -42,6 +44,13 @@ MAX_BAKE_PX = 512  # shading is soft and blurry: a small bake is enough and much
 MAX_DETAIL_PX = 2048  # fine relief needs the texture's own resolution
 DETAIL_STRENGTH = 0.75  # how strongly the baked relief tilts the surface
 STRENGTH = 0.7  # how dark a fully occluded spot gets (1 = black)
+# Weathering (see ao_bake._bake_weather): how much darker and dirtier the most
+# weathered spot gets, the colour of the grime, how much lighter worn edges get.
+WEATHER_DARKEN = 0.26
+WEATHER_TINT = 0.10
+GRIME = np.array([72, 64, 54], dtype=np.float32)
+EDGE_LIGHTEN = 0.12
+BEVEL_STRENGTH = 0.9
 
 
 @dataclass
@@ -162,6 +171,8 @@ def _work(npz: Path) -> float:
                 dw, dh = (int(v) for v in d["detail_size"])
                 tris += len(d["high_tris"])
                 w, h = w + dw // 2, h + dh // 2  # the relief bake is cheaper per pixel
+            dw, dh = (int(v) for v in d["detail_size"])
+            w, h = w + dw // 3, h + dh // 3  # weathering and edges
     except (OSError, KeyError, ValueError):
         return 1.0
     return w * h * (1.0 + tris / 50_000)
@@ -171,7 +182,7 @@ def _work(npz: Path) -> float:
 class Status:
     """What Blender is doing right now (for the progress line)."""
 
-    phase: str  # launch | boot | gpu | object | relief | retry_cpu
+    phase: str  # launch | boot | gpu | object | weather | relief | retry_cpu
     done: int
     total: int
     device: str = ""
@@ -353,12 +364,12 @@ def _run(
             break
         note(line.rstrip("\n"))
         # Our markers may share a line with Blender's own output.
-        m = re.search(r"XPSB_(BOOT|START|DEVICE|BEGIN|RELIEF|DONE|FAILED) ?(.*)", line)
+        m = re.search(r"XPSB_(BOOT|START|DEVICE|BEGIN|WEATHER|RELIEF|DONE|FAILED) ?(.*)", line)
         if not m:
             continue  # Blender's own messages do not count as progress
         quiet = 0.0
         kind, rest = m.group(1), m.group(2).strip()
-        n = int(rest.split()[0]) if kind in ("BEGIN", "RELIEF", "DONE", "FAILED") else -1
+        n = int(rest.split()[0]) if kind in ("BEGIN", "WEATHER", "RELIEF", "DONE", "FAILED") else -1
         if kind == "BOOT":
             status.phase = "boot"
         elif kind == "START":
@@ -368,8 +379,8 @@ def _run(
             started = time.monotonic()  # Blender's own start-up does not count per object
         elif n < skip:
             continue  # baked in the run before
-        elif kind in ("BEGIN", "RELIEF"):
-            status.phase = "object" if kind == "BEGIN" else "relief"
+        elif kind in ("BEGIN", "WEATHER", "RELIEF"):
+            status.phase = {"BEGIN": "object", "WEATHER": "weather", "RELIEF": "relief"}[kind]
             status.current = n + 1
         elif kind == "FAILED":
             failed.add(order[n])
@@ -396,21 +407,37 @@ def problem(log: list[str]) -> str:
     return (log[-1].strip() if log else "no output")[:300]
 
 
-def ao_from(npz: Path, png: Path) -> np.ndarray:
-    """The baked shading in the atlas layout (1 = open), only where receivers are."""
+def extra(ao_png: Path, kind: str) -> Path:
+    """The further bakes Blender writes next to an object's AO image ("weather",
+    "bevel"), see ao_bake._extra."""
+    return ao_png.with_name(f"{ao_png.stem}_{kind}.png")
+
+
+def _receiver_mask(npz: Path) -> np.ndarray:
+    """Where in the atlas the receivers (parts with their own texture) are."""
     with np.load(npz) as d:
         w, h = (int(v) for v in d["atlas"])
         uv = d["uvs"].astype(np.float64)
         rec = d["receivers"]
-    with Image.open(png) as img:
-        ao = np.asarray(img.convert("L").resize((w, h), Image.Resampling.BILINEAR))
     mask = Image.new("L", (w, h), 0)
     draw = ImageDraw.Draw(mask)
     for a, b, c in rec:
         draw.polygon(
             [(uv[i, 0] * w, (1.0 - uv[i, 1]) * h) for i in (a, b, c)], fill=255, outline=255
         )
-    m = np.asarray(mask) > 0
+    return np.asarray(mask) > 0
+
+
+def _baked(png: Path, size: tuple[int, int], mode: str) -> np.ndarray:
+    with Image.open(png) as img:
+        return np.asarray(img.convert(mode).resize(size, Image.Resampling.BILINEAR))
+
+
+def ao_from(npz: Path, png: Path) -> np.ndarray:
+    """The baked shading in the atlas layout (1 = open), only where receivers are."""
+    m = _receiver_mask(npz)
+    h, w = m.shape
+    ao = _baked(png, (w, h), "L")
     out = np.ones((h, w), dtype=np.float32)
     out[m] = ao[m] / 255.0
     return out
@@ -428,25 +455,45 @@ def shade_texture(texture: Path, ao: np.ndarray) -> None:
     Image.fromarray(np.clip(rgb, 0, 255).astype(np.uint8), mode).save(texture)
 
 
-def detail_normals(npz: Path, png: Path, normal_texture: Path) -> bool:
-    """Blends the baked relief of the fine detail into the object's normal map (only
-    where detail was hit; the gloss in the alpha channel stays). False if none."""
+def weather_texture(npz: Path, png: Path, texture: Path) -> bool:
+    """Ages a colour texture the way the weather ages a building: grime in corners,
+    splashes at the foot of walls, rain streaks, blotches and moss (darker, towards
+    a grey-brown), worn edges (lighter). False if Blender wrote no weathering."""
     if not png.is_file():
         return False
-    with np.load(npz) as d:
-        w, h = (int(v) for v in d["atlas"])
-    with Image.open(png) as img:
-        baked = np.asarray(img.convert("RGB").resize((w, h), Image.Resampling.BILINEAR))
-    baked = baked.astype(np.float32) / 127.5 - 1.0
-    baked[..., :2] *= DETAIL_STRENGTH
-    hit = (np.abs(baked[..., 0]) > 0.04) | (np.abs(baked[..., 1]) > 0.04)
-    if not hit.any():
+    m = _receiver_mask(npz)
+    h, w = m.shape
+    baked = _baked(png, (w, h), "RGB").astype(np.float32) / 255.0
+    with Image.open(texture) as img:
+        img.load()
+        mode = img.mode
+        rgb = np.asarray(img).astype(np.float32)
+    if rgb.shape[:2] != (h, w):
         return False
+    dirt = np.where(m, baked[..., 0], 0.0)[..., None]
+    edge = np.where(m, baked[..., 1], 0.0)[..., None]
+    c = rgb[..., :3]
+    c = c * (1.0 - WEATHER_DARKEN * dirt) + (GRIME - c) * WEATHER_TINT * dirt
+    c = c + (255.0 - c) * EDGE_LIGHTEN * edge * (1.0 - dirt)
+    rgb[..., :3] = c
+    Image.fromarray(np.clip(rgb, 0, 255).astype(np.uint8), mode).save(texture)
+    return True
+
+
+def _blend_normals(png: Path, normal_texture: Path, strength: float, only: np.ndarray | None):
     with Image.open(normal_texture) as img:
         img.load()
         nml = np.asarray(img.convert("RGBA")).astype(np.float32)
+    h, w = nml.shape[:2]
+    baked = _baked(png, (w, h), "RGB").astype(np.float32) / 127.5 - 1.0
+    baked[..., :2] *= strength
+    hit = (np.abs(baked[..., 0]) > 0.04) | (np.abs(baked[..., 1]) > 0.04)
+    if only is not None:
+        hit &= only
+    if not hit.any():
+        return False
     base = nml[..., :3] / 127.5 - 1.0
-    # "whiteout" blend: the detail's tilt added to the material's own relief
+    # "whiteout" blend: the baked tilt added to the material's own relief
     mixed = np.stack(
         [base[..., 0] + baked[..., 0], base[..., 1] + baked[..., 1], base[..., 2] * baked[..., 2]],
         axis=-1,
@@ -455,6 +502,21 @@ def detail_normals(npz: Path, png: Path, normal_texture: Path) -> bool:
     nml[hit, :3] = (mixed[hit] + 1.0) * 127.5
     Image.fromarray(np.clip(nml, 0, 255).astype(np.uint8), "RGBA").save(normal_texture)
     return True
+
+
+def detail_normals(npz: Path, png: Path, normal_texture: Path) -> bool:
+    """Blends the baked relief of the fine detail into the object's normal map (only
+    where detail was hit; the gloss in the alpha channel stays). False if none."""
+    if not png.is_file():
+        return False
+    return _blend_normals(png, normal_texture, DETAIL_STRENGTH, None)
+
+
+def bevel_normals(npz: Path, png: Path, normal_texture: Path) -> bool:
+    """Blends the rounded edges into the object's normal map (on the receivers)."""
+    if not png.is_file():
+        return False
+    return _blend_normals(png, normal_texture, BEVEL_STRENGTH, _receiver_mask(npz))
 
 
 @dataclass

@@ -39,6 +39,7 @@ class FakeProc:
                 w, h = (int(v) for v in d["size"])
             Image.new("L", (w, h), 64).save(dst)
             out.append(f"XPSB_BEGIN {n}\n")
+            out.append(f"XPSB_WEATHER {n}\n")
             out.append(f"XPSB_DONE {n}\n")
         self.stdout = io.StringIO("".join(out))
         self.returncode = 0
@@ -74,6 +75,7 @@ def test_one_run_for_all_objects_shades_only_own_texture_pieces(tmp_path):
     assert (last.done, last.total, last.device) == (3, 3, "OPTIX NVIDIA RTX")
     assert last.left is not None
     assert any(s.phase == "object" and s.current == 2 for s in seen)
+    assert any(s.phase == "weather" and s.current == 2 for s in seen)
     assert "XPSB_DONE 2" in log_file.read_text(encoding="utf-8")
     ao = blender.ao_from(*jobs[0][:2])
     assert ao.min() < 0.3 and ao.max() == 1.0  # dark only where receivers are
@@ -243,3 +245,31 @@ def test_boot_script_turns_off_wmi_on_windows(monkeypatch, capsys):
     exec(compile(boot.read_text(encoding="utf-8"), str(boot), "exec"), {"__name__": "xpsb_boot"})
     assert platform._wmi is None
     assert "XPSB_BOOT" in capsys.readouterr().out
+
+
+def test_weathering_and_rounded_edges_only_on_own_texture_pieces(tmp_path):
+    mesh = _mesh()
+    baked = bake(mesh)
+    texture, normals = tmp_path / "obj.png", tmp_path / "obj_nml.png"
+    baked.image.save(texture)
+    baked.normal.save(normals)
+    npz = tmp_path / "o.npz"
+    assert blender.prepare(mesh, baked, npz)
+    ao_png = tmp_path / "o_ao.png"
+    assert blender.extra(ao_png, "weather") == tmp_path / "o_ao_weather.png"
+    w, h = baked.image.size
+    Image.new("RGB", (w // 2, h // 2), (255, 255, 0)).save(blender.extra(ao_png, "weather"))
+    Image.new("RGB", (w // 2, h // 2), (200, 128, 230)).save(blender.extra(ao_png, "bevel"))
+    own = blender._receiver_mask(npz)
+    before = np.asarray(Image.open(texture).convert("RGB")).astype(int)
+    assert blender.weather_texture(npz, blender.extra(ao_png, "weather"), texture)
+    after = np.asarray(Image.open(texture).convert("RGB")).astype(int)
+    assert after[own].sum() < before[own].sum()  # grime darkens the walls ...
+    assert (after[~own] == before[~own]).all()  # ... not the shared window pieces
+    nml_before = np.asarray(Image.open(normals).convert("RGBA")).astype(int)
+    assert blender.bevel_normals(npz, blender.extra(ao_png, "bevel"), normals)
+    nml_after = np.asarray(Image.open(normals).convert("RGBA")).astype(int)
+    assert (nml_after[own][:, 0] != nml_before[own][:, 0]).any()
+    assert (nml_after[~own] == nml_before[~own]).all()
+    assert (nml_after[..., 3] == nml_before[..., 3]).all()  # gloss stays
+    assert not blender.weather_texture(npz, tmp_path / "missing.png", texture)

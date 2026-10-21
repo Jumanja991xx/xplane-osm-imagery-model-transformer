@@ -16,8 +16,12 @@ whose relief is baked onto the receivers as a tangent-space normal map
 (high-to-low, "selected to active").
 AO: greyscale PNG (white = open, dark = occluded). NORMAL: RGB PNG, flat
 (128, 128, 255) where no detail was hit; only written when there is detail.
+Also per object, next to AO: AO_weather.png (red: how weathered - dirt in corners,
+splashes, rain streaks, blotches, moss; green: worn edges) and AO_bevel.png (rounded
+edges as a tangent-space normal map).
 Prints "XPSB_START" first, "XPSB_DEVICE <kind> <name>" once, then per object
-"XPSB_BEGIN <n>", "XPSB_RELIEF <n>" (when the detail bake starts) and "XPSB_DONE <n>".
+"XPSB_BEGIN <n>", "XPSB_WEATHER <n>" (weathering and edges), "XPSB_RELIEF <n>" (when
+the detail bake starts) and "XPSB_DONE <n>".
 """
 
 import contextlib
@@ -111,12 +115,160 @@ def _clear(scene) -> None:
             coll.remove(block)
 
 
+def _extra(dst: str, kind: str) -> str:
+    """Where the extra bakes of an object go: next to its AO image."""
+    stem = dst[:-4] if dst.lower().endswith(".png") else dst
+    return f"{stem}_{kind}.png"
+
+
+def _node(tree, kind, **inputs):
+    n = tree.nodes.new(kind)
+    for key, value in inputs.items():
+        if key.startswith("_"):
+            setattr(n, key[1:], value)
+        else:
+            n.inputs[key].default_value = value
+    return n
+
+
+def _output(tree):
+    """The material's output node (the one Blender renders and bakes)."""
+    for n in tree.nodes:
+        if n.type == "OUTPUT_MATERIAL":
+            n.is_active_output = True
+            return n
+    return tree.nodes.new("ShaderNodeOutputMaterial")
+
+
+def _math(tree, op, a, b=None, clamp=False):
+    n = tree.nodes.new("ShaderNodeMath")
+    n.operation = op
+    n.use_clamp = clamp
+    for i, v in enumerate((a, b)):
+        if v is None:
+            continue
+        if isinstance(v, (int, float)):
+            n.inputs[i].default_value = v
+        else:
+            tree.links.new(v, n.inputs[i])
+    return n.outputs[0]
+
+
+def _range(tree, value, a, b, lo=0.0, hi=1.0):
+    n = tree.nodes.new("ShaderNodeMapRange")
+    n.clamp = True
+    tree.links.new(value, n.inputs["Value"])
+    n.inputs["From Min"].default_value = a
+    n.inputs["From Max"].default_value = b
+    n.inputs["To Min"].default_value = lo
+    n.inputs["To Max"].default_value = hi
+    return n.outputs["Result"]
+
+
+def _noise(tree, position, scale, stretch=(1.0, 1.0, 1.0), detail=3.0):
+    mapping = tree.nodes.new("ShaderNodeMapping")
+    mapping.inputs["Scale"].default_value = stretch
+    tree.links.new(position, mapping.inputs["Vector"])
+    noise = _node(tree, "ShaderNodeTexNoise", Scale=scale, Detail=detail)
+    tree.links.new(mapping.outputs["Vector"], noise.inputs["Vector"])
+    return noise.outputs["Fac"]
+
+
+def _bake_weather(scene, rec, mat, node, w, h, dst) -> None:
+    """How weathered each spot is, the way real buildings age: dirt in corners and
+    joints, splashes at the foot of the walls, rain streaks running down the walls,
+    blotches on walls and roofs (moss, lichen) - red channel; worn, lighter edges -
+    green channel. Painted into the colour texture afterwards."""
+    tree = mat.node_tree
+    for link in list(tree.links):
+        tree.links.remove(link)
+    geo = tree.nodes.new("ShaderNodeNewGeometry")
+    pos = geo.outputs["Position"]
+    xyz = tree.nodes.new("ShaderNodeSeparateXYZ")
+    tree.links.new(geo.outputs["Normal"], xyz.inputs["Vector"])
+    nz = xyz.outputs["Z"]
+    wall = _math(tree, "SUBTRACT", 1.0, _math(tree, "ABSOLUTE", nz), clamp=True)
+    up = _math(tree, "MAXIMUM", nz, 0.0)
+    height = tree.nodes.new("ShaderNodeSeparateXYZ")
+    tree.links.new(pos, height.inputs["Vector"])
+
+    ao = _node(tree, "ShaderNodeAmbientOcclusion", Distance=0.8, _samples=8)
+    corners = _range(tree, ao.outputs["AO"], 0.35, 0.95, 1.0, 0.0)
+    splash = _math(tree, "MULTIPLY", _range(tree, height.outputs["Z"], 0.0, 1.4, 1.0, 0.0), wall)
+    # Streaks: noise stretched along the height (rain runs down), only on walls.
+    streaks = _range(tree, _noise(tree, pos, 3.0, (1.6, 1.6, 0.12), 4.0), 0.5, 0.78)
+    streaks = _math(tree, "MULTIPLY", streaks, wall)
+    blotches = _range(tree, _noise(tree, pos, 0.35, (1.0, 1.0, 1.0), 5.0), 0.45, 0.75)
+    moss = _math(tree, "MULTIPLY", _range(tree, _noise(tree, pos, 1.2, detail=6.0), 0.5, 0.8), up)
+
+    dirt = _math(tree, "MULTIPLY", corners, 0.8)
+    for part, k in ((splash, 0.45), (streaks, 0.4), (blotches, 0.22), (moss, 0.45)):
+        dirt = _math(tree, "ADD", dirt, _math(tree, "MULTIPLY", part, k))
+    dirt = _math(tree, "MINIMUM", dirt, 1.0)
+
+    bevel = _node(tree, "ShaderNodeBevel", Radius=0.06, _samples=8)
+    dot = tree.nodes.new("ShaderNodeVectorMath")
+    dot.operation = "DOT_PRODUCT"
+    tree.links.new(bevel.outputs["Normal"], dot.inputs[0])
+    tree.links.new(geo.outputs["Normal"], dot.inputs[1])
+    edges = _range(tree, dot.outputs["Value"], 0.995, 0.85)
+
+    combine = tree.nodes.new("ShaderNodeCombineXYZ")
+    tree.links.new(dirt, combine.inputs["X"])
+    tree.links.new(edges, combine.inputs["Y"])
+    emit = tree.nodes.new("ShaderNodeEmission")
+    tree.links.new(combine.outputs["Vector"], emit.inputs["Color"])
+    out = _output(tree)
+    tree.links.new(emit.outputs["Emission"], out.inputs["Surface"])
+
+    image = bpy.data.images.new("weather", w, h, alpha=False, float_buffer=False)
+    image.colorspace_settings.name = "Non-Color"
+    node.image = image
+    tree.nodes.active = node
+    scene.cycles.samples = 8
+    bpy.ops.object.select_all(action="DESELECT")
+    rec.select_set(True)
+    bpy.context.view_layer.objects.active = rec
+    bpy.ops.object.bake(type="EMIT", margin=4, use_clear=True)
+    image.filepath_raw = dst
+    image.file_format = "PNG"
+    image.save()
+
+
+def _bake_bevel(scene, rec, mat, node, w, h, dst) -> None:
+    """Rounded edges as a normal map: real corners are never razor sharp, they catch
+    the light along a thin line - one of the things that make a model look built."""
+    tree = mat.node_tree
+    for link in list(tree.links):
+        tree.links.remove(link)
+    bevel = _node(tree, "ShaderNodeBevel", Radius=0.04, _samples=8)
+    bsdf = tree.nodes.new("ShaderNodeBsdfDiffuse")
+    tree.links.new(bevel.outputs["Normal"], bsdf.inputs["Normal"])
+    out = _output(tree)
+    tree.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
+    image = bpy.data.images.new("bevel", w, h, alpha=False)
+    image.colorspace_settings.name = "Non-Color"
+    image.generated_color = (0.5, 0.5, 1.0, 1.0)
+    node.image = image
+    tree.nodes.active = node
+    scene.cycles.samples = 8
+    scene.render.bake.normal_space = "TANGENT"
+    bpy.ops.object.select_all(action="DESELECT")
+    rec.select_set(True)
+    bpy.context.view_layer.objects.active = rec
+    bpy.ops.object.bake(type="NORMAL", margin=4, use_clear=True)
+    image.filepath_raw = dst
+    image.file_format = "PNG"
+    image.save()
+
+
 def bake_one(scene, src: str, dst: str, dst_normal: str | None = None, n: int = 0) -> None:
     with np.load(src) as d:
         positions = d["positions"].astype(np.float64)
         uvs, receivers, occluders = d["uvs"], d["receivers"], d["occluders"]
         w, h = (int(v) for v in d["size"])
-        scene.cycles.samples = int(d["samples"])
+        samples = int(d["samples"])
+        scene.cycles.samples = samples
         scene.world.light_settings.distance = float(d["distance"])
         high_pos = d["high_positions"].astype(np.float64) if "high_positions" in d else None
         high_tris = d.get("high_tris")
@@ -158,8 +310,15 @@ def bake_one(scene, src: str, dst: str, dst_normal: str | None = None, n: int = 
     image.file_format = "PNG"
     image.save()
 
+    print("XPSB_WEATHER", n, flush=True)
+    _bake_weather(scene, rec, mat, node, dw, dh, _extra(dst, "weather"))
+    _bake_bevel(scene, rec, mat, node, dw, dh, _extra(dst, "bevel"))
     if high is None or not dst_normal:
         return
+    node.image = image
+    for link in list(mat.node_tree.links):
+        mat.node_tree.links.remove(link)
+    scene.cycles.samples = samples
     print("XPSB_RELIEF", n, flush=True)
     # High-to-low: the relief of the fine detail onto the walls behind it.
     normal = bpy.data.images.new("normal", dw, dh, alpha=False)

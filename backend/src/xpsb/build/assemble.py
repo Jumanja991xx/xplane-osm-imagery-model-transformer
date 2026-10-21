@@ -137,6 +137,7 @@ class ItemResult:
     top_m: float | None = None  # height of the highest point as built
     shaded: bool = False  # ambient occlusion baked in by Blender
     detailed: bool = False  # fine detail (surrounds, dentils) baked into its normal map
+    weathered: bool = False  # weathering (grime, streaks, worn edges) baked in by Blender
     blender_input: str | None = None  # prepared for Blender (package build only)
     blender_problem: str = ""  # why Blender did not shade it (package build only)
     # X-Plane library objects: path, x/y in metres from the anchor, heading, size
@@ -708,8 +709,14 @@ def _shade_with_blender(
                 ao = blender.ao_from(jobs[i][0], jobs[i][1])
                 blender.shade_texture(objects_dir / f"{res.stem}.png", ao)
                 res.shaded = True
+                res.weathered = blender.weather_texture(
+                    jobs[i][0],
+                    blender.extra(jobs[i][1], "weather"),
+                    objects_dir / f"{res.stem}.png",
+                )
                 nml = objects_dir / f"{res.stem}_nml.png"
                 if nml.is_file():
+                    blender.bevel_normals(jobs[i][0], blender.extra(jobs[i][1], "bevel"), nml)
                     res.detailed = blender.detail_normals(jobs[i][0], jobs[i][2], nml)
             except (OSError, ValueError) as exc:
                 problems.append(f"{res.stem}: {exc}")
