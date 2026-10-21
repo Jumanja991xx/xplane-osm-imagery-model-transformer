@@ -47,7 +47,7 @@ from xpsb.jobs.models import (
     PlanItem,
     PlanObject,
 )
-from xpsb.osm import classify, overpass
+from xpsb.osm import classify, overpass, rows
 from xpsb.photos import Photo
 from xpsb.settings import Settings
 from xpsb.xplane import dsftool
@@ -181,6 +181,14 @@ def analyze_sync(job: Job, deps: AnalysisDeps, log: EventLog) -> AnalysisResult:
     if not items:
         notes.append(Note(key="analysis.nothing_found"))
     info = _imagery_stage(job, deps, log, notes)
+    if info is not None:
+        # The aerial image knows the roofs better than the map: their colours, and
+        # which houses OSM splits up that stand under one roof.
+        with Image.open(deps.job_dir / "imagery" / info.file) as img:
+            seen = roofs.measure(items, img, info)
+        joined = rows.merge(items, seen) if seen else 0
+        if joined:
+            notes.append(Note(key="analysis.rows_joined", params={"count": joined}))
     result = AnalysisResult(items=items, imagery=info, notes=notes)
 
     if not job.brief.use_ai:
@@ -269,7 +277,7 @@ def analyze_sync(job: Job, deps: AnalysisDeps, log: EventLog) -> AnalysisResult:
             analyzed=result.ai.analyzed,
             cost_usd=round(result.ai.cost_usd, 4),
         )
-    if info is not None:  # after the AI: its colours (and OSM's) come first
+    if info is not None:  # roofs the AI (or OSM, or the user) gave no colour
         with Image.open(deps.job_dir / "imagery" / info.file) as img:
             roofs.apply(result.items, img, info)
     if job.brief.research:

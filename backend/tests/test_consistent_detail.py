@@ -13,6 +13,7 @@ from xpsb.build.sandbox import ScriptInputs
 from xpsb.geo import METERS_PER_DEG_LAT, meters_per_deg_lon
 from xpsb.imagery import roofs
 from xpsb.imagery.wms import ImageryInfo
+from xpsb.osm import rows
 
 
 def _materials(items) -> Counter:
@@ -132,3 +133,37 @@ def test_lower_parts_take_their_colour_where_no_tower_covers_them():
     parts = {p.part: p.roof_color for p in items[0].parts}
     assert parts["yes"] == "#a04632"
     assert parts["tower"] == "#508c6e"
+
+
+def _row(n: int, **extra) -> list[dict]:
+    return [
+        way(i + 1, rect(i * 6, 0, (i + 1) * 6, 10), building="house", height="9", **extra)
+        for i in range(n)
+    ]
+
+
+def test_row_houses_under_one_roof_are_joined():
+    items = run(_row(4))
+    img, info = _image([((0, 0, 24, 10), (165, 75, 55))])
+    assert rows.merge(items, roofs.measure(items, img, info)) == 4
+    houses = [it for it in items if str(it.category) == "buildings"]
+    assert len(houses) == 1
+    assert houses[0].tags["xpsb:row_of"] == "4"
+    assert assemble.generate(houses[0], items, "medium")[0].triangle_count > 0
+
+
+def test_houses_with_different_roofs_stay_apart():
+    items = run(_row(4))
+    # The aerial image shows two roofs: red on the left two, grey on the right two.
+    img, info = _image([((0, 0, 12, 10), (165, 75, 55)), ((12, 0, 24, 10), (90, 90, 95))])
+    rows.merge(items, roofs.measure(items, img, info))
+    assert sorted(it.tags.get("xpsb:row_of", "1") for it in items) == ["2", "2"]
+
+
+def test_named_and_taller_houses_stay_apart():
+    els = _row(3)
+    els.append(way(9, rect(18, 0, 24, 10), building="house", height="15"))
+    els.append(way(10, rect(24, 0, 30, 10), building="house", height="9", name="Pfarrhaus"))
+    items = run(els)
+    rows.merge(items)
+    assert len(items) == 3  # the row of three, the tall house, the named one

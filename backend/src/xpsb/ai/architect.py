@@ -32,7 +32,7 @@ EFFORT = "medium"
 MAX_SCRIPT_CHARS = 30_000
 # Rough token counts for the estimate (system prompt with the tool reference,
 # script, images, and a full script plus thinking as output).
-SYSTEM_TOKENS_EST = 5500
+SYSTEM_TOKENS_EST = 6000
 IMAGE_TOKENS_EST = 400
 OUTPUT_TOKENS_EST = 12000  # thinking + a detailed script
 # Output limit per answer (thinking + script); streamed, so long answers are fine.
@@ -178,6 +178,14 @@ RULES:
 - Keep the triangle count modest: walls are cheap, round things need segments; the
   budget is given below. Exceeding it is an error.
 - Colours are "#RRGGBB" strings. Prefer materials that match the real object.
+- DETAIL: build every object as detailed as the photos, facts and aerial image allow
+  and the budget permits - this applies to every request, also to small corrections.
+  Before writing, list for yourself what makes the real object recognisable (towers
+  and their stages, spires, domes, gables, dormers, oriels, balconies, arcades,
+  cornices, buttresses, clock faces, crosses and finials, chimneys, roof colours and
+  forms) and build each of them. No visible wall stays a plain box, no roof stays a
+  plain lid where the real one has more. Spend the triangles where people look:
+  towers, the main front, the roof line.
 - Write the COMPLETE script every time (it replaces the old one).
 - The summary is for the user, in {LANG_NAMES.get(language, "English")}, short, no code.
 
@@ -203,6 +211,14 @@ HOW TO BUILD COMMON THINGS (adapt to the facts and photos):
 - Church: nave with steep roof, tower with spire (box + pyramid faces or cylinder with
   radius_top), apse; facade(style="church") on nave and tower stages (tall arched
   windows between buttresses; entrance=False on raised stages).
+- Towers (church towers, gate towers, town hall towers): they are seen from far away,
+  so they get the most detail. Per stage (from photos/facts): facade(style="church" or
+  "arched", entrance=False) or extruded walls with openings, a cornice or string course
+  (sweep) between the stages, the belfry stage with deep paired sound openings, clock
+  faces where the real tower has them (a thin cylinder disc with a dial colour and
+  hands as thin boxes, on each side that has one), the real spire or roof (pyramid,
+  helm, onion, dome with lantern) in its real colour (copper green, slate, tiles), and
+  the cross, ball or weather vane on top. Twin towers are built the same twice.
 - Palace, town hall, court, museum, station (historic, monumental): facade(style=
   "classic" or "arched", storeys and bay counted on the photos, holes=courtyards),
   mansard() or hipped roofs, parapet(mat="balustrade", statues=...) if the photos show

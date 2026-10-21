@@ -106,7 +106,11 @@ AUTO_DESIGN_REQUEST = (
     "Build this object so that it looks like the real one. Use everything you are given: "
     "the research facts, the photos, the aerial image and the OSM data. It must be "
     "recognisable from the air and from the ground: right shape and proportions, height, "
-    "roof form, facade materials and colours, and the characteristic details."
+    "roof form, facade materials and colours, and the characteristic details. Give "
+    "towers, spires and domes the most care - they are what people recognise from "
+    "afar: every stage with its own openings (sound openings of the belfry, windows), "
+    "clock faces, cornices between the stages, the real spire or roof shape and colour, "
+    "crosses, finials and lanterns on top. Do not leave any visible wall as a plain box."
 )
 DESIGN_PARALLEL = 3
 MAX_AUTO_DESIGN = 40

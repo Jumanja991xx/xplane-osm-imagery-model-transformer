@@ -29,6 +29,29 @@ import numpy as np
 GPU_KINDS = ("OPTIX", "CUDA", "HIP", "ONEAPI", "METAL")
 
 
+INTEGRATED = (
+    "radeon(tm) graphics",
+    "radeon graphics",
+    "radeon vega",
+    "radeon 780m",
+    "radeon 760m",
+    "radeon 890m",
+    "radeon 880m",
+    "intel(r) uhd",
+    "intel(r) iris",
+    "intel(r) arc(tm) graphics",
+    "intel(r) graphics",
+)
+
+
+def integrated(name: str) -> bool:
+    """Graphics built into the processor (AMD Ryzen "Radeon(TM) Graphics", Intel UHD/
+    Iris/Arc Graphics) rather than a graphics card of its own."""
+    n = " ".join(name.lower().split())
+    n = n.removeprefix("amd ")
+    return any(n.startswith(k) for k in INTEGRATED)
+
+
 def _use_gpu(scene) -> str:
     """Switches Cycles to the graphics card if there is a supported one; says
     which, or why not (for the progress line)."""
@@ -52,10 +75,16 @@ def _use_gpu(scene) -> str:
         gpus = [d for d in devices if d.type == kind]
         tried.append(f"{kind}:{len(gpus)}")
         if gpus:
+            # A graphics card of its own beats the graphics unit built into the
+            # processor (and baking on both at once is slower than on the card).
+            dedicated = [d for d in gpus if not integrated(d.name)]
+            chosen = dedicated or gpus
             for d in prefs.devices:
-                d.use = d.type == kind
+                d.use = d in chosen
             scene.cycles.device = "GPU"
-            return f"{kind} {gpus[0].name}"
+            names = ", ".join(dict.fromkeys(d.name for d in chosen))
+            kind_word = "graphics card" if dedicated else "processor graphics"
+            return f"{kind} {names} ({kind_word})"
     scene.cycles.device = "CPU"
     return "CPU (no graphics card Cycles can use: " + (", ".join(tried) or "none") + ")"
 

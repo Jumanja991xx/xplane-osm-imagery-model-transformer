@@ -67,6 +67,33 @@ def roof_color(img: np.ndarray, info: ImageryInfo, geom: BaseGeometry) -> str | 
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
+def measure(items: list[SceneItem], image: Image.Image, info: ImageryInfo) -> dict[str, str]:
+    """Roof colour per building id as the aerial image shows it (without setting it)."""
+    if not info.package_ok:
+        return {}
+    img = np.asarray(image.convert("RGB"))
+    if img.shape[1] != info.width_px or img.shape[0] != info.height_px:
+        return {}
+    out = {}
+    for it in items:
+        geom = _building(it)
+        if geom is not None:
+            color = roof_color(img, info, geom)
+            if color is not None:
+                out[it.id] = color
+    return out
+
+
+def _building(it: SceneItem):
+    if it.kind != "object" or str(it.category) != "buildings" or not it.geometry:
+        return None
+    try:
+        geom = shape(it.geometry)
+    except (ValueError, TypeError, AttributeError):
+        return None
+    return geom if geom.geom_type in ("Polygon", "MultiPolygon") else None
+
+
 def apply(items: list[SceneItem], image: Image.Image, info: ImageryInfo) -> int:
     """Sets the roof colour of buildings (and their parts) that have none.
     Returns how many got one."""
@@ -77,13 +104,8 @@ def apply(items: list[SceneItem], image: Image.Image, info: ImageryInfo) -> int:
         return 0
     count = 0
     for it in items:
-        if it.kind != "object" or str(it.category) != "buildings" or not it.geometry:
-            continue
-        try:
-            geom = shape(it.geometry)
-        except (ValueError, TypeError, AttributeError):
-            continue
-        if geom.geom_type not in ("Polygon", "MultiPolygon"):
+        geom = _building(it)
+        if geom is None:
             continue
         if it.attrs.roof_color is None:
             it.attrs.roof_color = roof_color(img, info, geom)
