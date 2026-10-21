@@ -398,6 +398,12 @@ def lamp(u, v, color):
     return _fill(u, color or (245, 245, 235))
 
 
+def bronze(u, v, color):
+    """Cast bronze of statues: dark, with patina streaks running down."""
+    img = _fill(u, color or (92, 78, 58))
+    return _shade(img, 0.08 * _noise(u, v * 0.3, 0.25, 31) + 0.04 * _noise(u, v, 0.05, 33))
+
+
 def paint(u, v, color):
     """Plain colour, e.g. signs, boards, painted steel."""
     img = _fill(u, color or (200, 200, 200))
@@ -435,6 +441,7 @@ MATERIALS: dict[str, Painter] = {
     "wood": wood,
     "lamp": lamp,
     "paint": paint,
+    "bronze": bronze,
 }
 
 
@@ -491,6 +498,7 @@ MATERIAL_HELP = {
     "wood": "timber",
     "lamp": "floodlight head / bright panel",
     "paint": "plain painted surface in the given colour",
+    "bronze": "cast bronze of statues (dark brown; green patina: color='#5E8C77')",
 }
 
 
@@ -562,6 +570,7 @@ GLOSS: dict[str, float] = {
     "membrane": 0.3,
     "paint": 0.3,
     "lamp": 0.3,
+    "bronze": 0.35,
 }
 DEFAULT_GLOSS = 0.08
 # See-through materials: opacity written into the colour texture's alpha.

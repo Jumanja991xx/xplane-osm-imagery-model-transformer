@@ -14,6 +14,7 @@ from shapely.geometry import Polygon
 from shapely.geometry.polygon import orient
 
 from xpsb.build import details
+from xpsb.build import figure as figure_mod
 from xpsb.build.materials import MATERIALS, parse_color
 from xpsb.build.mesh import (
     MAX_PLACEMENTS,
@@ -778,6 +779,95 @@ class Tools:
                         b0, b1 = grid[i][j + 1], grid[i + 1][j + 1]
                         patch.tris += [(a0, b0, b1), (a0, b1, a1)]
                 self.mesh.add(patch)
+
+    # -- statues ---------------------------------------------------------------------
+
+    def figure(
+        self,
+        x,
+        y,
+        z=0.0,
+        height=2.5,
+        pose="standing",
+        heading=0.0,
+        mat="bronze",
+        color=None,
+        robe=False,
+        holding="none",
+        horse_mat=None,
+    ):
+        """A statue: a human figure standing on z, facing `heading` (degrees from
+        north, clockwise), `height` = its whole height (raised arms included).
+        pose: "standing", "arm_raised" (right arm up), "arms_raised" (both hands hold
+        something high above the head), "pointing" (right arm forward), "seated"
+        (on a block), "rider" (on a horse; height = rider's head above the horse's
+        hooves), "bust" (head and shoulders). robe=True: a long robe instead of legs
+        (women, saints, allegories). holding: "none", "palm", "wreath", "sword",
+        "torch", "book", "flag". Not a portrait - a figure with the right pose and
+        size; about 1 000-2 000 triangles near, a cheap stand-in further away.
+        Returns the triangles used."""
+        return figure_mod.add_figure(
+            self.mesh,
+            _num(x, "x"),
+            _num(y, "y"),
+            _num(z, "z"),
+            _num(height, "height"),
+            str(pose),
+            _num(heading, "heading"),
+            self._mat(mat),
+            self._color(color),
+            bool(robe),
+            str(holding),
+            None if horse_mat is None else self._mat(horse_mat),
+        )
+
+    def pedestal(
+        self, x, y, height, width, depth=None, heading=0.0, mat="stone", color=None, round=False
+    ):
+        """Plinth of a statue at (x, y): a step, the block and a cornice on top
+        (round=True: a drum). Returns the height of its top (where the figure stands)."""
+        h, w = _num(height, "height"), _num(width, "width")
+        d = w if depth is None else _num(depth, "depth")
+        if h <= 0 or w <= 0 or d <= 0:
+            raise GeometryError("pedestal: height, width and depth must be positive")
+        cx, cy = _num(x, "x"), _num(y, "y")
+        step = min(0.12 * h, 0.5)
+        cap = min(0.1 * h, 0.4)
+        if round:
+            n = 16
+            r = w / 2
+            self.revolve(
+                cx,
+                cy,
+                [
+                    [r * 1.15, 0],
+                    [r * 1.15, step],
+                    [r, step],
+                    [r, h - cap],
+                    [r * 1.1, h - cap],
+                    [r * 1.1, h],
+                    [0, h],
+                ],
+                mat=mat,
+                segments=n,
+                color=color,
+            )
+            return h
+        for z0, z1, grow in ((0.0, step, 1.2), (step, h - cap, 1.0), (h - cap, h, 1.1)):
+            self.box(
+                cx,
+                cy,
+                z0,
+                d * grow,
+                w * grow,
+                z1 - z0,
+                heading=heading,
+                mat=mat,
+                top=mat,
+                color=color,
+                top_color=color,
+            )
+        return h
 
     def quad(self, a, b, c, d, mat="concrete", color=None, two_sided=True):
         """Free quadrilateral (roof planes, panels, screens)."""

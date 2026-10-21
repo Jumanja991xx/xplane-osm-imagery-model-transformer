@@ -45,6 +45,10 @@ SELECTORS = [
     'nwr["amenity"="parking"]',
     'nwr["man_made"~"^(mast|tower|flagpole)$"]',
     'node["tower:type"="lighting"]',
+    # Statues, busts, obelisks, columns (points mostly).
+    'nwr["historic"~"^(memorial|monument)$"]',
+    'nwr["tourism"="artwork"]["artwork_type"~"^(statue|bust|sculpture)$"]',
+    'nwr["man_made"="obelisk"]',
     'nwr["surface"]["area"="yes"]',
     'wr["surface"][!"highway"]',
     # Squares, parks, green and open ground.

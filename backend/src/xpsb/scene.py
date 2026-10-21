@@ -31,6 +31,9 @@ class Research(BaseModel):
     sources: list[str] = Field(default_factory=list)
 
 
+MonumentKind = Literal["statue", "rider", "bust", "obelisk", "column", "stone"]
+StatuePose = Literal["standing", "arm_raised", "arms_raised", "pointing", "seated"]
+StatueHeld = Literal["none", "palm", "wreath", "sword", "torch", "book", "flag"]
 WallMaterial = Literal[
     "windows",
     "windows_classic",
@@ -63,6 +66,11 @@ class ItemAttrs(BaseModel):
     flip: bool | None = None  # turn the front (e.g. of a grandstand) around
     rows: int | None = Field(default=None, ge=1, le=80)  # grandstand rows
     wall_material: WallMaterial | None = None
+    # Statues and monuments (the default monument script reads these).
+    monument_kind: MonumentKind | None = None
+    pose: StatuePose | None = None
+    holding: StatueHeld | None = None
+    robe: bool | None = None
 
 
 class BuildingPart(BaseModel):

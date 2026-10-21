@@ -1222,6 +1222,14 @@ export interface components {
             rows?: number | null;
             /** Wall Material */
             wall_material?: ("windows" | "windows_classic" | "windows_arched" | "windows_house" | "plaster" | "stone" | "brick" | "glass" | "metal_sheet" | "concrete" | "wood") | null;
+            /** Monument Kind */
+            monument_kind?: ("statue" | "rider" | "bust" | "obelisk" | "column" | "stone") | null;
+            /** Pose */
+            pose?: ("standing" | "arm_raised" | "arms_raised" | "pointing" | "seated") | null;
+            /** Holding */
+            holding?: ("none" | "palm" | "wreath" | "sword" | "torch" | "book" | "flag") | null;
+            /** Robe */
+            robe?: boolean | null;
         };
         /**
          * ItemPatch
@@ -1368,7 +1376,7 @@ export interface components {
          * ObjectCategory
          * @enum {string}
          */
-        ObjectCategory: "buildings" | "grandstands" | "scaffolding" | "canopies" | "barriers" | "masts";
+        ObjectCategory: "buildings" | "grandstands" | "scaffolding" | "canopies" | "barriers" | "masts" | "monuments";
         /** PathBody */
         PathBody: {
             /** Path */

@@ -195,6 +195,7 @@ surfaces: {", ".join(surfaces) or "(none)"}
 - grandstands: spectator stands (rows of seats/steps), often long and narrow, often roofed;
   buildings: closed buildings; canopies: roofs without walls (pit roofs, carports, tents);
   scaffolding: temporary structures, stages, camera towers; masts: light masts, poles;
+  monuments: free-standing statues, equestrian statues, obelisks, memorial columns;
   barriers: only skip them (fences are too thin to see reliably).
 - Context matters: structures lined up along the edge of a race track, sports pitch or arena
   and facing it are almost always grandstands, also when they are roofed - including roofs

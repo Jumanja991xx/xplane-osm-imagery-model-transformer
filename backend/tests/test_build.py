@@ -89,7 +89,9 @@ def test_triangle_budget():
 
 @pytest.mark.parametrize("category", sorted(DEFAULT_SCRIPTS))
 def test_default_scripts_build(category):
-    footprint = None if category == "masts" else [[-30, -5], [30, -5], [30, 5], [-30, 5]]
+    footprint = (
+        None if category in ("masts", "monuments") else [[-30, -5], [30, -5], [30, 5], [-30, 5]]
+    )
     params = {
         "height": 9,
         "covered": True,

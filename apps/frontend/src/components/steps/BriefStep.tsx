@@ -20,6 +20,7 @@ const CATEGORIES: ObjectCategory[] = [
   "canopies",
   "barriers",
   "masts",
+  "monuments",
 ];
 const SURFACES: SurfaceType[] = SURFACE_TYPES;
 const EXCLUSIONS: ExclusionType[] = ["objects", "facades", "forests", "polygons", "roads"];

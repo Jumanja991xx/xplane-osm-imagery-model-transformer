@@ -210,6 +210,53 @@ def _params(item: SceneItem, items: list[SceneItem], local, detail: str) -> dict
         "tags": dict(tags),
         "detail": detail,
         "name": item.name,
+        "monument": _monument(item) if str(item.category) == "monuments" else None,
+    }
+
+
+# Statue material from OSM's material tag.
+_BRONZE = ("bronze", "copper", "brass", "metal", "iron", "steel")
+
+
+def _monument(item: SceneItem) -> dict:
+    """What the default monument script builds: kind, pose and material, from OSM
+    tags (the AI architect can do better from photos and Wikipedia)."""
+    from xpsb.osm.classify import monument_kind
+
+    tags, a = item.tags, item.attrs
+    kind = a.monument_kind or monument_kind(tags) or "statue"
+    material = (a.material or tags.get("material") or "").lower()
+    figure = kind in ("statue", "rider", "bust")
+    if any(w in material for w in _BRONZE):
+        mat = "bronze"
+    elif material:
+        mat = "stone"
+    else:
+        mat = "bronze" if figure else "stone"
+    text = " ".join(tags.get(k, "") for k in ("name", "name:en", "subject", "description")).lower()
+    robe = any(
+        w in text
+        for w in (
+            "madonna",
+            "mary",
+            "mária",
+            "maria",
+            "saint",
+            "szent",
+            "heilige",
+            "liberty",
+            "freiheit",
+            "szabadság",
+            "victoria",
+            "allegor",
+        )
+    )
+    return {
+        "kind": kind,
+        "material": mat,
+        "robe": robe if a.robe is None else a.robe,
+        "pose": a.pose,
+        "holding": a.holding,
     }
 
 
@@ -296,7 +343,15 @@ def generate(
         raise LookupError("no generator yet")
     budget, atlas, max_ppm = DETAIL.get(detail, DETAIL["medium"])
     inputs = _script_inputs(item, items, detail)
-    if inputs.footprint is None and inputs.path is None and str(item.category) != "masts":
+    if (
+        inputs.footprint is None
+        and inputs.path is None
+        and str(item.category)
+        not in (
+            "masts",
+            "monuments",
+        )
+    ):
         raise LookupError("needs an area outline")
     name = f"{item.id}.star" if item.script else f"{item.category}.star"
     lib = frozenset(library.objects) if library else None

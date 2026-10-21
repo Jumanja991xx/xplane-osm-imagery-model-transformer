@@ -487,7 +487,8 @@ type Control =
   | "wall_material"
   | "wall_color"
   | "roof_color"
-  | "seat_color";
+  | "seat_color"
+  | "monument";
 
 // Which quick controls make sense per kind of object (the default build scripts
 // read exactly these). Anything else: the AI architect below.
@@ -496,10 +497,14 @@ const CONTROLS: Record<string, Control[]> = {
   buildings: ["height", "levels", "roof_shape", "flip", "roof", "wall_material", "wall_color", "roof_color"],
   canopies: ["height", "roof", "roof_color"],
   masts: ["height"],
+  monuments: ["height", "flip", "monument"],
   scaffolding: ["height"],
 };
 const DEFAULT_CONTROLS: Control[] = ["height"];
 const ROOF_SHAPES = ["flat", "gabled", "hipped"] as const;
+const MONUMENT_KINDS = ["statue", "rider", "bust", "obelisk", "column", "stone"] as const;
+const POSES = ["standing", "arm_raised", "arms_raised", "pointing", "seated"] as const;
+const HELD = ["none", "palm", "wreath", "sword", "torch", "book", "flag"] as const;
 const WALL_MATERIALS = [
   "windows",
   "windows_classic",
@@ -733,6 +738,52 @@ function ObjectControls({
             disabled={busy}
           />
         ))}
+      {has("monument") && (
+        <>
+          <SelectField
+            label={t("adjust.monument_kind")}
+            value={attrs.monument_kind ?? ""}
+            options={MONUMENT_KINDS.map((v) => [v, t(`monument.${v}`)])}
+            onChange={(v) => apply({ monument_kind: (v || null) as ItemAttrs["monument_kind"] })}
+            disabled={busy}
+            testId="adjust-monument-kind"
+          />
+          {["statue", "column", undefined, null].includes(attrs.monument_kind) && (
+            <>
+              <SelectField
+                label={t("adjust.pose")}
+                value={attrs.pose ?? ""}
+                options={POSES.map((v) => [v, t(`pose.${v}`)])}
+                onChange={(v) => apply({ pose: (v || null) as ItemAttrs["pose"] })}
+                disabled={busy}
+                testId="adjust-pose"
+              />
+              <SelectField
+                label={t("adjust.holding")}
+                value={attrs.holding ?? ""}
+                options={HELD.map((v) => [v, t(`held.${v}`)])}
+                onChange={(v) => apply({ holding: (v || null) as ItemAttrs["holding"] })}
+                disabled={busy}
+                testId="adjust-holding"
+              />
+              <Checkbox
+                label={t("adjust.robe")}
+                checked={Boolean(attrs.robe)}
+                disabled={busy}
+                onChange={(on) => apply({ robe: on })}
+              />
+            </>
+          )}
+          <SelectField
+            label={t("adjust.statue_material")}
+            value={["bronze", "stone"].includes(attrs.material ?? "") ? (attrs.material as string) : ""}
+            options={["bronze", "stone"].map((v) => [v, t(`statue_material.${v}`)])}
+            onChange={(v) => apply({ material: v || null })}
+            disabled={busy}
+            testId="adjust-statue-material"
+          />
+        </>
+      )}
       {error && <Alert kind="error">{error}</Alert>}
       <DesignPanel jobId={jobId} object={object} onAdjusted={onAdjusted} />
     </div>

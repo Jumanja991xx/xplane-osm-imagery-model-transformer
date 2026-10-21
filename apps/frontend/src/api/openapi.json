@@ -3312,6 +3312,74 @@
               }
             ],
             "title": "Wall Material"
+          },
+          "monument_kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "statue",
+                  "rider",
+                  "bust",
+                  "obelisk",
+                  "column",
+                  "stone"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monument Kind"
+          },
+          "pose": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "standing",
+                  "arm_raised",
+                  "arms_raised",
+                  "pointing",
+                  "seated"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pose"
+          },
+          "holding": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "palm",
+                  "wreath",
+                  "sword",
+                  "torch",
+                  "book",
+                  "flag"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holding"
+          },
+          "robe": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Robe"
           }
         },
         "type": "object",
@@ -3748,7 +3816,8 @@
           "scaffolding",
           "canopies",
           "barriers",
-          "masts"
+          "masts",
+          "monuments"
         ],
         "title": "ObjectCategory"
       },

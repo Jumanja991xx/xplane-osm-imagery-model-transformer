@@ -157,6 +157,49 @@ def _surface_from_tag(tags: dict[str, str], default: SurfaceType) -> SurfaceType
     return SURFACE_TAG_MAP.get(tags.get("surface", ""), default)
 
 
+# ---- statues and monuments ----------------------------------------------------------
+
+MONUMENT_MAX_AREA_M2 = 400.0  # larger memorial areas are squares/parks, not a statue
+_MEMORIAL_KINDS = {
+    "statue": "statue",
+    "bust": "bust",
+    "obelisk": "obelisk",
+    "column": "column",
+    "stele": "stone",
+    "stone": "stone",
+    "war_memorial": "statue",
+    "sculpture": "statue",
+}
+_RIDER_WORDS = ("reiter", "equestrian", "lovas", "equestre", "jezdec", "ruiter", "ryttar")
+
+
+def monument_kind(tags: dict[str, str]) -> str | None:
+    """statue | rider | bust | obelisk | column | stone, or None (plaques, graves,
+    memorial areas and everything that is not a free-standing monument)."""
+    name = " ".join(tags.get(k, "") for k in ("name", "name:en", "name:de", "description"))
+    rider = any(w in name.lower() for w in _RIDER_WORDS)
+    if tags.get("man_made") == "obelisk":
+        return "obelisk"
+    if tags.get("tourism") == "artwork" and tags.get("artwork_type") in ("statue", "sculpture"):
+        return "rider" if rider else "statue"
+    if tags.get("tourism") == "artwork" and tags.get("artwork_type") == "bust":
+        return "bust"
+    h = tags.get("historic")
+    if h == "memorial":
+        kind = _MEMORIAL_KINDS.get(tags.get("memorial", ""))
+        if kind == "statue" and rider:
+            return "rider"
+        return kind
+    if h == "monument":
+        return "rider" if rider else "statue"
+    return None
+
+
+def _area_m2(geom) -> float:
+    lat = geom.centroid.y
+    return geom.area * METERS_PER_DEG_LAT * meters_per_deg_lon(lat)
+
+
 def classify_tags(tags: dict[str, str], geom) -> tuple[str, ObjectCategory | SurfaceType] | None:
     """(kind, category) or None if the element is not something we build."""
     is_area = geom.geom_type in ("Polygon", "MultiPolygon")
@@ -173,6 +216,8 @@ def classify_tags(tags: dict[str, str], geom) -> tuple[str, ObjectCategory | Sur
         return "object", ObjectCategory.BUILDINGS
     if tags.get("barrier") and geom.geom_type in ("LineString", "Polygon"):
         return "object", ObjectCategory.BARRIERS
+    if monument_kind(tags) and (not is_area or _area_m2(geom) <= MONUMENT_MAX_AREA_M2):
+        return "object", ObjectCategory.MONUMENTS
     if (
         tags.get("man_made") in ("mast", "tower", "flagpole")
         or tags.get("tower:type") == "lighting"

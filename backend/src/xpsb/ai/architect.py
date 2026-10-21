@@ -206,8 +206,16 @@ HOW TO BUILD COMMON THINGS (adapt to the facts and photos):
   "classic" or "arched", storeys and bay counted on the photos, holes=courtyards),
   mansard() or hipped roofs, parapet(mat="balustrade", statues=...) if the photos show
   one; a portico of cylinders with a triangular pediment (face), corner pavilions and
-  towers as separate higher blocks with their own facade() and roofs, a quadriga or
-  statues as simple shapes, a dome with revolve().
+  towers as separate higher blocks with their own facade() and roofs, statues on the
+  roof or in front with figure(), a dome with revolve().
+- Statue/monument: pedestal() (a stepped plinth; round=True for a drum) and figure() on
+  its top with the pose, robe and held thing the photos and facts show (e.g. a woman
+  holding a palm frond high above her head: pose="arms_raised", holding="palm",
+  robe=True; an equestrian statue: pose="rider"). Use the real heights from the facts
+  (pedestal and figure separately if known) and turn it to face where the real statue
+  faces. Bronze statues mat="bronze" (green patina: color="#5E8C77"), marble or
+  sandstone mat="stone". Several figures (groups, reliefs around a pedestal): several
+  figure() calls, smaller. Obelisks and columns with the basic tools.
 - Painted facade materials (only where real windows are not wanted): windows (modern),
   windows_house, windows_classic, windows_arched; plain walls: plaster, stone, brick,
   glass, metal_sheet, concrete.

@@ -34,6 +34,8 @@ GEOMETRY_TOOLS = (
     "lamp_post",
     "floodlight_mast",
     "flag",
+    "figure",
+    "pedestal",
 )
 HELPER_TOOLS = ("oriented_rect", "offset_polygon", "polygon_area", "polygon_centroid", "resample")
 DEFAULT_TIMEOUT_S = 5.0

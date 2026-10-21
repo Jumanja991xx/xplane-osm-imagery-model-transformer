@@ -12,6 +12,7 @@ class ObjectCategory(StrEnum):
     CANOPIES = "canopies"
     BARRIERS = "barriers"
     MASTS = "masts"
+    MONUMENTS = "monuments"
 
 
 class SurfaceType(StrEnum):
@@ -38,6 +39,7 @@ CATEGORY_LABELS = {
         "canopies": "Überdachung",
         "barriers": "Zaun/Mauer",
         "masts": "Mast",
+        "monuments": "Denkmal",
     },
     "en": {
         "buildings": "Building",
@@ -46,6 +48,7 @@ CATEGORY_LABELS = {
         "canopies": "Canopy",
         "barriers": "Fence/wall",
         "masts": "Mast",
+        "monuments": "Monument",
     },
 }
 

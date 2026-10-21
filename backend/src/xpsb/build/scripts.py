@@ -563,6 +563,66 @@ main()
 """
 )
 
+
+MONUMENT = (
+    COMMON
+    + """
+# params["monument"]: kind (statue|rider|bust|obelisk|column|stone), material,
+# robe, pose, holding. height = the whole monument, pedestal included.
+def main():
+    m = params.get("monument") or {}
+    kind = m.get("kind") or "statue"
+    mat = m.get("material") or "bronze"
+    x, y, size = 0.0, 0.0, 0.0
+    if footprint != None:
+        c = polygon_centroid(footprint)
+        x, y = c[0], c[1]
+        r = oriented_rect(footprint)
+        size = min(r["length"], r["width"])
+    f = params.get("facing")
+    heading = atan2(f[0], f[1]) if f != None else 180  # statues mostly face south
+    if g("flip", False):
+        heading += 180
+    defaults = {"statue": 6.0, "rider": 8.0, "bust": 3.0, "obelisk": 10.0, "column": 15.0,
+                "stone": 2.2}
+    H = g("height", defaults.get(kind, 6.0))
+    stone = "stone" if mat == "bronze" else mat
+    if kind == "obelisk":
+        w = size * 0.6 if size > 0 else max(0.8, H * 0.1)
+        top = pedestal(x, y, H * 0.12, w * 1.6, heading=heading, mat=stone)
+        revolve(x, y, [[w * 0.7, top], [w * 0.5, H * 0.92], [0, H]], mat=stone, segments=4,
+                start=45 + heading, end=405 + heading)
+        return
+    if kind == "column":
+        w = max(0.8, H * 0.07)
+        top = pedestal(x, y, H * 0.1, w * 2.6, heading=heading, mat=stone)
+        cylinder(x, y, top, w / 2, H * 0.62, mat="stone", segments=segs(16))
+        box(x, y, top + H * 0.62, w * 1.4, w * 1.4, H * 0.03, heading=heading, mat="stone",
+            top="stone")
+        figure(x, y, top + H * 0.65, H * 0.25, pose="standing", heading=heading,
+               mat=mat, robe=m.get("robe") == True, holding=m.get("holding") or "none")
+        return
+    if kind == "stone":
+        box(x, y, 0, max(0.3, H * 0.25), max(0.8, H * 0.45), H, heading=heading, mat=stone,
+            top=stone)
+        return
+    share = {"statue": 0.4, "rider": 0.35, "bust": 0.55}.get(kind, 0.4)
+    pw = size if size > 0 else max(1.0, H * (0.45 if kind == "rider" else 0.3))
+    if kind == "rider":
+        top = pedestal(x, y, H * share, pw * 0.6, pw, heading=heading, mat=stone)
+    else:
+        top = pedestal(x, y, H * share, pw, heading=heading, mat=stone,
+                       round=kind == "bust")
+    pose = m.get("pose") or "standing"
+    if kind in ("rider", "bust"):
+        pose = kind
+    figure(x, y, top, H - top, pose=pose, heading=heading, mat=mat,
+           robe=m.get("robe") == True, holding=m.get("holding") or "none")
+
+main()
+"""
+)
+
 DEFAULT_SCRIPTS = {
     "grandstands": GRANDSTAND,
     "buildings": BUILDING,
@@ -570,4 +630,5 @@ DEFAULT_SCRIPTS = {
     "masts": MAST,
     "scaffolding": SCAFFOLDING,
     "barriers": BARRIER,
+    "monuments": MONUMENT,
 }
