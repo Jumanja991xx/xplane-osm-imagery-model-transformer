@@ -196,6 +196,9 @@ surfaces: {", ".join(surfaces) or "(none)"}
   buildings: closed buildings; canopies: roofs without walls (pit roofs, carports, tents);
   scaffolding: temporary structures, stages, camera towers; masts: light masts, poles;
   monuments: free-standing statues, equestrian statues, obelisks, memorial columns;
+  bridges: road, rail and foot bridges over water, valleys, roads or railways - outline
+  the deck from bank to bank (a long narrow shape; its shadow on the water is not part
+  of it);
   barriers: only skip them (fences are too thin to see reliably).
 - Context matters: structures lined up along the edge of a race track, sports pitch or arena
   and facing it are almost always grandstands, also when they are roofed - including roofs

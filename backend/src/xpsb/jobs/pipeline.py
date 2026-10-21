@@ -30,7 +30,7 @@ from xpsb.ai.usage import UsageLedger
 from xpsb.build import assemble, phototex
 from xpsb.catalog import SurfaceMode
 from xpsb.geo import METERS_PER_DEG_LAT, meters_per_deg_lon
-from xpsb.imagery import roofs, wms
+from xpsb.imagery import retouch, roofs, wms
 from xpsb.imagery.sources import candidates, resolve_source
 from xpsb.jobs.events import EventLog
 from xpsb.jobs.models import (
@@ -585,7 +585,11 @@ def _ortho(job: Job, job_dir: Path) -> assemble.Ortho | None:
     path = job_dir / "imagery" / info.file
     if not path.exists():
         return None
-    return assemble.Ortho(path, (info.west, info.south, info.east, info.north))
+    return assemble.Ortho(
+        path,
+        (info.west, info.south, info.east, info.north),
+        retouch.areas(job.analysis.items),
+    )
 
 
 def _readme(plan: BuildPlan, job: Job) -> str:

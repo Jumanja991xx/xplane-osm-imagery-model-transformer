@@ -490,8 +490,8 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
         response_class=FileResponse,
         responses={200: {"content": {"image/jpeg": {}}}},
     )
-    async def job_imagery(job_id: str):
-        path = ctx.jobs.imagery_file(job_id)
+    async def job_imagery(job_id: str, retouched: bool = False):
+        path = await asyncio.to_thread(ctx.jobs.imagery_file, job_id, retouched)
         if path is None:
             raise HTTPException(404, detail={"key": "error.no_imagery"})
         return FileResponse(path, media_type="image/jpeg")

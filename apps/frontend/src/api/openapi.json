@@ -1211,6 +1211,16 @@
               "type": "string",
               "title": "Job Id"
             }
+          },
+          {
+            "name": "retouched",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Retouched"
+            }
           }
         ],
         "responses": {
@@ -3861,6 +3871,35 @@
               }
             ],
             "title": "Turn Deg"
+          },
+          "hide_below": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hide Below"
+          },
+          "bridge_structure": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "beam",
+                  "arch",
+                  "truss",
+                  "suspension",
+                  "cable_stayed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bridge Structure"
           }
         },
         "type": "object",
@@ -4305,7 +4344,8 @@
           "canopies",
           "barriers",
           "masts",
-          "monuments"
+          "monuments",
+          "bridges"
         ],
         "title": "ObjectCategory"
       },
@@ -4929,6 +4969,11 @@
             "title": "Detailed",
             "default": false
           },
+          "weathered": {
+            "type": "boolean",
+            "title": "Weathered",
+            "default": false
+          },
           "library": {
             "items": {
               "$ref": "#/components/schemas/LibraryPlacement"
@@ -5392,6 +5437,14 @@
             },
             "type": "array",
             "title": "Parts"
+          },
+          "approaches": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Approaches"
           }
         },
         "type": "object",

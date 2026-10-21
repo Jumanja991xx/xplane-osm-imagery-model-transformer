@@ -23,6 +23,7 @@ from xpsb.ai.usage import UsageLedger
 from xpsb.build import phototex
 from xpsb.catalog import category_label
 from xpsb.geo import MAX_AOI_AREA_KM2, GeoJsonPolygon, ring_area_m2, ring_centroid
+from xpsb.imagery import retouch
 from xpsb.imagery.sources import ESRI_ACCOUNT
 from xpsb.jobs import pipeline
 from xpsb.jobs.events import EventLog
@@ -128,6 +129,8 @@ ROLLBACK = {
 
 
 PLACEMENT_KEYS = {"shift_x_m", "shift_y_m", "turn_deg"}
+# Changes that leave the model as built (where it stands, the ground image below it).
+NO_REBUILD_KEYS = PLACEMENT_KEYS | {"hide_below"}
 
 
 class JobManager:
@@ -545,12 +548,27 @@ class JobManager:
         self._save(job)
         return job
 
-    def imagery_file(self, job_id: str) -> Path | None:
+    def imagery_file(self, job_id: str, retouched: bool = False) -> Path | None:
+        """The job's aerial image; `retouched`: with the real objects painted out
+        under the models that hide them (as the package's ground shows it)."""
         job = self.get(job_id)
         if job.analysis is None or job.analysis.imagery is None:
             return None
-        path = self.job_dir(job_id) / "imagery" / job.analysis.imagery.file
-        return path if path.exists() else None
+        info = job.analysis.imagery
+        path = self.job_dir(job_id) / "imagery" / info.file
+        if not path.exists():
+            return None
+        hide = retouch.areas(job.analysis.items) if retouched else []
+        if not hide:
+            return path
+        out = path.with_name(f"retouched_{retouch.key(hide)}.jpg")
+        if not out.exists():
+            for old in path.parent.glob("retouched_*.jpg"):
+                old.unlink(missing_ok=True)
+            with Image.open(path) as img:
+                bounds = (info.west, info.south, info.east, info.north)
+                retouch.apply(img, bounds, hide).save(out, quality=90)
+        return out
 
     # ---- "find similar" (AI search with an example chosen by the user) ----------
 
@@ -747,7 +765,7 @@ class JobManager:
         except ValueError as exc:
             raise JobConflict("error.invalid_item", detail=str(exc)[:300]) from exc
         item.edited = True
-        if set(attrs) <= PLACEMENT_KEYS:  # only moved/turned: the object stays as built
+        if set(attrs) <= NO_REBUILD_KEYS:  # only moved/turned: the object stays as built
             from xpsb.build import assemble
 
             assert job.plan is not None
@@ -783,7 +801,7 @@ class JobManager:
             except ValueError as exc:
                 raise JobConflict("error.invalid_item", detail=str(exc)[:300]) from exc
             item.edited = True
-            if set(patch) <= PLACEMENT_KEYS:
+            if set(patch) <= NO_REBUILD_KEYS:
                 from xpsb.build import assemble
 
                 obj = built.get(item_id)

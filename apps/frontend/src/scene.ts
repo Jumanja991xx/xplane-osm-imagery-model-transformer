@@ -9,6 +9,7 @@ export const OBJECT_CATEGORIES: ObjectCategory[] = [
   "barriers",
   "masts",
   "monuments",
+  "bridges",
 ];
 export const SURFACE_TYPES: SurfaceType[] = ["grass", "asphalt", "concrete", "gravel", "dirt", "tartan", "markings"];
 
@@ -20,6 +21,7 @@ export const CATEGORY_COLORS: Record<ObjectCategory | SurfaceType, string> = {
   barriers: "#facc15",
   masts: "#f43f5e",
   monuments: "#a16207",
+  bridges: "#0f766e",
   grass: "#22c55e",
   asphalt: "#52525b",
   concrete: "#a1a1aa",
@@ -34,7 +36,7 @@ export function categoryLabelKey(item: Pick<SceneItem, "kind" | "category">): st
 }
 
 export function draftFor(kind: "object" | "surface", category: ObjectCategory | SurfaceType): ItemDraft {
-  const mode = category === "barriers" ? "linestring" : category === "masts" || category === "monuments" ? "point" : "polygon";
+  const mode = category === "barriers" || category === "bridges" ? "linestring" : category === "masts" || category === "monuments" ? "point" : "polygon";
   return { kind, category, mode };
 }
 
@@ -66,4 +68,5 @@ export const DEFAULT_HEIGHTS: Record<ObjectCategory, number> = {
   barriers: 2,
   masts: 20,
   monuments: 6,
+  bridges: 8,
 };

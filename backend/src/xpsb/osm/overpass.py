@@ -58,6 +58,10 @@ SELECTORS = [
     'wr["landuse"~"^(village_green|meadow|flowerbed|cemetery|construction|brownfield)$"]',
     'wr["leisure"~"^(park|garden|playground|dog_park|golf_course|common)$"]',
     'wr["natural"~"^(sand|beach)$"]',
+    # Bridges: their outlines and the ways on them (roads, railways, paths).
+    'wr["man_made"="bridge"]',
+    'way["bridge"]["bridge"!="no"]["highway"]',
+    'way["bridge"]["bridge"!="no"]["railway"]',
 ]
 
 # Named grounds around buildings: what a building belongs to (name, Wikidata).
@@ -91,9 +95,17 @@ def build_query(ring: list[tuple[float, float]], timeout_s: int = 90) -> str:
     enclosing = "\n".join(
         f"  way(pivot.encl){f};\n  relation(pivot.encl){f};" for f in SITE_FILTERS
     )
+    # The roads leading onto the bridges (they share a node with a bridge way):
+    # the approach ramps follow them.
+    approaches = (
+        f'way["bridge"]["bridge"!="no"]["highway"](poly:"{poly}")->.br;\n'
+        "node(w.br)->.bn;\n"
+        'way(bn)["highway"][!"bridge"];\nout geom tags;\n'
+    )
     return (
         f"[out:json][timeout:{timeout_s}];\n(\n{parts}\n);\nout geom tags;\n"
-        f"is_in({inside.y:.7f},{inside.x:.7f})->.encl;\n(\n{enclosing}\n);\nout geom tags;\n"
+        + approaches
+        + f"is_in({inside.y:.7f},{inside.x:.7f})->.encl;\n(\n{enclosing}\n);\nout geom tags;\n"
     )
 
 

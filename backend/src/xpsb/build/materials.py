@@ -384,6 +384,16 @@ def steel(u, v, color):
     return _shade(img, 0.05 * _noise(u, v, 0.5, 23))
 
 
+def asphalt(u, v, color):
+    """Road surface: dark asphalt with fine grain and dashed white lane lines
+    every 3.5 m across (u runs along the road)."""
+    img = _fill(u, color or (74, 74, 78))
+    img = _shade(img, 0.08 * _noise(u, v, 0.06, 41) + 0.05 * _noise(u, v, 1.3, 43))
+    lane = (np.abs((v % 3.5) - 1.75) > 1.68) & ((u % 9.0) < 4.5)
+    img[lane] = (210, 210, 205)
+    return img
+
+
 def membrane(u, v, color):
     img = _fill(u, color or (238, 238, 232))
     return _shade(img, 0.04 * np.cos(u / 4.0 * 2 * np.pi) + 0.02 * _noise(u, v, 2.0, 25))
@@ -434,6 +444,7 @@ MATERIALS: dict[str, Painter] = {
     "seat_riser": seat_riser,
     "steps": steps,
     "steel": steel,
+    "asphalt": asphalt,
     "stand_fascia": stand_fascia,
     "lamella": lamella,
     "roof_clear": roof_clear,
@@ -478,6 +489,8 @@ MATERIAL_HELP = {
     "balustrade": "balustrade with small columns (parapets of palaces, terraces)",
     "door": "a wooden double door (used by facade(); texture square 2 x 2)",
     "moulding": "smooth light stone for cornices, string courses, window surrounds",
+    "asphalt": "road surface with dashed lane lines every 3.5 m (u along the road): bridge "
+    "decks, ramps, roads on the object's own plot",
     "metal_sheet": "ribbed cladding (vertical ribs along the face's u)",
     "roof_metal": "ribbed metal roof",
     "roof_flat": "flat roof membrane/gravel",

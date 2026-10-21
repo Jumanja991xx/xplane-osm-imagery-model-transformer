@@ -159,6 +159,7 @@ they stay open), `path` the polyline of line objects, `params` a dict with: {
                     "tags",
                     "min_height",
                     "parts",
+                    "bridge",
                 ]
             )
         )
@@ -219,6 +220,16 @@ HOW TO BUILD COMMON THINGS (adapt to the facts and photos):
   hands as thin boxes, on each side that has one), the real spire or roof (pyramid,
   helm, onion, dome with lantern) in its real colour (copper green, slate, tiles), and
   the cross, ball or weather vane on top. Twin towers are built the same twice.
+- Bridge: `path` (or the long axis of the footprint) is the deck's centre line,
+  params.bridge has structure, material, width, carries and the approach roads (from
+  the bridge outwards). Deck as sweep() along the axis (asphalt for roads with
+  pavements, parapets: balustrade/stone for historic stone bridges, steel railings
+  otherwise), piers (box) down below the ground (z0 = -6: the ground under a bridge
+  is often lower than at the object's origin), abutments at both ends, and the
+  structure the photos show: stone arches (quads following a half ellipse), steel
+  truss (tube), suspension towers with the main cables and hangers (tube), cable-
+  stayed pylons with fanned stays. Approach ramps follow the approach roads down to
+  z=0. Real decks over rivers are often 10-20 m above the water: use the facts.
 - Palace, town hall, court, museum, station (historic, monumental): facade(style=
   "classic" or "arched", storeys and bay counted on the photos, holes=courtyards),
   mansard() or hipped roofs, parapet(mat="balustrade", statues=...) if the photos show

@@ -33,6 +33,7 @@ class Research(BaseModel):
 
 MonumentKind = Literal["statue", "rider", "bust", "obelisk", "column", "stone"]
 StatuePose = Literal["standing", "arm_raised", "arms_raised", "pointing", "seated"]
+BridgeStructure = Literal["beam", "arch", "truss", "suspension", "cable_stayed"]
 StatueHeld = Literal["none", "palm", "wreath", "sword", "torch", "book", "flag"]
 WallMaterial = Literal[
     "windows",
@@ -77,6 +78,11 @@ class ItemAttrs(BaseModel):
     shift_x_m: float | None = Field(default=None, ge=-1000, le=1000)
     shift_y_m: float | None = Field(default=None, ge=-1000, le=1000)
     turn_deg: float | None = Field(default=None, ge=-720, le=720)
+    # Paint the real object out of the aerial ground image under it (its photo and
+    # shadow would show beneath the model). None: on for bridges, off otherwise.
+    hide_below: bool | None = None
+    # Bridges: how it carries its deck (the default bridge script reads this).
+    bridge_structure: BridgeStructure | None = None
 
 
 class Scan(BaseModel):
@@ -159,6 +165,9 @@ class SceneItem(BaseModel):
     research: Research | None = None
     scan: Scan | None = None
     parts: list[BuildingPart] = Field(default_factory=list)
+    # Bridges: the roads that lead onto it (GeoJSON LineStrings, each starting at
+    # the bridge end): the approach ramps follow them down to the ground.
+    approaches: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ItemPatch(BaseModel):

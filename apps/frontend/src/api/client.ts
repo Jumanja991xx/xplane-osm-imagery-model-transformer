@@ -215,9 +215,9 @@ export async function jobEventsUrl(jobId: string): Promise<string> {
 }
 
 /** The job's aerial image as a blob URL (the endpoint needs the auth header). */
-export async function imageryObjectUrl(jobId: string): Promise<string> {
+export async function imageryObjectUrl(jobId: string, retouched = false): Promise<string> {
   const { baseUrl, token } = await backend();
-  const res = await fetch(`${baseUrl}/api/jobs/${jobId}/imagery`, {
+  const res = await fetch(`${baseUrl}/api/jobs/${jobId}/imagery${retouched ? "?retouched=true" : ""}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new ApiError(res.status, "error.no_imagery");

@@ -220,7 +220,8 @@ Object categories: {objects}.
 - buildings: houses, halls, club houses; grandstands: spectator stands with seating;
   scaffolding: temporary scaffolding/structures; canopies: roofs without walls (pit roofs,
   carports, tents); barriers: fences, walls, guard rails; masts: light masts, poles, towers;
-monuments: statues, busts, equestrian statues, obelisks, memorial columns.
+monuments: statues, busts, equestrian statues, obelisks, memorial columns; bridges: road,
+rail and foot bridges.
 Surface types: {surfaces}.
 - dirt: speedway cinder, sand, compacted earth; tartan: athletics track; markings: painted lines.
 Only use categories of the same kind as the feature (object stays object, surface stays surface).

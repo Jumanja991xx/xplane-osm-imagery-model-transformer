@@ -18,6 +18,7 @@ from shapely.strtree import STRtree
 
 from xpsb.catalog import ObjectCategory, SurfaceType
 from xpsb.geo import METERS_PER_DEG_LAT, meters_per_deg_lon
+from xpsb.osm import bridges
 from xpsb.scene import BuildingPart, ItemAttrs, SceneItem
 
 DEFAULT_RACEWAY_WIDTH_M = 12.0
@@ -647,6 +648,8 @@ def classify(
         seen.add(ref)
     for site in sites:
         site.pitches = [f for f in fields if site.geom.contains(f.representative_point())]
+    if ObjectCategory.BRIDGES in wanted_objects:
+        items += bridges.find(elements, aoi)
     items = fold_parts(items)
     items = apply_sites(items, sites, aoi, wanted_objects)
     # Surfaces first (drawn underneath), larger first; then objects.

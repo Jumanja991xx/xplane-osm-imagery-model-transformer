@@ -13,6 +13,7 @@ class ObjectCategory(StrEnum):
     BARRIERS = "barriers"
     MASTS = "masts"
     MONUMENTS = "monuments"
+    BRIDGES = "bridges"
 
 
 class SurfaceType(StrEnum):
@@ -41,6 +42,7 @@ CATEGORY_LABELS = {
         "barriers": "Zaun/Mauer",
         "masts": "Mast",
         "monuments": "Denkmal",
+        "bridges": "Brücke",
     },
     "en": {
         "buildings": "Building",
@@ -50,6 +52,7 @@ CATEGORY_LABELS = {
         "barriers": "Fence/wall",
         "masts": "Mast",
         "monuments": "Monument",
+        "bridges": "Bridge",
     },
 }
 

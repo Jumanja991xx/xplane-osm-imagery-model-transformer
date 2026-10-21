@@ -1405,6 +1405,10 @@ export interface components {
             shift_y_m?: number | null;
             /** Turn Deg */
             turn_deg?: number | null;
+            /** Hide Below */
+            hide_below?: boolean | null;
+            /** Bridge Structure */
+            bridge_structure?: ("beam" | "arch" | "truss" | "suspension" | "cable_stayed") | null;
         };
         /**
          * ItemPatch
@@ -1553,7 +1557,7 @@ export interface components {
          * ObjectCategory
          * @enum {string}
          */
-        ObjectCategory: "buildings" | "grandstands" | "scaffolding" | "canopies" | "barriers" | "masts" | "monuments";
+        ObjectCategory: "buildings" | "grandstands" | "scaffolding" | "canopies" | "barriers" | "masts" | "monuments" | "bridges";
         /** OtherScenery */
         OtherScenery: {
             /** Name */
@@ -1822,6 +1826,11 @@ export interface components {
              * @default false
              */
             detailed: boolean;
+            /**
+             * Weathered
+             * @default false
+             */
+            weathered: boolean;
             /** Library */
             library?: components["schemas"]["LibraryPlacement"][];
         };
@@ -1984,6 +1993,10 @@ export interface components {
             scan?: components["schemas"]["Scan"] | null;
             /** Parts */
             parts?: components["schemas"]["BuildingPart"][];
+            /** Approaches */
+            approaches?: {
+                [key: string]: unknown;
+            }[];
         };
         /** SearchResult */
         SearchResult: {
@@ -3078,7 +3091,9 @@ export interface operations {
     };
     job_imagery_api_jobs__job_id__imagery_get: {
         parameters: {
-            query?: never;
+            query?: {
+                retouched?: boolean;
+            };
             header?: never;
             path: {
                 job_id: string;

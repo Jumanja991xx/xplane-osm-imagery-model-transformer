@@ -101,7 +101,8 @@ def test_default_scripts_build(category):
     }
     mesh = run(DEFAULT_SCRIPTS[category], footprint, params)
     (x0, y0, z0), (x1, y1, z1) = mesh.bounds()
-    assert z0 >= 0 and 2 < z1 <= 30
+    # Bridge piers reach below the ground (the ground under a bridge is often lower).
+    assert z0 >= (-10 if category == "bridges" else 0) and 2 < z1 <= 30
     baked = bake(mesh, 1024)
     obj = to_obj8(mesh, baked, "t.png", 2000).to_text()
     assert obj.startswith("I\n800") and "TRIS 0 " in obj

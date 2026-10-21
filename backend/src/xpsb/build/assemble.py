@@ -27,6 +27,7 @@ from xpsb.build.objexport import to_obj8, to_preview
 from xpsb.build.sandbox import ScriptError, ScriptInputs, run_script
 from xpsb.build.scripts import DEFAULT_SCRIPTS
 from xpsb.geo import METERS_PER_DEG_LAT, meters_per_deg_lon
+from xpsb.imagery import retouch
 from xpsb.scene import SceneItem
 from xpsb.xplane.dsf_text import DsfText, Tile
 from xpsb.xplane.library import Catalog
@@ -256,6 +257,33 @@ def _params(item: SceneItem, items: list[SceneItem], local, detail: str) -> dict
         "detail": detail,
         "name": item.name,
         "monument": _monument(item) if str(item.category) == "monuments" else None,
+        "bridge": _bridge(item, local) if str(item.category) == "bridges" else None,
+    }
+
+
+def _bridge(item: SceneItem, local) -> dict:
+    """What the default bridge script builds: structure, material, width, what it
+    carries and the roads leading onto it (local metres, from the bridge outwards)."""
+    from xpsb.osm.bridges import structure
+
+    tags, a = item.tags, item.attrs
+    carries = "rail" if tags.get("railway") else "road"
+    if tags.get("highway") in ("footway", "path", "cycleway", "pedestrian", "steps", "bridleway"):
+        carries = "foot"
+    material = (a.material or "").lower() or None
+    if material not in (None, "stone", "brick", "concrete", "steel", "wood"):
+        material = None
+    return {
+        "structure": a.bridge_structure or structure(tags),
+        "material": material,
+        "width": a.width_m,
+        "carries": carries,
+        "historic": bool(tags.get("historic") or tags.get("heritage")),
+        "approaches": [
+            [local(x, y) for x, y in ap["coordinates"]]
+            for ap in item.approaches
+            if ap.get("type") == "LineString" and len(ap.get("coordinates", [])) >= 2
+        ],
     }
 
 
@@ -593,6 +621,8 @@ class Ortho:
 
     image: Path
     bounds: tuple[float, float, float, float]  # west, south, east, north
+    # Places to paint over (lon/lat polygons): real objects under their models.
+    hide: list = field(default_factory=list)
 
 
 ORTHO_MAX_PX = 4096
@@ -622,7 +652,7 @@ def _write_ortho(ortho: Ortho, polygons_dir: Path, region) -> str:
     west, south, east, north = ortho.bounds
     rw, rs, re_, rn = region
     with Image.open(ortho.image) as src:
-        img = src.convert("RGB")
+        img = retouch.apply(src.convert("RGB"), ortho.bounds, ortho.hide)
     sx = img.width / (east - west)
     sy = img.height / (north - south)
     img = img.crop(

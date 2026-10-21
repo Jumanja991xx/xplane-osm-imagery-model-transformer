@@ -83,6 +83,7 @@ function PreviewDialogInner({
   const mount = useRef<HTMLDivElement>(null);
   const focusRef = useRef<(o: PreviewObject) => void>(() => {});
   const reloadRef = useRef<(o: PreviewObject) => Promise<void>>(async () => {});
+  const groundRef = useRef<() => Promise<void>>(async () => {});
   const highlightRef = useRef<(stems: string[]) => void>(() => {});
   const nightRef = useRef<(on: boolean) => void>(() => {});
   const [night, setNight] = useState(false);
@@ -363,7 +364,8 @@ function PreviewDialogInner({
         const orthoMode = Boolean(d.imagery) && d.surface_mode === "imagery";
         let aerial: THREE.Texture | null = null;
         if (d.imagery) {
-          const url = await imageryObjectUrl(jobId).catch(() => null);
+          // As the package shows it: real objects painted out under their models.
+          const url = await imageryObjectUrl(jobId, true).catch(() => null);
           const { sw, ne } = d.imagery;
           const geo = new THREE.PlaneGeometry(ne[0] - sw[0], ne[1] - sw[1]);
           const mat = new THREE.MeshStandardMaterial({ color: orthoMode ? 0x858585 : 0xffffff, roughness: 1 });
@@ -372,6 +374,15 @@ function PreviewDialogInner({
             aerial = await loader.loadAsync(url);
             aerial.colorSpace = THREE.SRGBColorSpace;
             mat.map = aerial;
+            const shared = aerial;
+            groundRef.current = async () => {
+              const next = await imageryObjectUrl(jobId, true).catch(() => null);
+              if (!next || disposed) return;
+              urls.push(next);
+              const fresh = await loader.loadAsync(next);
+              shared.image = fresh.image; // the ground and the surfaces share it
+              shared.needsUpdate = true;
+            };
           }
           const ground = new THREE.Mesh(geo, mat);
           ground.rotation.x = -Math.PI / 2;
@@ -597,7 +608,13 @@ function PreviewDialogInner({
               />
             )}
             {current && editable && !many && (
-              <ObjectControls key={current.stem} jobId={jobId} object={current} onAdjusted={onAdjusted} />
+              <ObjectControls
+                key={current.stem}
+                jobId={jobId}
+                object={current}
+                onAdjusted={onAdjusted}
+                onGround={() => groundRef.current()}
+              />
             )}
             {built.length > 0 && (
               <ul className="space-y-0.5" data-testid="preview-objects">
@@ -923,7 +940,9 @@ type Control =
   | "wall_color"
   | "roof_color"
   | "seat_color"
-  | "monument";
+  | "monument"
+  | "width"
+  | "bridge";
 
 // Which quick controls make sense per kind of object (the default build scripts
 // read exactly these). Anything else: the AI architect below.
@@ -934,7 +953,10 @@ const CONTROLS: Record<string, Control[]> = {
   masts: ["height"],
   monuments: ["height", "flip", "monument"],
   scaffolding: ["height"],
+  bridges: ["height", "width", "bridge"],
 };
+const BRIDGE_STRUCTURES = ["beam", "arch", "truss", "suspension", "cable_stayed"] as const;
+const BRIDGE_MATERIALS = ["concrete", "stone", "brick", "steel", "wood"] as const;
 const DEFAULT_CONTROLS: Control[] = ["height"];
 const ROOF_SHAPES = ["flat", "gabled", "hipped"] as const;
 const MONUMENT_KINDS = ["statue", "rider", "bust", "obelisk", "column", "stone"] as const;
@@ -1049,10 +1071,12 @@ function ObjectControls({
   jobId,
   object,
   onAdjusted,
+  onGround,
 }: {
   jobId: string;
   object: PreviewObject;
   onAdjusted: (o: PreviewObject) => Promise<void>;
+  onGround: () => Promise<void>;
 }) {
   const { t } = useT();
   const job = useApp((s) => s.job);
@@ -1114,6 +1138,36 @@ function ObjectControls({
           disabled={busy}
           testId="adjust-levels"
         />
+      )}
+      {has("width") && (
+        <NumberField
+          label={t("adjust.width")}
+          unit="m"
+          value={attrs.width_m}
+          onCommit={(v) => apply({ width_m: v })}
+          disabled={busy}
+          testId="adjust-width"
+        />
+      )}
+      {has("bridge") && (
+        <>
+          <SelectField
+            label={t("adjust.bridge_structure")}
+            value={attrs.bridge_structure ?? ""}
+            options={BRIDGE_STRUCTURES.map((v) => [v, t(`bridge.${v}`)])}
+            onChange={(v) => apply({ bridge_structure: (v || null) as ItemAttrs["bridge_structure"] })}
+            disabled={busy}
+            testId="adjust-bridge-structure"
+          />
+          <SelectField
+            label={t("adjust.bridge_material")}
+            value={(BRIDGE_MATERIALS as readonly string[]).includes(attrs.material ?? "") ? (attrs.material as string) : ""}
+            options={BRIDGE_MATERIALS.map((v) => [v, t(`bridge_material.${v}`)])}
+            onChange={(v) => apply({ material: v || null })}
+            disabled={busy}
+            testId="adjust-bridge-material"
+          />
+        </>
       )}
       {has("rows") && (
         <NumberField
@@ -1235,6 +1289,12 @@ function ObjectControls({
           />
         </>
       )}
+      <Checkbox
+        label={t("adjust.hide_below")}
+        checked={attrs.hide_below ?? object.category === "bridges"}
+        disabled={busy}
+        onChange={(on) => void apply({ hide_below: on }).then(onGround)}
+      />
       {error && <Alert kind="error">{error}</Alert>}
       <DesignPanel jobId={jobId} object={object} onAdjusted={onAdjusted} />
     </div>
