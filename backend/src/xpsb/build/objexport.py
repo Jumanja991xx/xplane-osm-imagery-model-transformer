@@ -51,6 +51,32 @@ def _frame_open(anim: Anim, frame: int) -> list[str]:
     return lines
 
 
+DISTANT_SAVING = 0.25  # the distant level is only worth it if it saves this share
+
+
+def distant_part(patch, size: float) -> bool:
+    """Whether a part is still drawn from very far away: big walls and roofs are,
+    small parts (chimneys, lamps, posts, flags) and fine many-triangle work (cables,
+    railings, round details) are not - nobody sees them at that distance, but the
+    graphics card would still draw every triangle."""
+    if not patch.tris or not patch.positions:
+        return False
+    xs, ys, zs = zip(*patch.positions, strict=True)
+    extent = max(max(xs) - min(xs), max(ys) - min(ys), max(zs) - min(zs))
+    if extent < max(1.5, size * 0.06):
+        return False
+    area = 0.0
+    for i, j, k in patch.tris:
+        a, b, c = patch.positions[i], patch.positions[j], patch.positions[k]
+        u = (b[0] - a[0], b[1] - a[1], b[2] - a[2])
+        v = (c[0] - a[0], c[1] - a[1], c[2] - a[2])
+        cx = u[1] * v[2] - u[2] * v[1]
+        cy = u[2] * v[0] - u[0] * v[2]
+        cz = u[0] * v[1] - u[1] * v[0]
+        area += 0.5 * (cx * cx + cy * cy + cz * cz) ** 0.5
+    return area / len(patch.tris) >= 0.25
+
+
 def to_obj8(
     mesh: Mesh,
     baked: BakedMesh,
@@ -59,19 +85,24 @@ def to_obj8(
     normal_texture: str | None = None,
     lit_texture: str | None = None,
     near_m: float | None = None,
+    distant_m: float | None = None,
 ) -> Obj8:
-    """Two detail levels when the mesh has near/far parts: up to `near_m` the
-    detailed parts, from there to `lod_m` their cheap stand-ins; shared parts in
-    both. Animations (flags) and lights in every level."""
+    """Up to three detail levels: up to `near_m` the detailed parts, from there
+    their cheap stand-ins (when the mesh has near/far parts); beyond `distant_m`
+    only the big walls and roofs (see distant_part), up to `lod_m`. Shared parts
+    in every level; animations (flags) and lights up close."""
     obj = Obj8(texture=texture, normal_texture=normal_texture, lit_texture=lit_texture)
     # (lod, anim index or -1, frame) -> indices
     parts: dict[tuple[str, int, int], list[int]] = {}
+    (bx0, by0, bz0), (bx1, by1, bz1) = mesh.bounds()
+    size = max(bx1 - bx0, by1 - by0, bz1 - bz0)
     for patch, uvs in zip(mesh.patches, baked.uvs, strict=True):
         if patch.lod == "bake":  # only the source of Blender's detail bake
             continue
         lod = patch.lod if patch.lod in ("near", "far") else "all"
         a, f = patch.anim if patch.anim is not None else (-1, 0)
         indices = parts.setdefault((lod, a, f), [])
+        first = len(indices)
         pivot = mesh.anims[a].pivot if a >= 0 else (0.0, 0.0, 0.0)
         for back in (False, True) if patch.two_sided else (False,):
             base = len(obj.vertices)
@@ -91,13 +122,25 @@ def to_obj8(
                 indices += (
                     [base + i, base + j, base + k] if back else [base + i, base + k, base + j]
                 )
+        if lod in ("all", "far") and a < 0 and distant_m and distant_part(patch, size):
+            parts.setdefault(("distant", -1, 0), []).extend(indices[first:])
     has_levels = any(key[0] in ("near", "far") for key in parts)
-    if has_levels and near_m and near_m < lod_m:
+    middle = ("all", "far") if has_levels else ("all", "near")
+    in_middle = sum(len(v) for k, v in parts.items() if k[0] in middle)
+    distant = len(parts.get(("distant", -1, 0), []))
+    if not (
+        distant_m and distant and distant <= (1 - DISTANT_SAVING) * in_middle and distant_m < lod_m
+    ):
+        distant_m = None
+    end = distant_m or lod_m
+    if has_levels and near_m and near_m < end:
         levels = [(f"ATTR_LOD 0 {near_m:.0f}", ("all", "near"))]
         if any(key[0] in ("all", "far") for key in parts):
-            levels.append((f"ATTR_LOD {near_m:.0f} {lod_m:.0f}", ("all", "far")))
+            levels.append((f"ATTR_LOD {near_m:.0f} {end:.0f}", ("all", "far")))
     else:
-        levels = [(f"ATTR_LOD 0 {lod_m:.0f}", ("all", "near"))]
+        levels = [(f"ATTR_LOD 0 {end:.0f}", ("all", "near"))]
+    if distant_m:
+        levels.append((f"ATTR_LOD {distant_m:.0f} {lod_m:.0f}", ("distant",)))
 
     def take(keys) -> tuple[int, int]:
         start = len(obj.indices)

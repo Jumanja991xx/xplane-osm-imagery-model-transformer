@@ -453,6 +453,13 @@ def _near(mesh, lod: float) -> float:
     return min(lod * 0.5, max(300.0, size * 4))
 
 
+def _distant(mesh, lod: float, near: float) -> float:
+    """From here only the big walls and roofs are drawn (third detail level)."""
+    (x0, y0, z0), (x1, y1, z1) = mesh.bounds()
+    size = max(x1 - x0, y1 - y0, z1 - z0)
+    return min(lod * 0.6, max(near * 1.5, size * 6.0, 500.0))
+
+
 def generate_one(
     item: SceneItem,
     items: list[SceneItem],
@@ -525,7 +532,10 @@ def generate_one(
             (out_dir / f"{stem}.json").write_text(json.dumps(data), encoding="utf-8")
         else:
             lod = _lod(mesh)
-            obj = to_obj8(mesh, baked, f"{stem}.png", lod, normal, lit, _near(mesh, lod))
+            near = _near(mesh, lod)
+            obj = to_obj8(
+                mesh, baked, f"{stem}.png", lod, normal, lit, near, _distant(mesh, lod, near)
+            )
             obj.comment = f"xpsb {item.category} {item.id}"
             (out_dir / f"{stem}.obj").write_text(obj.to_text(), encoding="ascii", newline="\n")
     return res

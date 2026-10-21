@@ -130,3 +130,23 @@ def test_the_real_bridge_is_painted_out_of_the_aerial_image():
     assert (out[20, 20] == before[20, 20]).all()  # far away: untouched
     b.attrs.hide_below = False
     assert retouch.areas(items) == []
+
+
+def test_from_far_away_only_the_big_parts_are_drawn():
+    import re
+
+    from xpsb.build.bake import bake
+    from xpsb.build.objexport import to_obj8
+
+    items = _run(_river_crossing(highway="primary", **{"bridge:structure": "suspension"}))
+    (b,) = _bridges(items)
+    mesh = assemble.generate(b, items, "medium")[0]
+    lod = assemble._lod(mesh)
+    near = assemble._near(mesh, lod)
+    text = to_obj8(
+        mesh, bake(mesh, 1024), "t.png", lod, None, None, near, assemble._distant(mesh, lod, near)
+    ).to_text()
+    lods = re.findall(r"ATTR_LOD (\d+) (\d+)", text)
+    assert len(lods) == 2 and lods[0][0] == "0" and lods[0][1] == lods[1][0]
+    counts = [int(c) for c in re.findall(r"TRIS \d+ (\d+)", text)]
+    assert counts[-1] < 0.4 * counts[0]  # cables, hangers, railings and lamps are gone
