@@ -207,6 +207,8 @@ export const api = {
   skipBlender: (id: string) => request<JobView>("POST", `/api/jobs/${id}/skip-blender`),
   setTextures: (id: string, itemId: string, textures: PhotoTexture[]) =>
     request<JobView>("PUT", `/api/jobs/${id}/textures?item=${encodeURIComponent(itemId)}`, { textures }),
+  removeObject: (id: string, itemId: string) =>
+    request<JobView>("DELETE", `/api/jobs/${id}/objects/${itemId}`),
   placeBuilt: (id: string, itemId: string, attrs: Partial<ItemAttrs>) =>
     request<JobView>("PATCH", `/api/jobs/${id}/placement/${itemId}`, { attrs }),
   adjustObject: (id: string, itemId: string, attrs: Partial<ItemAttrs>) =>

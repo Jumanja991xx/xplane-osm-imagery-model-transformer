@@ -552,6 +552,55 @@ function PreviewDialogInner({
   };
   placeRef.current = (stem, dx, dy, heading) => void place(stem, dx, dy, heading);
 
+  /** Deletes the object (asked first): out of the plan, or out of the built DSF. */
+  const [askDelete, setAskDelete] = useState<string | null>(null);
+  const removeObject = async (stem: string) => {
+    const o = data?.objects.find((x) => x.stem === stem);
+    setAskDelete(null);
+    if (!o) return;
+    setPlaceError(null);
+    try {
+      const view = await api.removeObject(jobId, o.item_id);
+      useApp.getState().setJob(view);
+      for (const g of data?.objects.filter((x) => x.item_id === o.item_id) ?? []) {
+        await reloadRef.current({ ...g, status: "skipped" }); // gone from the scene
+      }
+      setData((d) => d && { ...d, objects: d.objects.filter((x) => x.item_id !== o.item_id) });
+      setSelected(null);
+      setMulti([]);
+      if (!editable) setPlacedNote(true);
+    } catch (e) {
+      setPlaceError(e instanceof ApiError ? t(e.key, e.params) : String(e));
+    }
+  };
+
+  // Quick keys on the selected object: R / Shift+R turn by 15 degrees, Delete asks
+  // to delete it (Enter confirms, Escape cancels).
+  useEffect(() => {
+    if (!(editable || placeable) || !selected) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement | null)?.closest("input, textarea, select")) return;
+      const o = data?.objects.find((x) => x.stem === selected);
+      if (!o) return;
+      if (e.key === "r" || e.key === "R") {
+        e.preventDefault();
+        void place(selected, 0, 0, (((o.heading ?? 0) + (e.shiftKey ? -15 : 15)) % 360 + 360) % 360);
+      } else if (e.key === "Delete" || (e.key === "Backspace" && e.metaKey)) {
+        e.preventDefault();
+        setAskDelete(selected);
+      } else if (e.key === "Enter" && askDelete === selected) {
+        e.preventDefault();
+        void removeObject(selected);
+      } else if (e.key === "Escape" && askDelete) {
+        e.stopImmediatePropagation();
+        setAskDelete(null);
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editable, placeable, selected, data, askDelete]);
+
   return (
     <div className="fixed inset-0 z-50 flex bg-black/60 p-4" role="dialog" aria-modal="true" data-testid="preview-dialog">
       <div className="flex h-full w-full overflow-hidden rounded-lg bg-white shadow-xl dark:bg-zinc-900">
@@ -618,6 +667,9 @@ function PreviewDialogInner({
                 setTool={setTool}
                 onPlace={(dx, dy, heading) => place(current.stem, dx, dy, heading)}
                 error={placeError}
+                asking={askDelete === current.stem}
+                onAskDelete={(on) => setAskDelete(on ? current.stem : null)}
+                onDelete={() => removeObject(current.stem)}
               />
             )}
             {placeable && placedNote && (
@@ -870,12 +922,18 @@ function PlacementControls({
   setTool,
   onPlace,
   error,
+  asking,
+  onAskDelete,
+  onDelete,
 }: {
   object: PreviewObject;
   tool: PlaceTool;
   setTool: (t: PlaceTool) => void;
   onPlace: (dx: number, dy: number, heading: number) => Promise<void>;
   error: string | null;
+  asking: boolean;
+  onAskDelete: (on: boolean) => void;
+  onDelete: () => Promise<void>;
 }) {
   const { t } = useT();
   const item = useApp((s) => s.job?.analysis?.items?.find((i) => i.id === object.item_id));
@@ -929,10 +987,28 @@ function PlacementControls({
         {nudge("↓", 0, -1, 0, t("place.south"))}
         {nudge("→", 1, 0, 0, t("place.east"))}
         <span className="mx-1 text-zinc-300">|</span>
-        {nudge("⟲ 5°", 0, 0, -5, t("place.left"))}
-        {nudge("⟳ 5°", 0, 0, 5, t("place.right"))}
+        {nudge("⟲ 15°", 0, 0, -15, t("place.left"))}
+        {nudge("⟳ 15°", 0, 0, 15, t("place.right"))}
         {nudge("⟳ 90°", 0, 0, 90, t("place.right"))}
       </div>
+      <div className="flex items-center gap-2">
+        {asking ? (
+          <>
+            <span className="text-xs">{t("place.delete_ask")}</span>
+            <Button variant="primary" onClick={() => void onDelete()} data-testid="delete-confirm">
+              {t("place.delete_yes")}
+            </Button>
+            <Button variant="ghost" onClick={() => onAskDelete(false)}>
+              {t("common.cancel")}
+            </Button>
+          </>
+        ) : (
+          <Button variant="ghost" onClick={() => onAskDelete(true)} data-testid="delete-object">
+            🗑 {t("place.delete")}
+          </Button>
+        )}
+      </div>
+      <p className="text-[11px] text-zinc-400">{t("place.keys")}</p>
       <p className="text-xs text-zinc-500" data-testid="placement-state">
         {t("place.state", { heading: heading.toFixed(1), east: shiftX.toFixed(1), north: shiftY.toFixed(1) })}
       </p>

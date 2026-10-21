@@ -759,14 +759,21 @@ class JobManager:
             photo_dir=self.job_dir(job.id) / "photos",
         )
         job.plan.objects[idx] = PlanObject(**res.__dict__)
+        self._refresh_plan_lists(job)
+        return job.plan.objects[idx]
+
+    def _refresh_plan_lists(self, job: Job) -> None:
+        """The plan's object lines and file list after objects changed."""
+        assert job.plan is not None
         items = job.plan.items
         at = next((i for i, it in enumerate(items) if it.kind in pipeline.OBJECT_ITEM_KINDS), 0)
         rest = [it for it in items if it.kind not in pipeline.OBJECT_ITEM_KINDS]
         job.plan.items = rest[:at] + pipeline.object_items(job.plan.objects) + rest[at:]
         files = [f for f in job.plan.files if not f.startswith("objects/")]
         files += pipeline.object_files(job.plan.objects)
-        job.plan.files = sorted(files)
-        return job.plan.objects[idx]
+        if job.plan.city:
+            files += job.plan.city.get("files", [])
+        job.plan.files = sorted(set(files))
 
     def library(self) -> Catalog:
         """The X-Plane library catalog (empty without an X-Plane folder)."""
@@ -816,6 +823,38 @@ class JobManager:
             )
 
         return read
+
+    async def remove_object(self, job_id: str, item_id: str) -> Job:
+        """Deletes an object from the 3D view: out of the plan (and the list, so it is
+        not built). After the build only the DSF is written again (package and, if
+        installed, Custom Scenery) - the object simply is no longer placed."""
+        job = self.get(job_id)
+        built = job.state in (JobState.BUILT, JobState.INSTALLED)
+        if job.plan is None or not (job.state is JobState.PLANNED or built):
+            raise JobConflict("error.wrong_state", state=job.state.value)
+        gone = [o for o in job.plan.objects if o.item_id == item_id]
+        if not gone:
+            raise JobConflict("error.item_not_found", item=item_id)
+        before = list(job.plan.objects)
+        job.plan.objects = [o for o in job.plan.objects if o.item_id != item_id]
+        item = next(
+            (it for it in (job.analysis.items if job.analysis else []) if it.id == item_id), None
+        )
+        if built:
+            exe = dsftool.locate(self._settings.load().dsftool_path, self._resources_dir)
+            if exe is None:
+                job.plan.objects = before
+                raise JobConflict("error.dsftool_missing")
+            try:
+                await asyncio.to_thread(pipeline.replace_placements, job, self.job_dir(job_id), exe)
+            except (OSError, dsftool.DsfToolError) as exc:
+                job.plan.objects = before
+                raise JobConflict("error.place_failed", detail=str(exc)[:300]) from exc
+        if item is not None:  # city blocks have no item: only their placement goes
+            item.included, item.edited = False, True
+        self._refresh_plan_lists(job)
+        self._save(job)
+        return job
 
     async def place_built(self, job_id: str, item_id: str, attrs: dict) -> Job:
         """Moves/turns an object after the build (3D view of the result): only the

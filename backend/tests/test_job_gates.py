@@ -413,6 +413,16 @@ def test_adjust_one_object_in_the_plan(client, app_ctx):
     )
     assert bad.status_code == 409 and bad.json()["detail"]["key"] == "error.invalid_item"
 
+    # Deleted in the preview: out of the plan and off the list (not built).
+    old_hash = client.get(f"/api/jobs/{job['id']}", headers=AUTH).json()["pending_gate"]["hash"]
+    r = client.delete(f"/api/jobs/{job['id']}/objects/{stand['item_id']}", headers=AUTH)
+    assert r.status_code == 200, r.text
+    job = r.json()
+    assert all(o["item_id"] != stand["item_id"] for o in job["plan"]["objects"])
+    item = next(i for i in job["analysis"]["items"] if i["id"] == stand["item_id"])
+    assert item["included"] is False and item["edited"]
+    assert job["pending_gate"]["hash"] != old_hash
+
     client.post(f"/api/jobs/{job['id']}/reopen", json={"to": "analyzed"}, headers=AUTH)
     late = client.patch(
         f"/api/jobs/{job['id']}/objects/{stand['item_id']}", json={"attrs": {}}, headers=AUTH
@@ -526,3 +536,17 @@ def test_objects_can_be_moved_after_the_build_and_install(
     )
     assert r.status_code == 200, r.text
     assert installed.read_bytes() != before  # the installed copy follows
+
+    # Deleted in the 3D view after the install: no longer placed, the model stays.
+    before = installed.read_bytes()
+    r = client.delete(f"/api/jobs/{job['id']}/objects/way/103", headers=AUTH)
+    assert r.status_code == 200, r.text
+    job = r.json()
+    assert installed.read_bytes() != before
+    with pytest.raises(StopIteration):
+        placed()  # still defined (harmless), but no longer placed
+    assert all(o["item_id"] != "way/103" for o in job["plan"]["objects"])
+    item = next(i for i in job["analysis"]["items"] if i["id"] == "way/103")
+    assert item["included"] is False
+    r = client.delete(f"/api/jobs/{job['id']}/objects/way/103", headers=AUTH)
+    assert r.status_code == 409  # already gone
