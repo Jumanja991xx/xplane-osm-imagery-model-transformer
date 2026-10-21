@@ -319,6 +319,23 @@ SITE_INHERIT = (
     "description",
 )
 MAIN_SHARE = 0.12  # the largest building counts as "the" building of the site above this share
+# Castles, palaces, abbeys: the grounds are often a whole hill or park and no wing
+# reaches MAIN_SHARE - the largest building still is the castle.
+HISTORIC_SITES = {
+    "castle",
+    "fort",
+    "fortress",
+    "citadel",
+    "palace",
+    "manor",
+    "monastery",
+    "abbey",
+    "church",
+    "cathedral",
+    "city_gate",
+    "ruins",
+}
+HISTORIC_MAIN_MIN_M2 = 150.0
 
 
 def site_kind(tags: dict[str, str]) -> str | None:
@@ -417,6 +434,8 @@ def apply_sites(
             default=None,
         )
         main_ok = main is not None and areas[main.id] >= MAIN_SHARE * site_area
+        if main is not None and site.kind in HISTORIC_SITES:
+            main_ok = main_ok or areas[main.id] >= HISTORIC_MAIN_MIN_M2
         if main_ok and site.kind == "stadium":  # a clubhouse is not the stadium
             main_ok = areas[main.id] >= max(1500.0, 0.5 * field)
         if main is not None and main_ok and main.tags.get("site:main") != "yes":

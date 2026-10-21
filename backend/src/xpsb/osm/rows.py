@@ -53,6 +53,7 @@ def _candidate(it: SceneItem) -> bool:
         and not it.photos
         and it.tags.get("building", "yes") in ROW_BUILDINGS
         and not any(k in it.tags for k in ("wikidata", "historic", "heritage", "tourism"))
+        and not it.tags.get("site:name")  # wings of a castle, abbey ... are no terrace
         and it.geometry.get("type") == "Polygon"
     )
 

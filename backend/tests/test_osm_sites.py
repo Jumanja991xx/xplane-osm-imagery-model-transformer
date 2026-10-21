@@ -219,3 +219,30 @@ def test_grounds_enclosing_the_whole_drawn_area():
     # The same grounds twice in the answer (both parts of the query): one stadium.
     items = run(elements + elements[:1], aoi(-150, -130, 150, 130))
     assert sum(i.id.endswith("/stands") for i in items) == 1
+
+
+def test_a_castle_on_its_hill_keeps_its_name_and_its_wings_stay_apart():
+    """Siklós: the castle grounds (historic=castle, name, Wikidata) are the whole
+    hill; the wings are plain building=yes, each far below MAIN_SHARE of it."""
+    from xpsb.osm import rows
+
+    items = run(
+        [
+            way(
+                1,
+                rect(-200, -150, 200, 150),
+                historic="castle",
+                name="Siklósi vár",
+                wikidata="Q1250960",
+            ),
+            way(2, rect(0, 0, 40, 12), building="yes"),  # the largest wing
+            way(3, rect(28, 12, 40, 40), building="yes"),
+            way(4, rect(0, 28, 28, 40), building="yes"),
+            way(5, rect(150, 120, 160, 128), building="house"),  # a shed on the hill
+        ],
+        aoi(-250, -200, 250, 200),
+    )
+    wing = next(it for it in items if it.osm_ref == "way/2")
+    assert wing.name == "Siklósi vár" and wing.tags["wikidata"] == "Q1250960"
+    assert all(it.tags.get("site:name") == "Siklósi vár" for it in items if it.kind == "object")
+    assert rows.merge(items) == 0  # the wings are no terrace
