@@ -732,3 +732,53 @@ def test_costs_follow_the_bill_with_cache_and_long_prompts():
     # Haiku 5.5: a second rate card above 100k prompt tokens
     assert cost_usd("claude-haiku-5-5", 100_000, 0) == pytest.approx(0.01)
     assert cost_usd("claude-haiku-5-5", 200_000, 1_000_000) == pytest.approx(0.1 + 2.5)
+
+
+def test_several_objects_at_once_quick_controls_and_ai(client, fake_ai, app_ctx):
+    job = planned(client)
+    jid = job["id"]
+    houses = [o for o in job["plan"]["objects"] if o["status"] == "ok" and o["top_m"]]
+    assert len(houses) >= 2
+    ids = [o["item_id"] for o in houses[:2]]
+    # "All of them 20 % lower": each from its own current height.
+    r = client.patch(
+        f"/api/jobs/{jid}/objects",
+        json={"item_ids": ids, "attrs": {"roof_shape": "flat"}, "height_factor": 0.8},
+        headers=AUTH,
+    )
+    assert r.status_code == 200, r.text
+    items = {i["id"]: i for i in r.json()["analysis"]["items"]}
+    for o in houses[:2]:
+        it = items[o["item_id"]]
+        base = o["top_m"] if it["attrs"]["height_m"] is None else None
+        assert it["attrs"]["roof_shape"] == "flat" and it["edited"]
+        assert (
+            it["attrs"]["height_m"] is not None and it["attrs"]["height_m"] < (base or 1e9) + 1e-6
+        )
+
+    # One request to the AI architect for both: estimate first, then each is designed.
+    buildings = [o["item_id"] for o in job["plan"]["objects"] if o["category"] == "buildings"][:2]
+    est = client.post(
+        f"/api/jobs/{jid}/design-many/estimate", json={"item_ids": buildings}, headers=AUTH
+    ).json()
+    single = client.get(f"/api/jobs/{jid}/design/{buildings[0]}", headers=AUTH).json()
+    assert est["max_usd"] >= single["max_usd"] * 1.5
+    fake_ai.calls.clear()
+    r = client.post(
+        f"/api/jobs/{jid}/design-many",
+        json={
+            "item_ids": buildings,
+            "request": "Mach Läden ins Erdgeschoss",
+            "max_usd": est["max_usd"],
+        },
+        headers=AUTH,
+    )
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert [x["item_id"] for x in out["results"]] == buildings
+    assert all(x["ok"] for x in out["results"]) and out["cost_usd"] > 0
+    assert out["cost_usd"] <= est["max_usd"] + 1e-9
+    after = {i["id"]: i for i in out["job"]["analysis"]["items"]}
+    assert all(after[i]["script"] and "Läden" in after[i]["script_request"] for i in buildings)
+    corrections = [c for c in out["job"]["costs"] if c["stage"] == "correction"]
+    assert {c["item"] for c in corrections} == {after[i]["name"] or i for i in buildings}

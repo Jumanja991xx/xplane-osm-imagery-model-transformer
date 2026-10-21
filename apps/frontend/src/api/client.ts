@@ -177,6 +177,20 @@ export const api = {
     request<S["DesignEstimate"]>("GET", `/api/jobs/${id}/design/${itemId}`),
   redesign: (id: string, itemId: string, text: string, maxUsd: number) =>
     request<S["DesignOutcome"]>("POST", `/api/jobs/${id}/design/${itemId}`, { request: text, max_usd: maxUsd }),
+  adjustMany: (id: string, itemIds: string[], attrs: Partial<ItemAttrs>, heightFactor?: number) =>
+    request<JobView>("PATCH", `/api/jobs/${id}/objects`, {
+      item_ids: itemIds,
+      attrs,
+      height_factor: heightFactor ?? null,
+    }),
+  designManyEstimate: (id: string, itemIds: string[]) =>
+    request<S["DesignEstimate"]>("POST", `/api/jobs/${id}/design-many/estimate`, { item_ids: itemIds }),
+  designMany: (id: string, itemIds: string[], text: string, maxUsd: number) =>
+    request<S["DesignManyOutcome"]>("POST", `/api/jobs/${id}/design-many`, {
+      item_ids: itemIds,
+      request: text,
+      max_usd: maxUsd,
+    }),
   resetDesign: (id: string, itemId: string) => request<JobView>("DELETE", `/api/jobs/${id}/design/${itemId}`),
   addPhoto: (id: string, itemId: string, data: string) =>
     request<JobView>("POST", `/api/jobs/${id}/photos?item=${encodeURIComponent(itemId)}`, {

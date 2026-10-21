@@ -1373,6 +1373,153 @@
         }
       }
     },
+    "/api/jobs/{job_id}/objects": {
+      "patch": {
+        "summary": "Adjust Many",
+        "operationId": "adjust_many_api_jobs__job_id__objects_patch",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdjustManyBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/design-many/estimate": {
+      "post": {
+        "summary": "Design Many Estimate",
+        "operationId": "design_many_estimate_api_jobs__job_id__design_many_estimate_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdjustManyBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignEstimate"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/design-many": {
+      "post": {
+        "summary": "Redesign Many",
+        "operationId": "redesign_many_api_jobs__job_id__design_many_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DesignManyBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignManyOutcome"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobs/{job_id}/design/{item_id}": {
       "get": {
         "summary": "Design Estimate",
@@ -2084,6 +2231,42 @@
         },
         "type": "object",
         "title": "AdjustBody"
+      },
+      "AdjustManyBody": {
+        "properties": {
+          "item_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Item Ids"
+          },
+          "attrs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Attrs"
+          },
+          "height_factor": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 10.0,
+                "exclusiveMinimum": 0.1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height Factor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "item_ids"
+        ],
+        "title": "AdjustManyBody"
       },
       "AiAssessment": {
         "properties": {
@@ -2953,6 +3136,64 @@
         ],
         "title": "DesignEstimate",
         "description": "What a request to the AI architect may cost; shown before anything is sent."
+      },
+      "DesignManyBody": {
+        "properties": {
+          "item_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Item Ids"
+          },
+          "request": {
+            "type": "string",
+            "maxLength": 1500,
+            "minLength": 3,
+            "title": "Request"
+          },
+          "max_usd": {
+            "type": "number",
+            "maximum": 1000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Max Usd"
+          }
+        },
+        "type": "object",
+        "required": [
+          "item_ids",
+          "request",
+          "max_usd"
+        ],
+        "title": "DesignManyBody"
+      },
+      "DesignManyOutcome": {
+        "properties": {
+          "job": {
+            "$ref": "#/components/schemas/JobView"
+          },
+          "results": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Results"
+          },
+          "cost_usd": {
+            "type": "number",
+            "title": "Cost Usd"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job",
+          "results",
+          "cost_usd"
+        ],
+        "title": "DesignManyOutcome"
       },
       "DesignOutcome": {
         "properties": {
@@ -4666,6 +4907,17 @@
               }
             ],
             "title": "Extent"
+          },
+          "top_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top M"
           },
           "shaded": {
             "type": "boolean",

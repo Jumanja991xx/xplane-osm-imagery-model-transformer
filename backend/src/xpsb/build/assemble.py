@@ -119,6 +119,7 @@ class ItemResult:
     # What the built object covers on the ground (local metres around the anchor,
     # before turning): west, south, east, north. Sizes the exclusion zone.
     extent: tuple[float, float, float, float] | None = None
+    top_m: float | None = None  # height of the highest point as built
     shaded: bool = False  # ambient occlusion baked in by Blender
     detailed: bool = False  # fine detail (surrounds, dentils) baked into its normal map
     blender_input: str | None = None  # prepared for Blender (package build only)
@@ -438,6 +439,8 @@ def generate_one(
     else:
         res.triangles = mesh.triangle_count
         res.extent = _extent(mesh)
+        if mesh.patches:
+            res.top_m = round(mesh.bounds()[1][2], 2)
         res.photo_textures = photo_ids
         res.scan = mesh.used_scan
         res.library = [

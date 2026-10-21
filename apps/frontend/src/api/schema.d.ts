@@ -505,6 +505,57 @@ export interface paths {
         patch: operations["adjust_object_api_jobs__job_id__objects__item_id__patch"];
         trace?: never;
     };
+    "/api/jobs/{job_id}/objects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Adjust Many */
+        patch: operations["adjust_many_api_jobs__job_id__objects_patch"];
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/design-many/estimate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Design Many Estimate */
+        post: operations["design_many_estimate_api_jobs__job_id__design_many_estimate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/design-many": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Redesign Many */
+        post: operations["redesign_many_api_jobs__job_id__design_many_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs/{job_id}/design/{item_id}": {
         parameters: {
             query?: never;
@@ -705,6 +756,17 @@ export interface components {
             attrs?: {
                 [key: string]: unknown;
             };
+        };
+        /** AdjustManyBody */
+        AdjustManyBody: {
+            /** Item Ids */
+            item_ids: string[];
+            /** Attrs */
+            attrs?: {
+                [key: string]: unknown;
+            };
+            /** Height Factor */
+            height_factor?: number | null;
         };
         /** AiAssessment */
         AiAssessment: {
@@ -1112,6 +1174,25 @@ export interface components {
             max_usd: number;
             /** Budget Usd */
             budget_usd: number;
+        };
+        /** DesignManyBody */
+        DesignManyBody: {
+            /** Item Ids */
+            item_ids: string[];
+            /** Request */
+            request: string;
+            /** Max Usd */
+            max_usd: number;
+        };
+        /** DesignManyOutcome */
+        DesignManyOutcome: {
+            job: components["schemas"]["JobView"];
+            /** Results */
+            results: {
+                [key: string]: unknown;
+            }[];
+            /** Cost Usd */
+            cost_usd: number;
         };
         /** DesignOutcome */
         DesignOutcome: {
@@ -1729,6 +1810,8 @@ export interface components {
                 number,
                 number
             ] | null;
+            /** Top M */
+            top_m?: number | null;
             /**
              * Shaded
              * @default false
@@ -3110,6 +3193,111 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    adjust_many_api_jobs__job_id__objects_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdjustManyBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    design_many_estimate_api_jobs__job_id__design_many_estimate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdjustManyBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DesignEstimate"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    redesign_many_api_jobs__job_id__design_many_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DesignManyBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DesignManyOutcome"];
                 };
             };
             /** @description Validation Error */

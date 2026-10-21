@@ -218,6 +218,7 @@ class PlanObject(BaseModel):
     scan: bool = False  # built from a free 3D scan (Wikimedia Commons)
     heading: float = 0.0  # degrees clockwise, as turned in the 3D preview
     extent: tuple[float, float, float, float] | None = None  # local metres: w, s, e, n
+    top_m: float | None = None  # highest point as built (for "make them 20 % lower")
     shaded: bool = False  # soft shading baked in by Blender (package build only)
     detailed: bool = False  # fine detail baked into the normal map by Blender
     library: list[LibraryPlacement] = Field(default_factory=list)

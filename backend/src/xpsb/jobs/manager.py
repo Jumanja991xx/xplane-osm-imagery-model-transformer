@@ -757,6 +757,122 @@ class JobManager:
         self._save(job)
         return job
 
+    def adjust_many(
+        self, job_id: str, item_ids: list[str], attrs: dict, height_factor: float | None
+    ) -> Job:
+        """The quick controls for several objects at once (e.g. all houses of a row
+        20 % lower): the same parameters for each, heights scaled from what each one
+        is now. Every object is rebuilt on its own, as with a single change."""
+        job = self._planned(job_id)
+        assert job.plan is not None
+        built = {o.item_id: o for o in job.plan.objects}
+        for item_id in dict.fromkeys(item_ids):
+            item = self._item(job, item_id)
+            patch = dict(attrs)
+            if height_factor is not None:
+                obj = built.get(item_id)
+                base = item.attrs.height_m or (obj.top_m if obj else None)
+                if base:
+                    patch["height_m"] = round(max(0.5, min(300.0, base * height_factor)), 1)
+            try:
+                item.attrs = ItemAttrs.model_validate({**item.attrs.model_dump(), **patch})
+            except ValueError as exc:
+                raise JobConflict("error.invalid_item", detail=str(exc)[:300]) from exc
+            item.edited = True
+            if set(patch) <= PLACEMENT_KEYS:
+                from xpsb.build import assemble
+
+                obj = built.get(item_id)
+                if obj is not None:
+                    obj.anchor, obj.heading = assemble.placement(item)
+            else:
+                self.regenerate_object(job, item)
+        self._save(job)
+        return job
+
+    def design_many_estimate(self, job_id: str, item_ids: list[str]) -> DesignEstimate:
+        """What one request to the AI architect for all these objects may cost."""
+        typical = most = 0.0
+        estimate = None
+        for item_id in dict.fromkeys(item_ids):
+            estimate = self.design_estimate(job_id, item_id)
+            typical += estimate.estimate_usd
+            most += estimate.max_usd
+        if estimate is None:
+            raise JobConflict("error.item_not_found", item="")
+        return estimate.model_copy(
+            update={"estimate_usd": round(typical, 3), "max_usd": round(most, 3)}
+        )
+
+    async def redesign_many(
+        self, job_id: str, item_ids: list[str], request: str, max_usd: float
+    ) -> tuple[Job, list[dict], float]:
+        """One request in the user's words for several objects ("add the shop fronts
+        that are missing"): the AI architect changes each of them, a few at a time,
+        within the maximum the user confirmed for all of them together."""
+        from concurrent.futures import ThreadPoolExecutor
+
+        ids = list(dict.fromkeys(item_ids))
+        job, _ = self._design_ready(job_id, ids[0]) if ids else (None, None)
+        if job is None:
+            raise JobConflict("error.item_not_found", item="")
+        items = [self._design_ready(job_id, i)[1] for i in ids]
+        if job_id in self._busy:
+            raise JobConflict("error.job_running")
+        assert job.plan is not None
+        budget = min(max_usd, self._similar_budget(job))
+        if budget <= 0:
+            raise JobConflict("error.ai_budget_exhausted")
+        # Each object gets its share of the confirmed maximum, by its own estimate.
+        maxima = [self.design_estimate(job_id, it.id).max_usd for it in items]
+        scale = min(1.0, budget / max(sum(maxima), 1e-9))
+        log = self.events(job_id)
+
+        def run(it, share):
+            def on_step(key: str, params: dict) -> None:
+                log.publish_threadsafe(
+                    type="progress", stage="design", key=key, params={**params, "item": it.id}
+                )
+
+            return self._design_call(
+                job, it, request, share, job.plan.detail, on_step, "correction"
+            )
+
+        self._busy.add(job_id)
+        try:
+            with ThreadPoolExecutor(max_workers=DESIGN_PARALLEL) as pool:
+                futures = [
+                    pool.submit(run, it, m * scale) for it, m in zip(items, maxima, strict=True)
+                ]
+                results = await asyncio.to_thread(lambda: [f.result() for f in futures])
+        finally:
+            self._busy.discard(job_id)
+
+        outcomes, spent = [], 0.0
+        for it, result in zip(items, results, strict=True):
+            self._add_design_cost(job, result)
+            spent += result.info.cost_usd
+            ok = result.script is not None
+            if ok:
+                it.script = result.script
+                _take_textures(it, result.textures)
+                it.script_request = (
+                    f"{it.script_request} | {request}" if it.script_request else request
+                )[-2000:]
+                it.edited = True
+                self.regenerate_object(job, it)
+            outcomes.append(
+                {
+                    "item_id": it.id,
+                    "ok": ok,
+                    "summary": (result.summary or "")[:400] if ok else "",
+                    "error": None if ok else (result.error_key or "error.architect_failed"),
+                    "cost_usd": round(result.info.cost_usd, 4),
+                }
+            )
+        self._save(job)
+        return job, outcomes, round(spent, 4)
+
     # ---- AI architect: own build script for one object -------------------------
 
     def _design_ready(self, job_id: str, item_id: str) -> tuple[Job, SceneItem]:

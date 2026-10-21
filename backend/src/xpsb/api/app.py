@@ -126,6 +126,24 @@ class DesignOutcome(BaseModel):
     cost_usd: float
 
 
+class AdjustManyBody(BaseModel):
+    item_ids: list[str] = Field(min_length=1, max_length=500)
+    attrs: dict[str, Any] = Field(default_factory=dict)
+    height_factor: float | None = Field(default=None, gt=0.1, le=10)  # e.g. 0.8 = 20 % lower
+
+
+class DesignManyBody(BaseModel):
+    item_ids: list[str] = Field(min_length=1, max_length=200)
+    request: str = Field(min_length=3, max_length=1500)
+    max_usd: float = Field(gt=0, le=1000)
+
+
+class DesignManyOutcome(BaseModel):
+    job: JobView
+    results: list[dict[str, Any]]
+    cost_usd: float
+
+
 class TexturesBody(BaseModel):
     textures: list[PhotoTexture] = Field(max_length=12)
 
@@ -494,6 +512,24 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
     async def adjust_object(job_id: str, item_id: str, body: AdjustBody) -> JobView:
         await asyncio.to_thread(ctx.jobs.adjust_object, job_id, item_id, body.attrs)
         return ctx.jobs.view(job_id)
+
+    @app.patch("/api/jobs/{job_id}/objects", dependencies=auth)
+    async def adjust_many(job_id: str, body: AdjustManyBody) -> JobView:
+        job = await asyncio.to_thread(
+            ctx.jobs.adjust_many, job_id, body.item_ids, body.attrs, body.height_factor
+        )
+        return ctx.jobs.view(job.id)
+
+    @app.post("/api/jobs/{job_id}/design-many/estimate", dependencies=auth)
+    async def design_many_estimate(job_id: str, body: AdjustManyBody) -> DesignEstimate:
+        return ctx.jobs.design_many_estimate(job_id, body.item_ids)
+
+    @app.post("/api/jobs/{job_id}/design-many", dependencies=auth)
+    async def redesign_many(job_id: str, body: DesignManyBody) -> DesignManyOutcome:
+        job, results, cost = await ctx.jobs.redesign_many(
+            job_id, body.item_ids, body.request, body.max_usd
+        )
+        return DesignManyOutcome(job=ctx.jobs.view(job.id), results=results, cost_usd=cost)
 
     @app.get("/api/jobs/{job_id}/design/{item_id:path}", dependencies=auth)
     async def design_estimate(job_id: str, item_id: str) -> DesignEstimate:
