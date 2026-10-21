@@ -32,6 +32,10 @@ jobs:
           status=${PIPESTATUS[0]}
           # Failed tests as annotations: readable without the full log.
           grep -E "^(FAILED|ERROR) " pytest.log | cut -c1-900 | sed 's/^/::error title=pytest::/' || true
+          # No test named (pytest itself crashed): the end of the log instead.
+          if [ "$status" != 0 ] && ! grep -qE "^(FAILED|ERROR) " pytest.log; then
+            echo "::error title=pytest (log tail)::$(tail -n 40 pytest.log | cut -c1-200 | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')"
+          fi
           exit $status
 
   frontend:
@@ -80,6 +84,10 @@ jobs:
           status=${PIPESTATUS[0]}
           # Failed tests as annotations: readable without the full log.
           grep -E "^(FAILED|ERROR) " pytest.log | cut -c1-900 | sed 's/^/::error title=pytest::/' || true
+          # No test named (pytest itself crashed): the end of the log instead.
+          if [ "$status" != 0 ] && ! grep -qE "^(FAILED|ERROR) " pytest.log; then
+            echo "::error title=pytest (log tail)::$(tail -n 40 pytest.log | cut -c1-200 | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')"
+          fi
           exit $status
 
       - name: Package backend (PyInstaller, one folder)
