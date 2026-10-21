@@ -153,3 +153,62 @@ def load(
     cache_dir.mkdir(parents=True, exist_ok=True)
     np.save(cached, tris)
     return Terrain(tris)
+
+
+GRID_STEP_M = 20.0
+
+
+class Grid:
+    """Ground heights on a regular grid (kept with the job: the build needs no DSF)."""
+
+    def __init__(self, bbox, nx: int, ny: int, heights: list[float | None]):
+        self.bbox = tuple(bbox)
+        self.nx, self.ny = nx, ny
+        self.h = heights  # row by row from the south-west corner
+
+    @classmethod
+    def sample(cls, ground: Terrain, bbox, step_m: float = GRID_STEP_M) -> Grid:
+        from xpsb.geo import METERS_PER_DEG_LAT, meters_per_deg_lon
+
+        w, s, e, n = bbox
+        mx = meters_per_deg_lon((s + n) / 2)
+        nx = max(2, math.ceil((e - w) * mx / step_m) + 1)
+        ny = max(2, math.ceil((n - s) * METERS_PER_DEG_LAT / step_m) + 1)
+        heights = [
+            ground.height(w + (e - w) * i / (nx - 1), s + (n - s) * j / (ny - 1))
+            for j in range(ny)
+            for i in range(nx)
+        ]
+        return cls(bbox, nx, ny, heights)
+
+    def height(self, lon: float, lat: float) -> float | None:
+        w, s, e, n = self.bbox
+        fx = (lon - w) / (e - w) * (self.nx - 1)
+        fy = (lat - s) / (n - s) * (self.ny - 1)
+        fx = min(max(fx, 0.0), self.nx - 1.0)
+        fy = min(max(fy, 0.0), self.ny - 1.0)
+        i, j = min(int(fx), self.nx - 2), min(int(fy), self.ny - 2)
+        tx, ty = fx - i, fy - j
+        corners = [
+            (self.h[j * self.nx + i], (1 - tx) * (1 - ty)),
+            (self.h[j * self.nx + i + 1], tx * (1 - ty)),
+            (self.h[(j + 1) * self.nx + i], (1 - tx) * ty),
+            (self.h[(j + 1) * self.nx + i + 1], tx * ty),
+        ]
+        known = [(v, wgt) for v, wgt in corners if v is not None]
+        total = sum(wgt for _, wgt in known)
+        if not known or total <= 1e-9:
+            return next((v for v, _ in known), None)
+        return sum(v * wgt for v, wgt in known) / total
+
+    def to_json(self) -> dict:
+        return {
+            "bbox": list(self.bbox),
+            "nx": self.nx,
+            "ny": self.ny,
+            "h": [None if v is None else round(v, 2) for v in self.h],
+        }
+
+    @classmethod
+    def from_json(cls, data: dict) -> Grid:
+        return cls(data["bbox"], data["nx"], data["ny"], data["h"])

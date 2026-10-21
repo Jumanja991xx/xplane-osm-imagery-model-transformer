@@ -199,6 +199,8 @@ def _apply_memory(items: list, deps: AnalysisDeps) -> int:
 
 
 CITY_DIR = "city"
+CITY_TERRAIN = "terrain.json"  # ground heights for the blocks (city mode)
+CITY_TERRAIN_MARGIN_DEG = 0.003  # blocks reach beyond the drawn area
 
 
 def _city_data_stage(job: Job, deps: AnalysisDeps, log: EventLog, notes: list[Note]) -> None:
@@ -307,28 +309,46 @@ def build_city(job: Job, job_dir: Path, out_dir: Path, preview_dir: Path | None)
         out_dir,
         aerial=_aerial(job, job_dir),
         preview_dir=preview_dir,
+        ground=_city_ground(job_dir),
     )
     return blocks, source, len(buildings)
+
+
+def _city_ground(job_dir: Path):
+    """X-Plane's ground heights kept by the analysis (city mode), or None."""
+    path = job_dir / CITY_DIR / CITY_TERRAIN
+    if not path.is_file():
+        return None
+    try:
+        return terrain.Grid.from_json(json.loads(path.read_text("utf-8"))).height
+    except (ValueError, KeyError, TypeError):
+        return None
 
 
 def _terrain_stage(
     job: Job, items: list, deps: AnalysisDeps, log: EventLog, notes: list[Note]
 ) -> None:
     """Ground heights from X-Plane's own terrain where they matter: bridges (their
-    decks meet the banks, their piers reach the ground, their ramps the roads)."""
+    decks meet the banks, their piers reach the ground, their ramps the roads) and,
+    in city mode, every house of the blocks (stands on its own ground on a slope)."""
     bridges = [it for it in items if str(it.category) == "bridges"]
-    if not bridges:
+    city_mode = job.brief is not None and job.brief.mode == "city"
+    if not bridges and not city_mode:
         return
-    from shapely.geometry import shape
+    from shapely.geometry import Polygon, shape
 
     geoms = [shape(it.geometry) for it in bridges] + [
         shape(ap) for it in bridges for ap in it.approaches
     ]
+    if city_mode:
+        geoms.append(Polygon(job.aoi.ring).buffer(CITY_TERRAIN_MARGIN_DEG))
     w = min(g.bounds[0] for g in geoms)
     s = min(g.bounds[1] for g in geoms)
     e = max(g.bounds[2] for g in geoms)
     n = max(g.bounds[3] for g in geoms)
     lon, lat = job.aoi_center
+    if city_mode:  # a new analysis: no heights from an earlier one
+        (deps.job_dir / CITY_DIR / CITY_TERRAIN).unlink(missing_ok=True)
     _progress(log, "terrain", 0.0, "stage.terrain", count=len(bridges))
     try:
         ground = terrain.load(
@@ -343,10 +363,17 @@ def _terrain_stage(
         notes.append(Note(key="analysis.terrain_failed", params={"detail": str(exc)[:300]}))
         return
     if ground is None:
-        notes.append(Note(key="analysis.terrain_unknown", params={"count": len(bridges)}))
+        if bridges:
+            notes.append(Note(key="analysis.terrain_unknown", params={"count": len(bridges)}))
         return
     for it in bridges:
         it.ground = bridges_mod.sample_ground(it, ground.height)
+    if city_mode:
+        aoi = Polygon(job.aoi.ring).buffer(CITY_TERRAIN_MARGIN_DEG).bounds
+        grid = terrain.Grid.sample(ground, aoi)
+        path = deps.job_dir / CITY_DIR / CITY_TERRAIN
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(grid.to_json()), encoding="utf-8")
     _progress(log, "terrain", 1.0, "stage.terrain_done", count=len(bridges))
 
 
@@ -772,6 +799,8 @@ def make_plan(
     objects = [PlanObject(**r.__dict__) for r in results]
     city_summary = None
     if job.brief.mode == "city":
+        from xpsb.city.mesh import SHADOW_TEXTURE as CITY_SHADOW_TEXTURE
+
         blocks, source, count = build_city(job, job_dir, job_dir / CITY_DIR / "build", preview_dir)
         for b in blocks:
             for obj in b.objects:
@@ -783,6 +812,8 @@ def make_plan(
                         anchor=b.anchor,
                         status="ok",
                         triangles=b.triangles if obj.endswith("_walls.obj") else 0,
+                        # the draped contact shadows have no 3D preview
+                        has_mesh=not obj.endswith("_ground.obj"),
                     )
                 )
         city_summary = {
@@ -792,7 +823,11 @@ def make_plan(
             "triangles": sum(b.triangles for b in blocks),
             "files": sorted(
                 {f"objects/{f}" for b in blocks for f in b.files}
-                | {"objects/city_atlas.png", "objects/city_atlas_LIT.png"}
+                | {
+                    "objects/city_atlas.png",
+                    "objects/city_atlas_LIT.png",
+                    f"objects/{CITY_SHADOW_TEXTURE}",
+                }
             ),
         }
     surfaces = [
@@ -883,11 +918,18 @@ def _ortho(job: Job, job_dir: Path) -> assemble.Ortho | None:
     path = job_dir / "imagery" / info.file
     if not path.exists():
         return None
-    return assemble.Ortho(
-        path,
-        (info.west, info.south, info.east, info.north),
-        retouch.areas(job.analysis.items),
-    )
+    hide = retouch.areas(job.analysis.items)
+    outlines = []
+    if job.brief.mode == "city":
+        # The houses of the blocks: the real roofs and yards in the image never lie
+        # exactly under the models (a bright rim around every house) - painted over
+        # from the ground around, with darker soil at the foot of the walls.
+        for it in city_items(job):
+            place = retouch.city_area(it)
+            if place is not None:
+                hide.append((place, None))
+                outlines.append(shape(it.geometry))
+    return assemble.Ortho(path, (info.west, info.south, info.east, info.north), hide, outlines)
 
 
 def _readme(plan: BuildPlan, job: Job) -> str:
@@ -1087,7 +1129,7 @@ def replace_placements(job: Job, job_dir: Path, exe: Path) -> list[Path]:
             continue
         lon0, lat0 = o.anchor
         own = index.get(f"objects/{o.stem}.obj")
-        if o.has_mesh and own is not None:
+        if (o.has_mesh or o.category == "city") and own is not None:
             objects.append(f"OBJECT {own} {lon0:.9f} {lat0:.9f} {o.heading % 360.0:.3f}")
         h = math.radians(o.heading)
         for p in o.library:

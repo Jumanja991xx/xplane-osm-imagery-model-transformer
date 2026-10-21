@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from conftest import AUTH, wait_for_state
 from test_job_gates import BRIEF, approve, create
 from test_osm_sites import aoi, rect, run, way
@@ -151,3 +152,100 @@ def test_houses_are_joined_into_rows_without_measured_roof_colours():
         ]
     )
     assert rows.merge(items, {}) == 4
+
+
+def _block_with(tmp_path: Path, els, ground=None):
+    houses = city.from_items(run(els, aoi(-400, -400, 400, 400)))
+    out = tmp_path / "out"
+    center = houses[0].footprint[0][0]
+    blocks = city.build(houses, "central_europe", center, out, ground=ground)
+    return houses, blocks, out
+
+
+def test_houses_get_a_soft_contact_shadow_draped_onto_the_ground(tmp_path: Path):
+    _, blocks, out = _block_with(tmp_path, [way(1, rect(0, 0, 10, 8), building="house")])
+    (block,) = blocks
+    name = next(o for o in block.objects if o.endswith("_ground.obj"))
+    text = (out / name).read_text()
+    assert "TEXTURE_DRAPED city_shadow.png" in text and "ATTR_draped" in text
+    verts = [ln.split() for ln in text.splitlines() if ln.startswith("VT ")]
+    assert verts and all(float(v[2]) == 0.0 for v in verts)
+    xs = [float(v[1]) for v in verts]
+    assert max(xs) - min(xs) == pytest.approx(10 + 2 * 3.2, abs=0.3)  # reaches 3.2 m out
+    from PIL import Image
+
+    with Image.open(out / "city_shadow.png") as img:
+        alpha = [img.getpixel((x, 4))[3] for x in (0, 63)]
+    assert alpha[0] > 150 and alpha[1] == 0  # dark at the wall, gone at the edge
+
+
+def test_the_foot_of_the_walls_is_darker():
+    from xpsb.city import atlas, styles
+
+    f = styles.CENTRAL_EUROPE.styles[0].facade
+    img, _, spans = atlas.paint_cell(f, f.colors[0], seed=1)
+    shade = atlas._foot_shade(f, spans, img.shape[0])
+    assert shade[-1] == pytest.approx(atlas.FOOT_DARK, abs=0.05)
+    assert shade[0] == 1.0 and (shade[:-1] >= shade[1:] - 1e-6).all()  # brighter upwards
+
+
+def test_each_house_stands_on_its_own_ground(tmp_path: Path):
+    """On a slope every house gets X-Plane's height at its place, relative to the
+    ground at the block's origin (where X-Plane puts the object)."""
+    from xpsb.geo import METERS_PER_DEG_LAT
+    from xpsb.xplane.terrain import Grid
+
+    lat0 = 48.0
+
+    def slope(lon, lat):  # 10 % uphill to the north
+        return 500.0 + 0.1 * (lat - lat0) * METERS_PER_DEG_LAT
+
+    houses, blocks, out = _block_with(
+        tmp_path,
+        [
+            way(1, rect(0, -60, 10, -50), building="house"),
+            way(2, rect(0, 50, 10, 60), building="house"),
+        ],
+        ground=slope,
+    )
+    assert len(blocks) == 1
+    walls = next(o for o in blocks[0].objects if o.endswith("_walls.obj"))
+    lows = sorted(
+        min(float(v.split()[2]) for v in grp) for grp in _walls_by_house((out / walls).read_text())
+    )
+    assert lows[1] - lows[0] == pytest.approx(11.0, abs=1.5)  # 110 m apart, 10 %
+
+    # the grid kept by the analysis gives the same heights
+    class Plane:
+        def height(self, lon, lat):
+            return slope(lon, lat)
+
+    grid = Grid.sample(Plane(), (11.0, 47.99, 11.01, 48.01), step_m=50)
+    assert Grid.from_json(grid.to_json()).height(11.005, 48.004) == pytest.approx(
+        slope(11.005, 48.004), abs=0.05
+    )
+
+
+def _walls_by_house(text: str) -> list[list[str]]:
+    """Wall vertices split into the two houses (at the widest north-south gap)."""
+    verts = sorted(
+        (ln for ln in text.splitlines() if ln.startswith("VT ")), key=lambda v: float(v.split()[3])
+    )
+    zs = [float(v.split()[3]) for v in verts]
+    cut = max(range(1, len(zs)), key=lambda i: zs[i] - zs[i - 1])
+    return [verts[:cut], verts[cut:]]
+
+
+def test_the_aerial_image_gets_a_darker_rim_at_the_foot_of_the_houses():
+    from PIL import Image
+    from shapely.geometry import box
+
+    from xpsb.imagery import retouch
+
+    img = Image.new("RGB", (200, 200), (120, 140, 90))
+    bounds = (11.0, 48.0, 11.002, 48.002)
+    house = box(11.0009, 48.0009, 11.0011, 48.0011)
+    out = retouch.rims(img, bounds, [house])
+    near = out.getpixel((100, 89))  # just north of the house
+    far = out.getpixel((10, 10))
+    assert sum(near) < sum(far) * 0.9 and far == (120, 140, 90)

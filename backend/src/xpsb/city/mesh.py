@@ -34,6 +34,8 @@ BASEMENT_M = 2.5
 MAX_STEP_M = 25.0  # ground height differences inside a block beyond this are clamped
 ROOF_PITCH_DEG = 35.0
 LOD_M = 8000
+SHADOW_M = 3.2  # how far the contact shadow reaches out from the walls
+SHADOW_TEXTURE = "city_shadow.png"
 
 Vec3 = tuple[float, float, float]
 
@@ -55,6 +57,7 @@ class BlockMesh:
     roof_faces: list[RoofFace]
     roof_bounds: tuple[float, float, float, float]  # x0, y0, x1, y1 (metres, local)
     details: Obj8 | None = None  # shop fronts, signs, awnings (sign atlas)
+    shadows: Obj8 | None = None  # soft contact shadows draped onto the terrain
     buildings: int = 0
     triangles: int = 0
     skipped: list[str] = field(default_factory=list)
@@ -531,11 +534,17 @@ def build_block(
     atlas: Atlas,
     roof_material: dict[str, str],
     life: Life | None = None,
+    origin_z: float | None = None,
 ) -> BlockMesh:
     """`roof_material`: style id -> roof material (tiles, metal, gravel ...).
-    `life`: shops and details (see life.py); None: plain buildings."""
+    `life`: shops and details (see life.py); None: plain buildings.
+    `origin_z`: the ground height at the block's origin (X-Plane puts the object
+    there); each building then stands on its own `ground_z`."""
     grounds = sorted(b.ground_z for b in buildings if b.ground_z is not None)
     z_origin = grounds[len(grounds) // 2] if grounds else 0.0
+    if origin_z is not None:
+        z_origin = origin_z
+    footprints: list[tuple[list[tuple[float, float]], float]] = []
     bld = _Builder(atlas)
     skipped = []
     neighbours: list[Polygon] = []
@@ -567,6 +576,8 @@ def build_block(
                 continue
         outer = list(outline.exterior.coords)[:-1]
         inner = [list(r.coords)[:-1] for r in outline.interiors]
+        # low sheds and garages cast a lighter one than houses
+        footprints.append((outer, 0.0 if b.eave_m > 3.0 else 0.3))
         color = b.roof_color or (150, 70, 52)
         material = roof_material.get(b.style, "tiles")
         if b.walls or b.roofs:
@@ -598,8 +609,10 @@ def build_block(
     for obj in (bld.walls, bld.roofs, bld.details):
         obj.attributes = [f"ATTR_LOD 0 {LOD_M}"]
     triangles = (len(bld.walls.indices) + len(bld.roofs.indices) + len(bld.details.indices)) // 3
+    shadows = contact_shadows(footprints)
     return BlockMesh(
         details=bld.details,
+        shadows=shadows if shadows.indices else None,
         walls=bld.walls,
         roofs=bld.roofs,
         roof_faces=bld.roof_faces,
@@ -608,6 +621,74 @@ def build_block(
         triangles=triangles,
         skipped=skipped,
     )
+
+
+# ---- contact shadows ------------------------------------------------------------------
+
+
+def contact_shadows(footprints: list[tuple[list[tuple[float, float]], float]]) -> Obj8:
+    """A soft dark band around each footprint (counter-clockwise outer ring, local
+    metres; with the texture coordinate it starts at: 0 full strength), draped onto
+    the terrain. The ground is darker where it meets a wall - without it a house
+    looks set down on the lawn rather than standing in it."""
+    obj = Obj8(texture=SHADOW_TEXTURE, comment="xpsb city contact shadows")
+    obj.draped_texture = SHADOW_TEXTURE
+    obj.attributes = ["ATTR_draped"]
+    up = (0.0, 1.0, 0.0)
+
+    def at(x: float, y: float) -> tuple[float, float, float]:
+        return (x, 0.0, -y)  # OBJ: x east, y up (draped: ignored), z south
+
+    for ring, s0 in footprints:
+        n = len(ring)
+        if n < 3:
+            continue
+        normals = []
+        for i in range(n):
+            (x1, y1), (x2, y2) = ring[i], ring[(i + 1) % n]
+            length = math.hypot(x2 - x1, y2 - y1)
+            normals.append(None if length < 0.05 else ((y2 - y1) / length, -(x2 - x1) / length))
+        for i in range(n):
+            nrm = normals[i]
+            if nrm is None:
+                continue
+            (x1, y1), (x2, y2) = ring[i], ring[(i + 1) % n]
+            nx, ny = nrm[0] * SHADOW_M, nrm[1] * SHADOW_M
+            obj.add_quad(
+                [at(x1, y1), at(x1 + nx, y1 + ny), at(x2 + nx, y2 + ny), at(x2, y2)],
+                up,
+                [(s0, 0.5), (1.0, 0.5), (1.0, 0.5), (s0, 0.5)],
+            )
+            # convex corner: a fan from this side's shadow to the next one's
+            nxt = normals[(i + 1) % n]
+            if nxt is None or nrm[0] * nxt[1] - nrm[1] * nxt[0] <= 0:
+                continue
+            a0 = math.atan2(nrm[1], nrm[0])
+            a1 = math.atan2(nxt[1], nxt[0])
+            if a1 < a0:
+                a1 += 2 * math.pi
+            steps = max(1, math.ceil((a1 - a0) / (math.pi / 8)))
+            base = len(obj.vertices)
+            obj.vertices.append(Vertex(*at(x2, y2), *up, s0, 0.5))
+            for k in range(steps + 1):
+                a = a0 + (a1 - a0) * k / steps
+                px, py = x2 + math.cos(a) * SHADOW_M, y2 + math.sin(a) * SHADOW_M
+                obj.vertices.append(Vertex(*at(px, py), *up, 1.0, 0.5))
+            for k in range(steps):  # counter-clockwise from above -> X-Plane order
+                obj.indices += [base, base + 2 + k, base + 1 + k]
+    return obj
+
+
+def shadow_texture(strength: float = 0.72):
+    """The contact shadow's texture: black, its opacity falling off along s."""
+    from PIL import Image
+
+    s = np.linspace(0.0, 1.0, 64, dtype=np.float32)
+    alpha = np.clip(strength * (1.0 - s) ** 2 * 255.0, 0, 255).astype(np.uint8)
+    rgba = np.zeros((8, 64, 4), dtype=np.uint8)
+    rgba[..., 0:3] = (18, 16, 12)
+    rgba[..., 3] = alpha[None, :]
+    return Image.fromarray(rgba, "RGBA")
 
 
 # ---- life: shops, cornices, oriels, dormers, chimneys, roof units ---------------------

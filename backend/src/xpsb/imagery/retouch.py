@@ -67,6 +67,21 @@ def area(it: SceneItem) -> BaseGeometry | None:
     )
 
 
+CITY_MARGIN_M = 2.0  # real roofs and yards are rarely more than this off the model
+
+
+def city_area(it: SceneItem) -> BaseGeometry | None:
+    """The ground to paint over for a house of the city blocks (lon/lat)."""
+    try:
+        geom = shape(it.geometry)
+    except (ValueError, TypeError, AttributeError):
+        return None
+    if geom.is_empty or geom.geom_type not in ("Polygon", "MultiPolygon"):
+        return None
+    mx, _ = _metres(geom.centroid.y)
+    return geom.buffer(CITY_MARGIN_M / mx, join_style=2)
+
+
 def _scale(geom: BaseGeometry, sx: float, sy: float) -> BaseGeometry:
     from shapely.affinity import scale
 
@@ -276,3 +291,27 @@ def apply(
         if mask.any():
             rgb = fill(rgb, mask)
     return Image.fromarray(rgb)
+
+
+RIM_M = 1.2  # the darker soil at the foot of a house
+RIM_DARKEN = 0.22
+
+
+def rims(image: Image.Image, bounds, outlines: list[BaseGeometry]) -> Image.Image:
+    """The ground darker right around each outline (lon/lat): soil, shade and
+    plants at the foot of the walls, where the bare aerial image shows a clean edge."""
+    if not outlines:
+        return image
+    west, south, east, north = bounds
+    lat = (south + north) / 2
+    mx, _ = _metres(lat)
+    px_per_m = image.width / ((east - west) * mx)
+    grown = [g.buffer(RIM_M / mx, join_style=2) for g in outlines]
+    mask = _mask(image.size, bounds, grown).astype(np.float32)
+    blur = max(0.6, RIM_M * px_per_m / 2)
+    soft = np.asarray(
+        Image.fromarray((mask * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(blur))
+    ).astype(np.float32)
+    factor = 1.0 - RIM_DARKEN * soft[..., None] / 255.0
+    rgb = np.asarray(image.convert("RGB")).astype(np.float32) * factor
+    return Image.fromarray(np.clip(rgb, 0, 255).astype(np.uint8))

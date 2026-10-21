@@ -698,6 +698,8 @@ class Ortho:
     bounds: tuple[float, float, float, float]  # west, south, east, north
     # Places to paint over (lon/lat polygons): real objects under their models.
     hide: list = field(default_factory=list)
+    # Outlines (lon/lat) whose foot gets a darker rim of soil (city mode houses).
+    rims: list = field(default_factory=list)
 
 
 ORTHO_MAX_PX = 4096
@@ -728,6 +730,7 @@ def _write_ortho(ortho: Ortho, polygons_dir: Path, region) -> str:
     rw, rs, re_, rn = region
     with Image.open(ortho.image) as src:
         img = retouch.apply(src.convert("RGB"), ortho.bounds, ortho.hide)
+        img = retouch.rims(img, ortho.bounds, ortho.rims)
     sx = img.width / (east - west)
     sy = img.height / (north - south)
     img = img.crop(

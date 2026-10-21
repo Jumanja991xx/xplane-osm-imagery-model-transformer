@@ -22,7 +22,7 @@ from shapely.strtree import STRtree
 
 from xpsb.city import atlas as atlas_mod
 from xpsb.city import lod2, roofs, styles
-from xpsb.city.mesh import Frame, build_block
+from xpsb.city.mesh import SHADOW_TEXTURE, Frame, build_block, shadow_texture
 from xpsb.city.model import CityBuilding
 from xpsb.geo import METERS_PER_DEG_LAT, meters_per_deg_lon
 from xpsb.scene import SceneItem
@@ -279,10 +279,19 @@ def build(
     aerial=None,
     preview_dir: Path | None = None,
     progress: Callable[[float], None] | None = None,
+    ground: Callable[[float, float], float | None] | None = None,
 ) -> list[CityBlock]:
     """Writes the blocks (OBJ + textures) into out_dir and, for the 3D preview, their
-    meshes into preview_dir. `aerial`: (image, (w, s, e, n)) for real roofs."""
+    meshes into preview_dir. `aerial`: (image, (w, s, e, n)) for real roofs.
+    `ground`: X-Plane's terrain height at (lon, lat) - each house on its own ground
+    instead of the whole block at the height of its origin."""
     preset = styles.PRESETS.get(preset_id) or styles.CENTRAL_EUROPE
+    on_terrain = ground is not None and all(b.ground_z is None for b in buildings)
+    if on_terrain:
+        assert ground is not None
+        for b in buildings:
+            c = Polygon(b.footprint[0]).representative_point()
+            b.ground_z = ground(c.x, c.y)
     roof_material: dict[str, str] = {}
     for group in neighbours(buildings):
         # One look per row of joined houses: the largest decides for all of them
@@ -300,6 +309,7 @@ def build(
     out_dir.mkdir(parents=True, exist_ok=True)
     atlas.image.save(out_dir / ATLAS)
     atlas.lit.save(out_dir / ATLAS_LIT)
+    shadow_texture().save(out_dir / SHADOW_TEXTURE)
     if preview_dir is not None:
         preview_dir.mkdir(parents=True, exist_ok=True)
         atlas.image.save(preview_dir / ATLAS)
@@ -308,7 +318,11 @@ def build(
     for n, (key, group) in enumerate(groups, start=1):
         lon, lat = _cell_center(key, center)
         frame = Frame(lon, lat)
-        mesh = build_block(group, frame, atlas, roof_material)
+        origin_z = ground(lon, lat) if on_terrain and ground is not None else None
+        if on_terrain and origin_z is None:  # no terrain there: as before
+            for b in group:
+                b.ground_z = None
+        mesh = build_block(group, frame, atlas, roof_material, origin_z=origin_z)
         stem = f"city_{n:03d}"
         block = CityBlock(n, (lon, lat), mesh.buildings, mesh.triangles)
         mesh.walls.texture, mesh.walls.lit_texture = ATLAS, ATLAS_LIT
@@ -325,6 +339,11 @@ def build(
                 (preview_dir / f"{stem}_{part}.json").write_text(
                     json.dumps(obj_preview(obj)), encoding="utf-8"
                 )
+        if mesh.shadows is not None:  # draped onto the terrain: no 3D preview of it
+            (out_dir / f"{stem}_ground.obj").write_text(
+                mesh.shadows.to_text(), encoding="ascii", newline="\n"
+            )
+            block.objects.append(f"{stem}_ground.obj")
         if preview_dir is not None and preview_dir != out_dir:
             with Image.open(out_dir / f"{stem}_roofs.png") as img:
                 img.save(preview_dir / f"{stem}_roofs.png")

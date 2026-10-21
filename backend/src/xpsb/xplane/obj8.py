@@ -46,6 +46,9 @@ class Obj8:
     normal_texture: str | None = None
     # Night texture: added on top when it is dark (lit windows, lamps).
     lit_texture: str | None = None
+    # Texture of the draped geometry (ATTR_draped: laid onto the terrain like a
+    # polygon, e.g. a soft contact shadow around a house).
+    draped_texture: str | None = None
     # Command list (see Group); also (attribute lines, first index, count) tuples.
     # Empty: one group with `attributes` over all indices.
     groups: list = field(default_factory=list)
@@ -80,6 +83,7 @@ class Obj8:
             f"TEXTURE {self.texture}",
             *([f"TEXTURE_LIT {self.lit_texture}"] if self.lit_texture else []),
             *([f"TEXTURE_NORMAL {self.normal_texture}"] if self.normal_texture else []),
+            *([f"TEXTURE_DRAPED {self.draped_texture}"] if self.draped_texture else []),
             f"POINT_COUNTS {len(self.vertices)} 0 0 {len(self.indices)}",
         ]
         for v in self.vertices:

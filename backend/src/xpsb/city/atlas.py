@@ -20,6 +20,8 @@ from xpsb.city.styles import FacadeStyle, RegionPreset
 BAYS = 4  # window axes per cell
 FLOOR_ROWS = 4  # upper floors per cell (a taller house repeats them)
 PLINTH_M = 0.6
+FOOT_M = 1.4  # the darker foot of the walls (from the bottom of the plinth)
+FOOT_DARK = 0.64  # brightness right at the ground
 ATTIC_M = 3.0
 CORNICE_M = 0.8  # the moulded band under the eaves (3D cornice of historic houses)
 PX_PER_M = 20.0
@@ -256,7 +258,33 @@ def paint_cell(f: FacadeStyle, color, seed: int) -> tuple[np.ndarray, np.ndarray
     # rows were painted bottom first; an image runs top down
     img = np.concatenate(parts[::-1], axis=0)
     lit = np.concatenate(lits[::-1], axis=0)
+    img *= _foot_shade(f, spans, img.shape[0])[:, None, None]
     return np.clip(img, 0, 255), np.clip(lit, 0, 255), spans
+
+
+def _foot_shade(f: FacadeStyle, spans: list, height_px: int) -> np.ndarray:
+    """Brightness per pixel row (top down): the foot of the wall darker - splash
+    water, the shade of the ground, grime. A wall bright down to the lawn looks
+    as if it stood on the ground rather than in it."""
+    heights = {name: m for name, m in _rows(f)}
+    metres = []
+    for name, ph in spans:  # bottom first
+        m = heights[name]
+        base = metres[-1][1] if metres else 0.0
+        metres.append((ph, base + m))
+    out = np.ones(height_px, dtype=np.float32)
+    row = height_px  # image row just below the current span
+    below = 0.0
+    for ph, top in metres:
+        for k in range(ph):
+            h = below + (k + 0.5) / ph * (top - below)
+            if h < FOOT_M:
+                out[row - 1 - k] = FOOT_DARK + (1 - FOOT_DARK) * (h / FOOT_M) ** 0.8
+        row -= ph
+        below = top
+        if below >= FOOT_M:
+            break
+    return out
 
 
 def build(preset: RegionPreset, used: set[tuple[str, int]] | None = None) -> Atlas:
