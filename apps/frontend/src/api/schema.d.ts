@@ -184,6 +184,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/places": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Places
+         * @description Places for the search box on the map (OpenStreetMap data via Photon).
+         */
+        get: operations["search_places_api_places_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/blender/test": {
         parameters: {
             query?: never;
@@ -1510,6 +1530,32 @@ export interface components {
              */
             rights_confirmed: boolean;
         };
+        /** Place */
+        Place: {
+            /** Name */
+            name: string;
+            /**
+             * Detail
+             * @default
+             */
+            detail: string;
+            /**
+             * Kind
+             * @default
+             */
+            kind: string;
+            /** Lon */
+            lon: number;
+            /** Lat */
+            lat: number;
+            /** Bbox */
+            bbox?: [
+                number,
+                number,
+                number,
+                number
+            ] | null;
+        };
         /** PlanItem */
         PlanItem: {
             /** Kind */
@@ -2283,6 +2329,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SourceTest"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_places_api_places_get: {
+        parameters: {
+            query: {
+                q: string;
+                lon?: number | null;
+                lat?: number | null;
+                final?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Place"][];
                 };
             };
             /** @description Validation Error */

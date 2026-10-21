@@ -24,7 +24,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
-from xpsb import __version__
+from xpsb import __version__, places
 from xpsb import blender as blender_mod
 from xpsb.geo import GeoJsonPolygon
 from xpsb.imagery import basemap, xyz
@@ -329,6 +329,24 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
             return SourceTest(ok=False, detail="incomplete URL ({z}, {x}, {y}; subdomains for {s})")
         ok, detail = await asyncio.to_thread(xyz.check_at, source, body.lon, body.lat)
         return SourceTest(ok=ok, detail=detail)
+
+    @app.get("/api/places", dependencies=auth)
+    async def search_places(
+        q: str,
+        lon: float | None = None,
+        lat: float | None = None,
+        final: bool = False,
+    ) -> list[places.Place]:
+        """Places for the search box on the map (OpenStreetMap data via Photon)."""
+        near = (lon, lat) if lon is not None and lat is not None else None
+        try:
+            return await asyncio.to_thread(
+                places.search, q, ctx.settings.load().language, near, final
+            )
+        except places.PlaceError as exc:
+            raise HTTPException(
+                status_code=502, detail={"key": "error.places", "params": {"detail": str(exc)}}
+            ) from exc
 
     @app.post("/api/blender/test", dependencies=auth)
     async def test_blender(body: BlenderTestBody) -> BlenderTest:

@@ -49,6 +49,8 @@ happen, what it costs and where it writes*. Nothing happens without your approva
 - **Night** – lit windows (`TEXTURE_LIT`), floodlit landmarks, stadium floodlights, street
   lamps, using X-Plane 12's own lights.
 - **Levels of detail** – real windows close up, painted facades further away.
+- **Place search** on the map (step 1): type "Allianz Arena" and pick Munich's stadium
+  from the suggestions (Photon by komoot on OpenStreetMap data; Nominatim on Enter).
 - **Waving flags** that turn with the wind.
 - **Statues and monuments** (OSM statues, busts, equestrian statues, obelisks, columns):
   a figure kit with poses (arm raised, both arms up holding something, pointing,

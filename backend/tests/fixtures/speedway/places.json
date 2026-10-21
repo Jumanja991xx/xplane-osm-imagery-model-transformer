@@ -1,0 +1,5 @@
+[
+  {"name": "Allianz Arena", "detail": "Werner-Heisenberg-Allee 25, Fröttmaning, München, Bayern, Deutschland", "kind": "stadium", "lon": 11.6247, "lat": 48.2188, "bbox": [11.6219, 48.2172, 11.6275, 48.2203]},
+  {"name": "Allianz Arena", "detail": "U-Bahn-Haltestelle Fröttmaning, München", "kind": "station", "lon": 11.6286, "lat": 48.2122, "bbox": null},
+  {"name": "Hockenheimring", "detail": "Hockenheim, Baden-Württemberg, Deutschland", "kind": "raceway", "lon": 8.5658, "lat": 49.3278, "bbox": [8.561, 49.323, 8.571, 49.333]}
+]

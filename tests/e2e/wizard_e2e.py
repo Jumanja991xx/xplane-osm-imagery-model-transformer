@@ -47,6 +47,13 @@ with sync_playwright() as p:
     page.wait_for_timeout(300)
     page.get_by_role("button", name="Schließen", exact=True).click()
     page.wait_for_function("window.__xpsbMap && window.__xpsbMap.loaded()", timeout=20000)
+    # Place search (fixture answers): suggestions while typing, the map flies there.
+    page.get_by_test_id("place-search-input").fill("hockenheimring")
+    expect(page.get_by_test_id("place-results").locator("li")).to_have_count(3, timeout=5000)
+    page.get_by_test_id("place-results").locator("li", has_text="Hockenheimring").click()
+    page.wait_for_timeout(1500)
+    lng = page.evaluate("window.__xpsbMap.getCenter().lng")
+    assert abs(lng - 8.566) < 0.01, lng
     page.evaluate("window.__xpsbMap.jumpTo({center: [8.5658, 49.3278], zoom: 16})")
     page.wait_for_timeout(500)
     page.screenshot(path=OUT / "01-start.png")

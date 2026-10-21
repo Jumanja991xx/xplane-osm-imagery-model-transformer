@@ -34,6 +34,7 @@ import {
 } from "../api/client";
 import { bbox, CATEGORY_COLORS, DEFAULT_HEIGHTS } from "../scene";
 import { useT } from "../i18n";
+import { PlaceSearch } from "./PlaceSearch";
 import { useApp } from "../store";
 
 /** A raster tile server. `template` takes {z}, {x}, {y} (or {-y} for TMS rows) and
@@ -269,9 +270,11 @@ export function MapView() {
   const hasScene = useApp((s) => Boolean(s.job?.analysis?.items?.length));
   const view3d = useApp((s) => s.view3d);
   const setView3d = useApp((s) => s.setView3d);
+  const noJob = useApp((s) => !s.job);
   return (
     <div className="relative h-full w-full">
       <div ref={container} className="h-full w-full" data-testid="map" />
+      {map && noJob && <PlaceSearch map={map} />}
       {hasScene && (
         <button
           type="button"

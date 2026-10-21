@@ -23,6 +23,8 @@ und wohin geschrieben wird*.
 > - **Detailstufen:** nah echte Fenster, weiter weg gemalte Fassaden (zwei `ATTR_LOD`).
 > - **Stadion-Baukasten:** zwei Ränge mit Sitzreihen, Werbebande, Lamellenfassade,
 >   durchscheinendes Dachinnenteil, Dachträger, Flutlicht.
+> - **Ortssuche** auf der Karte (Schritt 1): „Allianz Arena“ tippen, Vorschlag antippen –
+>   die Karte fliegt hin (Photon von komoot mit OpenStreetMap-Daten, Nominatim bei Enter).
 > - **Wehende Fahnen** (Animation, drehen sich mit dem Wind).
 > - **Statuen & Denkmäler** (aus OSM: Statuen, Büsten, Reiterstandbilder, Obelisken,
 >   Säulen): Figuren-Baukasten mit Haltungen, Gewand und Gegenständen auf einem Sockel
