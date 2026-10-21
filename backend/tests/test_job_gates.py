@@ -470,3 +470,59 @@ def test_other_sceneries_for_the_same_tile(tmp_path):
         ("zOrtho4XP_+48+011", "ortho", False, 1),
     ]
     assert neighbors.for_tile(None, tile) == []
+
+
+def test_objects_can_be_moved_after_the_build_and_install(
+    client, app_ctx, fake_xplane, dsftool_exe
+):
+    settings = client.get("/api/settings", headers=AUTH).json()
+    client.put("/api/settings", json={**settings, "xplane_path": str(fake_xplane)}, headers=AUTH)
+    job = to_analyzed(client)
+    r = client.patch(
+        f"/api/jobs/{job['id']}/placement/way/103", json={"attrs": {"turn_deg": 90}}, headers=AUTH
+    )
+    assert r.status_code == 409  # not built yet: the plan's own tools are for that
+    job = approve(client, job, "B").json()
+    approve(client, job, "C")
+    job = wait_for_state(client, job["id"], {"built", "planned"})
+    assert job["state"] == "built", job["error"]
+    package = Path(job["build"]["package_dir"])
+    obj = next(o for o in job["plan"]["objects"] if o["item_id"] == "way/103")
+    stem = obj["stem"]
+    model = (package / "objects" / f"{stem}.obj").read_bytes()
+    text = package.parent / f"{package.name}.dsf.txt"
+
+    def placed() -> list[float]:
+        lines = text.read_text(encoding="ascii").splitlines()
+        defs = [ln.split()[1] for ln in lines if ln.startswith("OBJECT_DEF ")]
+        idx = defs.index(f"objects/{stem}.obj")
+        return [
+            float(v)
+            for v in next(ln for ln in lines if ln.startswith(f"OBJECT {idx} ")).split()[2:]
+        ]
+
+    lon, lat, _ = placed()
+    r = client.patch(
+        f"/api/jobs/{job['id']}/placement/way/103",
+        json={"attrs": {"shift_x_m": 10, "turn_deg": 45}},
+        headers=AUTH,
+    )
+    assert r.status_code == 200, r.text
+    lon2, lat2, heading = placed()
+    assert heading == pytest.approx(45) and lat2 == pytest.approx(lat, abs=1e-9)
+    assert (lon2 - lon) * 111_320 * math.cos(math.radians(lat)) == pytest.approx(10, abs=0.1)
+    assert (package / "objects" / f"{stem}.obj").read_bytes() == model  # not built again
+    r = client.patch(
+        f"/api/jobs/{job['id']}/placement/way/103", json={"attrs": {"height_m": 3}}, headers=AUTH
+    )
+    assert r.status_code == 409  # only where it stands can change now
+
+    approve(client, client.get(f"/api/jobs/{job['id']}", headers=AUTH).json(), "D")
+    job = wait_for_state(client, job["id"], {"installed", "built"})
+    installed = fake_xplane / "Custom Scenery" / "XPSB Test Hockenheim" / job["plan"]["tile"]
+    before = installed.read_bytes()
+    r = client.patch(
+        f"/api/jobs/{job['id']}/placement/way/103", json={"attrs": {"turn_deg": 90}}, headers=AUTH
+    )
+    assert r.status_code == 200, r.text
+    assert installed.read_bytes() != before  # the installed copy follows

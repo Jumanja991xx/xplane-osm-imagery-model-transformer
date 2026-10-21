@@ -43,7 +43,7 @@ export function InstallStep({ onInstall }: { onInstall: () => void }) {
 
   const previewButton = job.plan && !job.plan.test_scenery && (
     <>
-      {previewOpen && <PreviewDialog jobId={job.id} onClose={() => setPreviewOpen(false)} />}
+      {previewOpen && <PreviewDialog jobId={job.id} onClose={() => setPreviewOpen(false)} placeable />}
       <Button onClick={() => setPreviewOpen(true)} data-testid="result-preview">
         🧊 {t("install.preview")}
       </Button>

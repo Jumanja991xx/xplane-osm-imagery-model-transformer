@@ -793,6 +793,36 @@ class JobManager:
         self._save(job)
         return job
 
+    async def place_built(self, job_id: str, item_id: str, attrs: dict) -> Job:
+        """Moves/turns an object after the build (3D view of the result): only the
+        DSF is written again - in the package and, if installed, in Custom Scenery."""
+        from xpsb.build import assemble
+
+        job = self.get(job_id)
+        if job.state not in (JobState.BUILT, JobState.INSTALLED) or job.plan is None:
+            raise JobConflict("error.wrong_state", state=job.state.value)
+        if not set(attrs) <= PLACEMENT_KEYS:
+            raise JobConflict("error.invalid_item", detail="only placement can change now")
+        exe = dsftool.locate(self._settings.load().dsftool_path, self._resources_dir)
+        if exe is None:
+            raise JobConflict("error.dsftool_missing")
+        item = self._item(job, item_id)
+        obj = next((o for o in job.plan.objects if o.item_id == item.id), None)
+        if obj is None:
+            raise JobConflict("error.item_not_found", item=item.id)
+        before = item.attrs
+        item.attrs = ItemAttrs.model_validate({**item.attrs.model_dump(), **attrs})
+        obj.anchor, obj.heading = assemble.placement(item)
+        try:
+            await asyncio.to_thread(pipeline.replace_placements, job, self.job_dir(job_id), exe)
+        except (OSError, dsftool.DsfToolError) as exc:
+            item.attrs = before
+            obj.anchor, obj.heading = assemble.placement(item)
+            raise JobConflict("error.place_failed", detail=str(exc)[:300]) from exc
+        item.edited = True
+        self._save(job)
+        return job
+
     def adjust_many(
         self, job_id: str, item_ids: list[str], attrs: dict, height_factor: float | None
     ) -> Job:

@@ -513,6 +513,11 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
         media = "image/png" if path.suffix == ".png" else "application/json"
         return FileResponse(path, media_type=media)
 
+    @app.patch("/api/jobs/{job_id}/placement/{item_id:path}", dependencies=auth)
+    async def place_built(job_id: str, item_id: str, body: AdjustBody) -> JobView:
+        await ctx.jobs.place_built(job_id, item_id, body.attrs)
+        return ctx.jobs.view(job_id)
+
     @app.patch("/api/jobs/{job_id}/objects/{item_id:path}", dependencies=auth)
     async def adjust_object(job_id: str, item_id: str, body: AdjustBody) -> JobView:
         await asyncio.to_thread(ctx.jobs.adjust_object, job_id, item_id, body.attrs)

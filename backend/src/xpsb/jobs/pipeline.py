@@ -797,6 +797,71 @@ def build_package(
     )
 
 
+def replace_placements(job: Job, job_dir: Path, exe: Path) -> list[Path]:
+    """After the build: puts the objects where the plan now says (moved/turned in
+    the 3D view of the result) without building anything again - only the DSF
+    (object placements and exclusion zones) is written anew, in the package and,
+    if installed, in Custom Scenery. Returns the DSF files written."""
+    from xpsb.xplane.dsf_text import EXCLUSION_PROPERTIES
+
+    plan = job.plan
+    assert plan is not None and job.build is not None
+    package = Path(job.build.package_dir)
+    text_path = package.parent / f"{package.name}.dsf.txt"
+    lines = text_path.read_text(encoding="ascii").splitlines()
+    defs = [ln[len("OBJECT_DEF ") :] for ln in lines if ln.startswith("OBJECT_DEF ")]
+    index = {p: i for i, p in enumerate(defs)}
+    objects = []
+    for o in plan.objects:
+        if o.status != "ok":
+            continue
+        lon0, lat0 = o.anchor
+        own = index.get(f"objects/{o.stem}.obj")
+        if o.has_mesh and own is not None:
+            objects.append(f"OBJECT {own} {lon0:.9f} {lat0:.9f} {o.heading % 360.0:.3f}")
+        h = math.radians(o.heading)
+        for p in o.library:
+            if p.path not in index:
+                continue
+            x = p.x * math.cos(h) + p.y * math.sin(h)
+            y = -p.x * math.sin(h) + p.y * math.cos(h)
+            objects.append(
+                f"OBJECT {index[p.path]} {lon0 + x / meters_per_deg_lon(lat0):.9f} "
+                f"{lat0 + y / METERS_PER_DEG_LAT:.9f} {(p.heading + o.heading) % 360.0:.3f}"
+            )
+    exclusions = [
+        f"PROPERTY {EXCLUSION_PROPERTIES[kind]} {w:.6f}/{s:.6f}/{e:.6f}/{n:.6f}"
+        for kind, (w, s, e, n) in _exclusions(job)
+    ]
+    out: list[str] = []
+    placed = False
+    for ln in lines:
+        if ln.startswith("PROPERTY sim/exclude_") or ln.startswith("OBJECT "):
+            if ln.startswith("OBJECT ") and not placed:
+                out += objects
+                placed = True
+            continue
+        if ln.startswith("PROPERTY sim/creation_agent"):
+            out.append(ln)
+            out += exclusions
+            continue
+        if ln.startswith("BEGIN_POLYGON") and not placed:
+            out += objects
+            placed = True
+        out.append(ln)
+    if not placed:
+        out += objects
+    text_path.write_text("\n".join(out) + "\n", encoding="ascii", newline="\n")
+    written = [package / plan.tile]
+    dsftool.text2dsf(exe, text_path, written[0])
+    if job.state is JobState.INSTALLED and job.install is not None:
+        installed = Path(job.install.target_dir) / plan.tile
+        if installed.parent.is_dir():
+            shutil.copyfile(written[0], installed)
+            written.append(installed)
+    return written
+
+
 def _count(pattern: str, text: str) -> int:
     return len(re.findall(pattern, text, flags=re.MULTILINE))
 

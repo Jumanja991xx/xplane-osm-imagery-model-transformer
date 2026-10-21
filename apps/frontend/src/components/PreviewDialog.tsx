@@ -53,7 +53,13 @@ function nightLights(lights: PreviewLight[]): THREE.Group {
 
 /** The 3D preview, protected: Escape always closes it, and if anything in it fails
  * the user sees why and can close it instead of being stuck on a dark screen. */
-export function PreviewDialog(props: { jobId: string; onClose: () => void; editable?: boolean }) {
+export function PreviewDialog(props: {
+  jobId: string;
+  onClose: () => void;
+  editable?: boolean;
+  /** After the build: objects can still be moved/turned (only the DSF is rewritten). */
+  placeable?: boolean;
+}) {
   const { t } = useT();
   const { onClose } = props;
   useEffect(() => {
@@ -74,10 +80,12 @@ function PreviewDialogInner({
   jobId,
   onClose,
   editable = false,
+  placeable = false,
 }: {
   jobId: string;
   onClose: () => void;
   editable?: boolean;
+  placeable?: boolean;
 }) {
   const { t } = useT();
   const mount = useRef<HTMLDivElement>(null);
@@ -102,7 +110,7 @@ function PreviewDialogInner({
   const toolRef = useRef<PlaceTool>("none");
   const selectedRef = useRef<string | null>(null);
   const placeRef = useRef<(stem: string, dx: number, dy: number, heading: number) => void>(() => {});
-  toolRef.current = editable ? tool : "none";
+  toolRef.current = editable || placeable ? tool : "none";
   selectedRef.current = selected;
 
   useEffect(() => {
@@ -516,6 +524,7 @@ function PreviewDialogInner({
 
   /** Moves (metres east/north, relative) and turns (absolute heading) one object. */
   const [placeError, setPlaceError] = useState<string | null>(null);
+  const [placedNote, setPlacedNote] = useState(false);
   const place = async (stem: string, dx: number, dy: number, heading: number) => {
     const o = data?.objects.find((x) => x.stem === stem);
     const item = useApp.getState().job?.analysis?.items?.find((i) => i.id === o?.item_id);
@@ -524,11 +533,15 @@ function PreviewDialogInner({
     const round = (v: number) => Math.round(v * 100) / 100;
     setPlaceError(null);
     try {
-      const view = await api.adjustObject(jobId, o.item_id, {
+      const placement = {
         shift_x_m: round((a.shift_x_m ?? 0) + dx),
         shift_y_m: round((a.shift_y_m ?? 0) + dy),
         turn_deg: round(heading),
-      });
+      };
+      const view = editable
+        ? await api.adjustObject(jobId, o.item_id, placement)
+        : await api.placeBuilt(jobId, o.item_id, placement);
+      if (!editable) setPlacedNote(true);
       useApp.getState().setJob(view);
       const next = view.plan?.objects?.find((x) => x.item_id === o.item_id);
       await onAdjusted({ ...o, ...next, offset: [o.offset[0] + dx, o.offset[1] + dy] });
@@ -598,7 +611,7 @@ function PreviewDialogInner({
                 }}
               />
             )}
-            {current && editable && !many && (
+            {current && (editable || placeable) && !many && (
               <PlacementControls
                 object={current}
                 tool={tool}
@@ -606,6 +619,11 @@ function PreviewDialogInner({
                 onPlace={(dx, dy, heading) => place(current.stem, dx, dy, heading)}
                 error={placeError}
               />
+            )}
+            {placeable && placedNote && (
+              <Alert kind="info">
+                {t("place.after_build")}
+              </Alert>
             )}
             {current && editable && !many && (
               <ObjectControls
