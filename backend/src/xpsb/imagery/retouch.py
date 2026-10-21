@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
@@ -22,8 +23,8 @@ from xpsb.geo import METERS_PER_DEG_LAT, meters_per_deg_lon
 from xpsb.scene import SceneItem
 
 DEFAULT_BRIDGE_WIDTH_M = 10.0
-MARGIN_M = 2.0  # around the object itself
-SHADOW_SHARE = 0.6  # shadows reach about this share of the height sideways (bridges)
+MARGIN_M = 3.0  # around the object itself
+SHADOW_SHARE = 1.0  # shadows reach about the height sideways (sun at 45 degrees; bridges)
 BUILDING_SHADOW_SHARE = 0.35
 
 
@@ -72,19 +73,38 @@ def _scale(geom: BaseGeometry, sx: float, sy: float) -> BaseGeometry:
     return scale(geom, xfact=sx, yfact=sy, origin=(0, 0))
 
 
-def areas(items: list[SceneItem]) -> list[BaseGeometry]:
+def across(it: SceneItem) -> float | None:
+    """For long objects (bridges): the direction across them, in degrees from east
+    counter-clockwise (in metres) - filled from what lies on both sides (the water),
+    not from what lies at their ends (the banks, the roads onto them)."""
+    try:
+        geom = shape(it.geometry)
+    except (ValueError, TypeError, AttributeError):
+        return None
+    if geom.geom_type != "LineString":
+        return None
+    mx, my = _metres(geom.centroid.y)
+    (x0, y0), (x1, y1) = geom.coords[0], geom.coords[-1]
+    dx, dy = (x1 - x0) * mx, (y1 - y0) * my
+    if math.hypot(dx, dy) < 1e-6:
+        return None
+    return math.degrees(math.atan2(dy, dx)) + 90.0
+
+
+def areas(items: list[SceneItem]) -> list[tuple[BaseGeometry, float | None]]:
+    """The places to paint over, each with the direction to fill it along (or None)."""
     out = []
     for it in items:
         if hidden(it):
             a = area(it)
             if a is not None and not a.is_empty:
-                out.append(a)
+                out.append((a, across(it)))
     return out
 
 
-def key(geoms: list[BaseGeometry]) -> str:
+def key(places: list[tuple[BaseGeometry, float | None]]) -> str:
     """Short fingerprint of the painted-over places (to cache the result)."""
-    text = json.dumps([round(v, 7) for g in geoms for v in g.bounds])
+    text = json.dumps([[round(v, 7) for v in g.bounds] + [d] for g, d in places])
     return hashlib.sha1(text.encode()).hexdigest()[:12]
 
 
@@ -140,7 +160,8 @@ def fill(rgb: np.ndarray, mask: np.ndarray, seed: int = 7) -> np.ndarray:
     ring = _ring(mask)
     if ring.any():
         blurred = np.asarray(Image.fromarray(rgb).filter(ImageFilter.GaussianBlur(2)), np.float32)
-        grain = (img - blurred)[ring].std(axis=0)
+        diff = (img - blurred)[ring]
+        grain = 1.4826 * np.median(np.abs(diff - np.median(diff, axis=0)), axis=0)
         noise = np.random.default_rng(seed).normal(0, 1, mask.shape + (3,)).astype(np.float32)
         noise = np.asarray(
             Image.fromarray(np.clip(noise * 40 + 128, 0, 255).astype(np.uint8)).filter(
@@ -170,12 +191,88 @@ def _ring(mask: np.ndarray, width: int = 6) -> np.ndarray:
     return (np.asarray(grown) > 0) & ~mask
 
 
-def apply(image: Image.Image, bounds, geoms: list[BaseGeometry]) -> Image.Image:
-    """The image with the places in `geoms` (lon/lat) painted over."""
-    if not geoms:
+def fill_across(rgb: np.ndarray, mask: np.ndarray, angle_deg: float, seed: int = 11) -> np.ndarray:
+    """Fills a long hole from its two sides: every pixel gets the colours found
+    where a line through it, along `angle_deg` (image: degrees from east,
+    counter-clockwise, y up), leaves the hole on either side, blended by distance;
+    then the grain of the surroundings. The hole's ends are never used."""
+    h, w = mask.shape
+    ys, xs = np.nonzero(mask)
+    if not len(ys):
+        return rgb
+    dx, dy = math.cos(math.radians(angle_deg)), -math.sin(math.radians(angle_deg))
+    soft = np.asarray(Image.fromarray(rgb).filter(ImageFilter.GaussianBlur(2)), np.float32)
+    limit = int(math.hypot(h, w))
+    found = []
+    for sgn in (1, -1):
+        dist = np.full(len(ys), -1.0)
+        colour = np.zeros((len(ys), 3), np.float32)
+        todo = np.ones(len(ys), bool)
+        for k in range(1, limit):
+            if not todo.any():
+                break
+            px = np.round(xs + sgn * dx * k).astype(int)
+            py = np.round(ys + sgn * dy * k).astype(int)
+            inside = (px >= 0) & (px < w) & (py >= 0) & (py < h)
+            gone = todo & ~inside
+            todo &= inside
+            out = todo.copy()
+            out[todo] = ~mask[py[todo], px[todo]]
+            if out.any():
+                # a few pixels further out: clear of the hole's soft edge
+                qx = np.clip(np.round(xs[out] + sgn * dx * (k + 3)).astype(int), 0, w - 1)
+                qy = np.clip(np.round(ys[out] + sgn * dy * (k + 3)).astype(int), 0, h - 1)
+                colour[out] = soft[qy, qx]
+                dist[out] = k
+                todo &= ~out
+            todo &= ~gone
+        found.append((dist, colour))
+    (d1, c1), (d2, c2) = found
+    est = np.zeros((len(ys), 3), np.float32)
+    both = (d1 > 0) & (d2 > 0)
+    t = (d1[both] / (d1[both] + d2[both]))[:, None]
+    est[both] = c1[both] * (1 - t) + c2[both] * t
+    one = (d1 > 0) & ~both
+    est[one] = c1[one]
+    two = (d2 > 0) & ~both
+    est[two] = c2[two]
+    out = rgb.astype(np.float32)
+    ring = _ring(mask)
+    grain = np.zeros(3, np.float32)
+    if ring.any():  # robust: the hole's own edges (deck ends, shadow) do not count
+        diff = (out - soft)[ring]
+        grain = 1.4826 * np.median(np.abs(diff - np.median(diff, axis=0)), axis=0)
+    noise = np.random.default_rng(seed).normal(0, 1, (len(ys), 3)).astype(np.float32)
+    out[ys, xs] = est + noise * grain[None, :]
+    edge = (
+        np.asarray(
+            Image.fromarray((mask * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(1.2)),
+            np.float32,
+        )[..., None]
+        / 255.0
+    )
+    edge = np.maximum(edge, mask[..., None])
+    return np.clip(rgb * (1 - edge) + out * edge, 0, 255).astype(np.uint8)
+
+
+def apply(
+    image: Image.Image, bounds, places: list[tuple[BaseGeometry, float | None]]
+) -> Image.Image:
+    """The image with `places` (lon/lat, each with its fill direction or None)
+    painted over."""
+    if not places:
         return image
     rgb = np.asarray(image.convert("RGB"))
-    mask = _mask(image.size, bounds, [unary_union(geoms)])
-    if not mask.any():
-        return image
-    return Image.fromarray(fill(rgb, mask))
+    # Long objects first, each from its own sides; the rest from all around.
+    for geom, angle in places:
+        if angle is None:
+            continue
+        mask = _mask(image.size, bounds, [geom])
+        if mask.any():
+            rgb = fill_across(rgb, mask, angle)
+    rest = [g for g, a in places if a is None]
+    if rest:
+        mask = _mask(image.size, bounds, [unary_union(rest)])
+        if mask.any():
+            rgb = fill(rgb, mask)
+    return Image.fromarray(rgb)
