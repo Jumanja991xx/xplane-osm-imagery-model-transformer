@@ -59,6 +59,8 @@ class Patch:
     # Many faces share the same piece of texture (window panes, trims): nothing that
     # differs from place to place (such as baked shading) may be painted into it.
     shared_uv: bool = False
+    # The building part this patch belongs to (parts.py); "" = none.
+    part: str = ""
 
     def add_vertex(self, p: Vec3, n: Vec3, uv: Vec2) -> int:
         self.positions.append(p)
@@ -84,6 +86,7 @@ class Placement:
     x: float
     y: float
     heading: float  # degrees from north, clockwise
+    part: str = ""
 
 
 MAX_PLACEMENTS = 300
@@ -114,6 +117,7 @@ class Light:
     z: float
     params: tuple[float, ...] = ()
     named: bool = False  # LIGHT_NAMED (fixed light without parameters)
+    part: str = ""
 
 
 @dataclass
@@ -124,6 +128,8 @@ class Mesh:
     lights: list[Light] = field(default_factory=list)
     anims: list[Anim] = field(default_factory=list)
     used_scan: bool = False  # the object's 3D scan was placed (credited in the README)
+    # The building parts in the order the script made them (parts.PartInfo).
+    parts: list = field(default_factory=list)
 
     def add_light(self, light: Light) -> None:
         if len(self.lights) >= MAX_LIGHTS:

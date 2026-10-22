@@ -79,7 +79,12 @@ jobs:
         working-directory: backend
         shell: bash
         run: |
-          uv sync
+          # Downloads fail now and then on the runners: try again before giving up.
+          for attempt in 1 2 3; do
+            uv sync && break
+            if [ "$attempt" = 3 ]; then echo "::error title=uv sync::dependencies could not be installed"; exit 1; fi
+            sleep $((attempt * 15))
+          done
           uv run pytest -q -rfE 2>&1 | tee pytest.log
           status=${PIPESTATUS[0]}
           # Failed tests as annotations: readable without the full log.

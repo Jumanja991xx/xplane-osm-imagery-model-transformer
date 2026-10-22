@@ -272,6 +272,7 @@ def stadium():
     mats.append("concrete")  # closing edge along the ground
     colors.append(None)
     line = [[p[0], p[1], 0] for p in ring]
+    part("stands")
     sweep(line, prof, mats=mats, colors=colors, closed_path=True, caps=True)
 
     # Roof ring: solid outer part, translucent inner edge (polycarbonate/ETFE),
@@ -282,6 +283,7 @@ def stadium():
     zo = H + 3.0  # outer edge
     zi = H + 1.2  # inner edge
     zs = zo + (zi - zo) * (solid + 1.5) / (reach + 1.5)
+    part("roof")
     sweep(line, [[-1.5, zo], [solid, zs], [solid, zs + 0.4], [-1.5, zo + 0.4]],
           mats=[roof_mat, "steel", roof_mat, "steel"],
           colors=[g("roof_color", None), None, g("roof_color", None), None],
@@ -318,6 +320,7 @@ def stadium():
         light(p[0] + lx * reach * 0.6, p[1] + ly * reach * 0.6, zs - 1.0, lx * 0.3, ly * 0.3, -1,
               color="white", intensity=15000, beam=110, glow=False)
     # The facade lit from below at night.
+    part("floodlights")
     floodlight(ring, 0, H, spacing=16, color="white", intensity=6000)
 
 # Facades with real windows (facade() tool) per wall material, and which plain
@@ -345,11 +348,14 @@ def walls(fp, z0, H, look, fstyle, top, top_color, holes, levels):
         extrude(fp, z0, H, mat=wall_mat, top=top, color=wall, top_color=top_color,
                 bottom=raised, holes=holes)
 
-def block(fp, z0, H, shape, look, flip, fstyle=None, holes=None, levels=None, chimney=False):
+def block(fp, z0, H, shape, look, flip, fstyle=None, holes=None, levels=None, chimney=False,
+          tag=""):
     # One building block: walls from z0 to H and a roof (gabled/hipped/pyramidal/flat).
+    # Its parts are named "walls", "roof", "chimneys" (+ tag: " 2" for OSM part 2).
     wall, wall_mat, gable_mat, roof_color, pitched, flat, rise_k, rise_max = look
     if H <= z0 + 0.2:
         return
+    part("walls" + tag)
     holes = holes or []
     r = oriented_rect(fp)
     if flip:
@@ -359,6 +365,7 @@ def block(fp, z0, H, shape, look, flip, fstyle=None, holes=None, levels=None, ch
     rect_like = polygon_area(fp) > 0.85 * r["length"] * r["width"] and not holes
     if shape in ("gabled", "hipped") and rect_like:
         walls(fp, z0, H, look, fstyle, None, None, holes, levels)
+        part("roof" + tag)
         P = frame(r)
         L2 = r["length"] / 2
         W2 = r["width"] / 2
@@ -380,11 +387,13 @@ def block(fp, z0, H, shape, look, flip, fstyle=None, holes=None, levels=None, ch
         quad(A, B, R2, R1, mat=pitched, color=roof_color)
         quad(C, D, R1, R2, mat=pitched, color=roof_color)
         if chimney and r["width"] > 5:
+            part("chimneys" + tag)
             chimneys(fp, H, H + rise + 1.0, count=max(1, min(6, int(r["length"] / 12) + 1)),
                      size=0.7 if r["width"] < 14 else 1.0)
     elif shape in ("pyramidal", "dome", "onion", "cone") and len(fp) <= 40 and not holes:
         # towers and domes: a pointed roof over the centre
         walls(fp, z0, H, look, fstyle, None, None, holes, levels)
+        part("roof" + tag)
         c = polygon_centroid(fp)
         rise = min(min(r["width"], r["length"]) * (0.9 if shape == "cone" else 0.6), 25)
         apex = [c[0], c[1], H + rise]
@@ -396,10 +405,12 @@ def block(fp, z0, H, shape, look, flip, fstyle=None, holes=None, levels=None, ch
     elif shape in ("gabled", "hipped", "mansard") and r["width"] > 9:
         # big or irregular blocks (wings around courtyards): slopes all round
         walls(fp, z0, H, look, fstyle, None, None, holes, levels)
+        part("roof" + tag)
         rise = min(r["width"] * rise_k * 0.5, rise_max, 4.5)
         mansard(fp, H, rise=rise, depth=min(5.0, r["width"] * 0.25), mat=pitched,
                 color=roof_color, holes=holes, top=flat, top_color=roof_color)
         if chimney:
+            part("chimneys" + tag)
             chimneys(fp, H, H + rise + 1.0, holes=holes)
     else:
         walls(fp, z0, H, look, fstyle, flat, roof_color, holes, levels)
@@ -436,13 +447,13 @@ def main():
     parts = params.get("parts") or []
     if parts:
         # OSM building parts (towers, wings, raised roofs): each its own block
-        for part in parts:
-            ph = part.get("height") or H
-            pz = part.get("min_height") or 0
-            plook = (part.get("wall_color") or wall, wall_mat, gable_mat,
-                     part.get("roof_color") or roof_color, look[4], look[5], rise_k, rise_max)
-            block(part["footprint"], pz, ph, part.get("roof_shape") or "flat", plook, False,
-                  fstyle)
+        for i, bp in enumerate(parts):
+            ph = bp.get("height") or H
+            pz = bp.get("min_height") or 0
+            plook = (bp.get("wall_color") or wall, wall_mat, gable_mat,
+                     bp.get("roof_color") or roof_color, look[4], look[5], rise_k, rise_max)
+            block(bp["footprint"], pz, ph, bp.get("roof_shape") or "flat", plook, False,
+                  fstyle, tag=" %d" % (i + 1))
         if g("parts_cover", 1.0) >= 0.8:
             return  # the parts are the whole building
     shape = g("roof_shape", shape_def)
@@ -452,6 +463,7 @@ def main():
     landmark = (tags.get("historic") or tags.get("heritage") or tags.get("tourism")
                 or tags.get("wikidata") or tags.get("site:main") == "yes")
     if st in ("historic", "church") and landmark and g("min_height", 0) < 0.5:
+        part("floodlights")
         floodlight(footprint, 0, H, spacing=11)  # landmarks are lit at night
 
 main()

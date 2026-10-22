@@ -181,23 +181,39 @@ export const api = {
   renamePackage: (id: string, name: string) =>
     request<JobView>("POST", `/api/jobs/${id}/package-name`, { name }),
   listJobs: () => request<JobSummary[]>("GET", "/api/jobs"),
-  designEstimate: (id: string, itemId: string) =>
-    request<S["DesignEstimate"]>("GET", `/api/jobs/${id}/design/${itemId}`),
-  redesign: (id: string, itemId: string, text: string, maxUsd: number) =>
-    request<S["DesignOutcome"]>("POST", `/api/jobs/${id}/design/${itemId}`, { request: text, max_usd: maxUsd }),
+  designEstimate: (id: string, itemId: string, model?: string) =>
+    request<S["DesignEstimate"]>(
+      "GET",
+      `/api/jobs/${id}/design/${itemId}${model ? `?model=${encodeURIComponent(model)}` : ""}`,
+    ),
+  redesign: (id: string, itemId: string, text: string, maxUsd: number, model?: string, parts?: string[]) =>
+    request<S["DesignOutcome"]>("POST", `/api/jobs/${id}/design/${itemId}`, {
+      request: text,
+      max_usd: maxUsd,
+      model: model ?? null,
+      parts: parts?.length ? parts : null,
+    }),
+  changeParts: (id: string, itemId: string, change: PartChange) =>
+    request<JobView>("POST", `/api/jobs/${id}/parts/${itemId}`, change),
+  undoParts: (id: string, itemId: string, all = false) =>
+    request<JobView>("DELETE", `/api/jobs/${id}/parts/${itemId}${all ? "?all=true" : ""}`),
   adjustMany: (id: string, itemIds: string[], attrs: Partial<ItemAttrs>, heightFactor?: number) =>
     request<JobView>("PATCH", `/api/jobs/${id}/objects`, {
       item_ids: itemIds,
       attrs,
       height_factor: heightFactor ?? null,
     }),
-  designManyEstimate: (id: string, itemIds: string[]) =>
-    request<S["DesignEstimate"]>("POST", `/api/jobs/${id}/design-many/estimate`, { item_ids: itemIds }),
-  designMany: (id: string, itemIds: string[], text: string, maxUsd: number) =>
+  designManyEstimate: (id: string, itemIds: string[], model?: string) =>
+    request<S["DesignEstimate"]>("POST", `/api/jobs/${id}/design-many/estimate`, {
+      item_ids: itemIds,
+      model: model ?? null,
+    }),
+  designMany: (id: string, itemIds: string[], text: string, maxUsd: number, model?: string) =>
     request<S["DesignManyOutcome"]>("POST", `/api/jobs/${id}/design-many`, {
       item_ids: itemIds,
       request: text,
       max_usd: maxUsd,
+      model: model ?? null,
     }),
   resetDesign: (id: string, itemId: string) => request<JobView>("DELETE", `/api/jobs/${id}/design/${itemId}`),
   addPhoto: (id: string, itemId: string, data: string) =>
@@ -272,8 +288,25 @@ export interface PreviewObject {
   offset: [number, number];
   heading?: number; // degrees clockwise from north, as turned in the preview
   has_mesh?: boolean;
-  library?: { path: string; x: number; y: number; heading: number; size?: number[] }[];
+  library?: { path: string; x: number; y: number; heading: number; size?: number[]; part?: string }[];
 }
+
+/** A building part of an object (tower, roof ...): a range of the mesh index. */
+export interface PreviewPart {
+  id: string;
+  label: string; // the script's name; "" = named after the tool
+  tool: string;
+  start: number;
+  count: number;
+}
+
+export type PartChange = {
+  parts: string[];
+  hide?: boolean;
+  move?: [number, number, number]; // metres east, north, up (object's own axes)
+  turn_deg?: number; // clockwise
+  scale?: [number, number, number];
+};
 
 export interface PreviewData {
   objects: PreviewObject[];
@@ -301,6 +334,7 @@ export interface PreviewMesh {
   lights?: PreviewLight[];
   lit?: boolean; // has a night texture
   alpha?: boolean; // see-through parts
+  parts?: PreviewPart[];
 }
 
 async function authedFetch(path: string): Promise<Response> {

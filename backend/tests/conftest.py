@@ -52,6 +52,8 @@ def fake_ai() -> FakeAi:
 def offline_fixtures(monkeypatch: pytest.MonkeyPatch) -> None:
     # OSM and imagery answers come from files; tests never touch the network.
     monkeypatch.setenv("XPSB_FIXTURES_DIR", str(FIXTURES))
+    # Objects built one after another (fast to start); test_parallel.py covers the rest.
+    monkeypatch.setenv("XPSB_BUILD_WORKERS", "1")
 
 
 @pytest.fixture

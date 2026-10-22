@@ -233,7 +233,7 @@ object in the scene or the list to jump to it. **Night** switches to the night v
 | Height, levels, roof, facade, colours | Changing a value rebuilds only this object, within seconds. |
 | Turn ridge direction / Turn front around | Fix a roof ridge or a front that points the wrong way. |
 | Paint the real object out of the aerial image below | Hides the real object in the ground photo, so it does not show twice. |
-| **Change with AI** | Describe a change in your own words; the app shows the maximum cost before sending. *Back to default* undoes the AI design. |
+| **Change with AI** | Describe a change in your own words; the app shows the maximum cost before sending. *Back to default* undoes the AI design. **AI:** chooses the model for this one request – if a cheap model did not manage, the app offers to try a stronger one (the cost is shown again first). |
 
 **Keyboard:** `R` / `Shift+R` turn by 15° · `Delete` removes the object (`Enter`
 confirms, `Esc` cancels) · `Ctrl+Z` brings the last deleted object back · `Ctrl+A` selects all · `Ctrl+click` adds/removes from the
@@ -241,6 +241,25 @@ selection · `Shift+click` selects a range · `Esc` ends a multi-selection.
 
 **Several objects** (Ctrl+click): change them together or ask the AI to change all of
 them in one go.
+
+**Single parts of an object** – a tower, the roof, a wing, the lamps: click **Edit parts**
+in the *Parts* box, then click a part in the picture (it turns orange) or pick it from the
+list. `Ctrl`/`Shift`+click adds more parts; **All alike** picks every part of the same kind
+(e.g. all roofs).
+
+| Control | What it does |
+|---|---|
+| ↑ ↓ ← → | Move north, south, west, east by the chosen step (0.2–5 m). |
+| ⤒ ⤓ | Raise or lower. |
+| ⟲ / ⟳ | Turn by 15° or 90° around the middle of the chosen parts. |
+| Height / Width / Whole | Resize by −20 % … +25 %; height grows upwards from the part's base. |
+| **Hide** | Leaves the part out of the scenery. |
+| **Undo** / **Take all back** | The last change, or all changes to parts of this object. |
+
+These changes are free and do not need the AI. With parts chosen, **Change with AI** works
+on those parts only ("Only for: Tower") – e.g. *"make the spire twice as high and copper
+green"*. The AI architect names the parts of its designs, so your part changes stay in
+place when it changes something else.
 
 The preview also explains what is only a stand-in: trees, lamps, cars and flags come from
 X-Plane's own library and look right in X-Plane, not in the preview.
@@ -472,6 +491,12 @@ there under the new objects* is on.
 **I see the real building twice (in the photo on the ground and as a model).**
 Use the ground *Aerial image* only where it fits, or tick *Paint the real object out of the
 aerial image below* for that object in the preview.
+
+**Building the preview or the package takes long.**
+The objects are built on all processor cores at once (one core stays free for the app), so
+a faster CPU with more cores helps most. The 3D view itself runs on the graphics card; if
+the preview warns that it runs *without a graphics card*, update the graphics driver and do
+not start the app over remote desktop.
 
 **Blender does nothing / is slow.**
 *Settings → Tools → Test Blender* shows what takes the time. *CPU only* skips the graphics

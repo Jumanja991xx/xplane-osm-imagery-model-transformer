@@ -43,7 +43,15 @@ from xpsb.jobs.models import (
     utcnow,
 )
 from xpsb.paths import AppPaths
-from xpsb.scene import ItemAttrs, ItemPatch, NewItem, PhotoTexture, SceneItem, validate_item
+from xpsb.scene import (
+    ItemAttrs,
+    ItemPatch,
+    NewItem,
+    PartOp,
+    PhotoTexture,
+    SceneItem,
+    validate_item,
+)
 from xpsb.secrets import SecretStore
 from xpsb.settings import SettingsStore
 from xpsb.xplane import dsftool, foreign, library
@@ -120,6 +128,7 @@ AUTO_DESIGN_REQUEST = (
 DESIGN_PARALLEL = 3
 MAX_AUTO_DESIGN = 40
 IMPORTANT_DESIGN = 12
+MAX_PART_OPS = 200  # changes to parts per object
 
 
 # On failure a job falls back to the last stable state so the user can fix the
@@ -835,6 +844,37 @@ class JobManager:
         self._save(job)
         return job
 
+    # ---- single parts of a built object (3D preview) -----------------------------
+
+    def change_parts(self, job_id: str, item_id: str, op: PartOp) -> Job:
+        """Hides, resizes, turns or moves building parts of one object (one or a
+        group) and rebuilds it. Free: no AI involved."""
+        job = self._planned(job_id)
+        item = self._item(job, item_id)
+        if item.kind != "object":
+            raise JobConflict("error.similar_objects_only")
+        if len(item.part_ops) >= MAX_PART_OPS:
+            raise JobConflict("error.part_ops_limit", max=MAX_PART_OPS)
+        item.part_ops.append(op)
+        item.edited = True
+        self.regenerate_object(job, item)
+        self._save(job)
+        return job
+
+    def undo_parts(self, job_id: str, item_id: str, everything: bool = False) -> Job:
+        """Takes back the last change to parts (or all of them)."""
+        job = self._planned(job_id)
+        item = self._item(job, item_id)
+        if not item.part_ops:
+            return job
+        if everything:
+            item.part_ops.clear()
+        else:
+            item.part_ops.pop()
+        self.regenerate_object(job, item)
+        self._save(job)
+        return job
+
     def _foreign_reader(self, job: Job):
         """Reads what other packs place around a box (for exact exclusion zones)."""
         settings = self._settings.load()
@@ -983,12 +1023,14 @@ class JobManager:
         self._save(job)
         return job
 
-    def design_many_estimate(self, job_id: str, item_ids: list[str]) -> DesignEstimate:
+    def design_many_estimate(
+        self, job_id: str, item_ids: list[str], model: str | None = None
+    ) -> DesignEstimate:
         """What one request to the AI architect for all these objects may cost."""
         typical = most = 0.0
         estimate = None
         for item_id in dict.fromkeys(item_ids):
-            estimate = self.design_estimate(job_id, item_id)
+            estimate = self.design_estimate(job_id, item_id, model)
             typical += estimate.estimate_usd
             most += estimate.max_usd
         if estimate is None:
@@ -998,7 +1040,12 @@ class JobManager:
         )
 
     async def redesign_many(
-        self, job_id: str, item_ids: list[str], request: str, max_usd: float
+        self,
+        job_id: str,
+        item_ids: list[str],
+        request: str,
+        max_usd: float,
+        model: str | None = None,
     ) -> tuple[Job, list[dict], float]:
         """One request in the user's words for several objects ("add the shop fronts
         that are missing"): the AI architect changes each of them, a few at a time,
@@ -1006,10 +1053,10 @@ class JobManager:
         from concurrent.futures import ThreadPoolExecutor
 
         ids = list(dict.fromkeys(item_ids))
-        job, _ = self._design_ready(job_id, ids[0]) if ids else (None, None)
+        job, _ = self._design_ready(job_id, ids[0], model) if ids else (None, None)
         if job is None:
             raise JobConflict("error.item_not_found", item="")
-        items = [self._design_ready(job_id, i)[1] for i in ids]
+        items = [self._design_ready(job_id, i, model)[1] for i in ids]
         if job_id in self._busy:
             raise JobConflict("error.job_running")
         assert job.plan is not None
@@ -1017,7 +1064,7 @@ class JobManager:
         if budget <= 0:
             raise JobConflict("error.ai_budget_exhausted")
         # Each object gets its share of the confirmed maximum, by its own estimate.
-        maxima = [self.design_estimate(job_id, it.id).max_usd for it in items]
+        maxima = [self.design_estimate(job_id, it.id, model).max_usd for it in items]
         scale = min(1.0, budget / max(sum(maxima), 1e-9))
         log = self.events(job_id)
 
@@ -1028,7 +1075,7 @@ class JobManager:
                 )
 
             return self._design_call(
-                job, it, request, share, job.plan.detail, on_step, "correction"
+                job, it, request, share, job.plan.detail, on_step, "correction", model
             )
 
         self._busy.add(job_id)
@@ -1068,13 +1115,19 @@ class JobManager:
 
     # ---- AI architect: own build script for one object -------------------------
 
-    def _design_ready(self, job_id: str, item_id: str) -> tuple[Job, SceneItem]:
+    def _design_ready(
+        self, job_id: str, item_id: str, model: str | None = None
+    ) -> tuple[Job, SceneItem]:
+        """`model`: another AI model than the job's for this one request (the user
+        tries a stronger one when the first did not manage)."""
         job = self._planned(job_id)
         item = self._item(job, item_id)
         assert job.brief is not None
         if not job.brief.use_ai:
             raise JobConflict("error.ai_off")
-        if not self._ai_key(job.brief.ai_model):
+        if model is not None and not providers.valid_model(model):
+            raise JobConflict("error.ai_model_unavailable", model=model)
+        if not self._ai_key(model or job.brief.ai_model):
             raise JobConflict("error.ai_no_key")
         if item.kind != "object":
             raise JobConflict("error.similar_objects_only")
@@ -1085,30 +1138,40 @@ class JobManager:
 
         return item.script or DEFAULT_SCRIPTS.get(str(item.category), "")
 
-    def design_estimate(self, job_id: str, item_id: str) -> DesignEstimate:
+    def design_estimate(
+        self, job_id: str, item_id: str, model: str | None = None
+    ) -> DesignEstimate:
         from xpsb.ai import architect
 
-        job, item = self._design_ready(job_id, item_id)
+        job, item = self._design_ready(job_id, item_id, model)
         assert job.brief is not None
+        model = model or job.brief.ai_model
         typical, most = architect.cost_estimate(
-            job.brief.ai_model,
+            model,
             len(self._current_script(item)),
             len(item.photos),
             len(self.library().offer()),
         )
         return DesignEstimate(
-            model=job.brief.ai_model,
+            model=model,
             estimate_usd=round(typical, 3),
             max_usd=round(most, 3),
             budget_usd=round(self._similar_budget(job), 4),
         )
 
     async def redesign(
-        self, job_id: str, item_id: str, request: str, max_usd: float
+        self,
+        job_id: str,
+        item_id: str,
+        request: str,
+        max_usd: float,
+        model: str | None = None,
+        parts: list[str] | None = None,
     ) -> tuple[Job, str, float]:
         """Runs only after the user confirmed the estimate (max_usd is what they saw).
-        Returns the job, the architect's summary and what it cost."""
-        job, item = self._design_ready(job_id, item_id)
+        `parts`: only these building parts are to change. Returns the job, the
+        architect's summary and what it cost."""
+        job, item = self._design_ready(job_id, item_id, model)
         if job_id in self._busy:
             raise JobConflict("error.job_running")
         assert job.brief is not None and job.analysis is not None and job.plan is not None
@@ -1122,6 +1185,9 @@ class JobManager:
                 type="progress", stage="design", key=key, params={**params, "item": item.id}
             )
 
+        asked = request
+        if parts:
+            request = await asyncio.to_thread(self._parts_request, job, item, parts, request)
         self._busy.add(job_id)
         try:
             result = await asyncio.to_thread(
@@ -1133,6 +1199,7 @@ class JobManager:
                 job.plan.detail,
                 on_step,
                 "correction",
+                model,
             )
         finally:
             self._busy.discard(job_id)
@@ -1146,12 +1213,49 @@ class JobManager:
         item.script = result.script
         _take_textures(item, result.textures)
         item.script_request = (
-            f"{item.script_request} | {request}" if item.script_request else request
+            f"{item.script_request} | {asked}" if item.script_request else asked
         )[-2000:]
         item.edited = True
         self.regenerate_object(job, item)
         self._save(job)
         return job, result.summary, result.info.cost_usd
+
+    def _parts_request(self, job: Job, item: SceneItem, part_ids: list[str], request: str) -> str:
+        """The request, limited to the parts the user picked: which they are, made by
+        which call and where they are, so the architect changes only those."""
+        from xpsb.build import assemble
+        from xpsb.build.sandbox import ScriptError, run_script
+
+        assert job.analysis is not None and job.plan is not None
+        lines = []
+        try:
+            inputs = assemble._script_inputs(item, job.analysis.items, job.plan.detail)
+            mesh = run_script(
+                self._current_script(item),
+                inputs,
+                assemble.triangle_budget(inputs, job.plan.detail),
+                library=frozenset(self.library().objects),
+            )
+        except (ScriptError, ValueError, LookupError):
+            mesh = None
+        known = {p.id: p for p in mesh.parts} if mesh else {}
+        for pid in part_ids[:50]:
+            info = known.get(pid)
+            where = ""
+            if mesh is not None:
+                pts = [q for p in mesh.patches if p.part == pid for q in p.positions]
+                if pts:
+                    xs, ys, zs = zip(*pts, strict=True)
+                    where = (
+                        f", x {min(xs):.1f}..{max(xs):.1f}, y {min(ys):.1f}..{max(ys):.1f},"
+                        f" z {min(zs):.1f}..{max(zs):.1f} m"
+                    )
+            made = f" (made by {info.call}{where})" if info else ""
+            lines.append(f'- "{pid}"{made}')
+        return (
+            "Change ONLY these parts of the object; keep every other part exactly as it "
+            "is (same lines, same part names):\n" + "\n".join(lines) + f"\n\nRequest: {request}"
+        )
 
     def _design_call(
         self,
@@ -1162,6 +1266,7 @@ class JobManager:
         detail: str,
         on_step,
         stage: str = "design",
+        model: str | None = None,
     ):
         """One run of the AI architect for one object (worker thread)."""
         from xpsb.ai import architect
@@ -1176,12 +1281,13 @@ class JobManager:
                     aerial, _ = ai.render_crop(img.convert("RGB"), job.analysis.imagery, item)
                 except ValueError:
                     aerial = None
+        model = model or job.brief.ai_model
         cfg = ai.AiRun(
-            model=job.brief.ai_model,
+            model=model,
             language=self._settings.load().language,
             notes=job.brief.notes,
             budget_usd=budget,
-            transport=self._transport(job.brief.ai_model),
+            transport=self._transport(model),
             on_cost=pipeline.cost_book(job, self.ledger, stage, item.name or item.id),
         )
         inputs = assemble._script_inputs(item, job.analysis.items, detail)
@@ -1380,6 +1486,7 @@ class JobManager:
         job = self._planned(job_id)
         item = self._item(job, item_id)
         item.script, item.script_request = None, None
+        item.part_ops.clear()  # they named the parts of the AI's script
         self.regenerate_object(job, item)
         self._save(job)
         return job
@@ -1545,7 +1652,7 @@ class JobManager:
 
     # ---- approvals ---------------------------------------------------------
 
-    def approve(self, job_id: str, gate: GateId, seen_hash: str) -> JobView:
+    async def approve(self, job_id: str, gate: GateId, seen_hash: str) -> JobView:
         job = self.get(job_id)
         ctx = self._gate_context(job)
         pending = compute_gate(job, ctx)
@@ -1566,10 +1673,23 @@ class JobManager:
                 self._set_state(job, JobState.PLANNING)
                 self._start(job, self._do_plan(job, ctx.design))
             else:
-                job.plan = pipeline.make_plan(
-                    job, self.job_dir(job.id), self.library(), self._foreign_reader(job)
-                )
-                self._set_state(job, JobState.PLANNED)
+                # Built in a thread (all objects, may take a while): the app keeps
+                # answering meanwhile and shows the job as being planned.
+                self._set_state(job, JobState.PLANNING)
+                try:
+                    job.plan = await asyncio.to_thread(
+                        pipeline.make_plan,
+                        job,
+                        self.job_dir(job.id),
+                        self.library(),
+                        self._foreign_reader(job),
+                    )
+                except Exception:
+                    if job.state is JobState.PLANNING:
+                        self._set_state(job, JobState.ANALYZED)
+                    raise
+                if job.state is JobState.PLANNING:  # not cancelled meanwhile
+                    self._set_state(job, JobState.PLANNED)
         elif gate == "C":
             assert ctx.dsftool is not None
             self._set_state(job, JobState.BUILDING)

@@ -77,7 +77,21 @@ def _watch_stdin(server: uvicorn.Server) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
+    raw = sys.argv[1:] if argv is None else argv
+    if raw[:1] == ["--build-worker"] and len(raw) == 2:
+        # A build process of build/parallel.py (this program started again).
+        from xpsb.build import parallel
+
+        parallel.worker(Path(raw[1]))
+        return
     args = _parse_args(argv)
+    stacks = os.environ.get("XPSB_DUMP_STACKS_S", "")
+    if stacks.isdigit():  # diagnostics (smoke test): where does it hang?
+        import faulthandler
+
+        out = (args.data_dir or Path(".")) / "stacks.log"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        faulthandler.dump_traceback_later(int(stacks), repeat=True, file=open(out, "w"))  # noqa: SIM115
     if args.host not in LOOPBACK:
         raise SystemExit("refusing to listen on a non-loopback address")
 

@@ -21,7 +21,7 @@ from shapely.geometry import LineString, Polygon, shape
 from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
 
-from xpsb.build import phototex
+from xpsb.build import parallel, parts, phototex
 from xpsb.build.bake import bake
 from xpsb.build.objexport import to_obj8, to_preview
 from xpsb.build.sandbox import ScriptError, ScriptInputs, run_script
@@ -498,6 +498,10 @@ def generate(
     name = f"{item.id}.star" if item.script else f"{item.category}.star"
     lib = frozenset(library.objects) if library else None
     mesh = run_script(script, inputs, budget, name=name, library=lib)
+    if item.part_ops:
+        parts.apply_ops(mesh, item.part_ops)
+        if not mesh.patches and not mesh.placements:
+            raise ScriptError("all parts are hidden")
     photos = phototex.load(item.textures, item.photos, photo_dir) if item.textures else {}
     used = {p.material[6:] for p in mesh.patches if p.material.startswith("photo:")}
     photo_ids = sorted({t.photo_id for t in item.textures if t.name in used and t.name in photos})
@@ -569,6 +573,7 @@ def generate_one(
                 "size": list(library.objects[p.path].size or ()) if library else [],
                 "pack": library.objects[p.path].pack if library else "",
                 "default": library.objects[p.path].default if library else True,
+                "part": p.part,
             }
             for p in mesh.placements
         ]
@@ -619,25 +624,39 @@ def generate_all(
     """progress(fraction, object number, objects, object name)."""
     """Writes OBJ8 + PNG (package) or preview JSON + PNG (job folder) per object."""
     out_dir.mkdir(parents=True, exist_ok=True)
-    todo = [it for it in items if buildable(it)]
-    results: list[ItemResult] = []
-    for n, item in enumerate(todo, start=1):
-        results.append(
-            generate_one(
-                item,
-                items,
-                detail,
-                out_dir,
-                f"xpsb_obj_{n:03d}",
-                preview,
-                library,
-                photo_dir,
-                blender_exe,
-            )
-        )
+    todo = [(it, f"xpsb_obj_{n:03d}") for n, it in enumerate(items_to_build(items), start=1)]
+    total = max(1, len(todo))
+
+    def done(count: int, item: SceneItem) -> None:
         if progress:
-            progress(n / max(1, len(todo)), n, len(todo), item.name or str(item.category))
-    return results
+            progress(count / total, count, len(todo), item.name or str(item.category))
+
+    built: dict[str, ItemResult] = {}
+    n_workers = parallel.workers(len(todo))
+    if n_workers > 1:
+        built = parallel.build(
+            todo,
+            items,
+            detail,
+            out_dir,
+            preview,
+            library,
+            photo_dir,
+            blender_exe,
+            done,
+            n_workers,
+        )
+    for item, stem in todo:  # everything (else) in this process, one after another
+        if stem not in built:
+            built[stem] = generate_one(
+                item, items, detail, out_dir, stem, preview, library, photo_dir, blender_exe
+            )
+            done(len(built), item)
+    return [built[stem] for _, stem in todo]
+
+
+def items_to_build(items: list[SceneItem]) -> list[SceneItem]:
+    return [it for it in items if buildable(it)]
 
 
 # ---- surfaces ----------------------------------------------------------------------

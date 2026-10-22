@@ -21,6 +21,7 @@ from xpsb.ai.usage import cost_usd
 from xpsb.build import tools
 from xpsb.build.materials import MATERIAL_HELP
 from xpsb.build.mesh import Mesh
+from xpsb.build.parts import PartTracker
 from xpsb.build.render import views_png
 from xpsb.build.sandbox import GEOMETRY_TOOLS, HELPER_TOOLS, ScriptError, ScriptInputs, run_script
 from xpsb.jobs.models import AiRunInfo
@@ -114,6 +115,7 @@ def tool_reference() -> str:
     for name in HELPER_TOOLS:
         fn = getattr(tools, name)
         lines.append(f"{name}{inspect.signature(fn)}\n    {inspect.getdoc(fn) or ''}")
+    lines.append(f"part(name=None)\n    {inspect.getdoc(PartTracker.name)}")
     lines.append(
         "Math (angles in degrees): "
         + ", ".join(sorted(tools.MATH))
@@ -189,6 +191,13 @@ RULES:
   plain lid where the real one has more. Spend the triangles where people look:
   towers, the main front, the roof line.
 - Write the COMPLETE script every time (it replaces the old one).
+- PARTS: call part("Name") before each component a user would point at (main
+  building, each tower, each wing, roof, portico, dome, spire, stands, statues ...);
+  names short, in {LANG_NAMES.get(language, "English")}, unique ("North tower",
+  "South tower"). The user picks parts by these names in the 3D preview and moves,
+  turns, resizes or hides them; when you change a script, keep the names of the
+  parts that are still there. When the request names parts, change only those and
+  leave every other line as it is.
 - The summary is for the user, in {LANG_NAMES.get(language, "English")}, short, no code.
 
 BUILDING KIT - use it for every building with windows: it builds the details with real

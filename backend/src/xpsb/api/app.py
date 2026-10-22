@@ -42,9 +42,9 @@ from xpsb.jobs.manager import (
 from xpsb.jobs.models import Brief, GateId, JobState, JobView
 from xpsb.paths import AppPaths
 from xpsb.photos import MAPILLARY_ACCOUNT, SearchResult
-from xpsb.scene import ItemPatch, NewItem, PhotoTexture
+from xpsb.scene import ItemPatch, NewItem, PartOp, PhotoTexture
 from xpsb.secrets import ANTHROPIC_ACCOUNT, GEMINI_ACCOUNT, SecretStore, normalize_api_key
-from xpsb.settings import ImagerySettings, Settings, SettingsStore
+from xpsb.settings import AiModel, ImagerySettings, Settings, SettingsStore
 from xpsb.xplane import dsftool, neighbors
 from xpsb.xplane.dsf_text import Tile
 from xpsb.xplane.neighbors import OtherScenery
@@ -131,12 +131,17 @@ class DesignBody(BaseModel):
     request: str = Field(min_length=3, max_length=1500)
     # The maximum the user confirmed; the architect never spends more than this.
     max_usd: float = Field(gt=0, le=1000)
+    # Another model than the job's for this request (e.g. a stronger one).
+    model: AiModel | None = None
+    # Only these building parts are to change (ids from the 3D preview).
+    parts: list[str] | None = Field(default=None, max_length=50)
 
 
 class DesignOutcome(BaseModel):
     job: JobView
     summary: str
     cost_usd: float
+    model: str
 
 
 class AdjustManyBody(BaseModel):
@@ -145,16 +150,23 @@ class AdjustManyBody(BaseModel):
     height_factor: float | None = Field(default=None, gt=0.1, le=10)  # e.g. 0.8 = 20 % lower
 
 
+class DesignManyEstimateBody(BaseModel):
+    item_ids: list[str] = Field(min_length=1, max_length=200)
+    model: AiModel | None = None
+
+
 class DesignManyBody(BaseModel):
     item_ids: list[str] = Field(min_length=1, max_length=200)
     request: str = Field(min_length=3, max_length=1500)
     max_usd: float = Field(gt=0, le=1000)
+    model: AiModel | None = None
 
 
 class DesignManyOutcome(BaseModel):
     job: JobView
     results: list[dict[str, Any]]
     cost_usd: float
+    model: str
 
 
 class TexturesBody(BaseModel):
@@ -614,25 +626,45 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
         )
         return ctx.jobs.view(job.id)
 
+    @app.post("/api/jobs/{job_id}/parts/{item_id:path}", dependencies=auth)
+    async def change_parts(job_id: str, item_id: str, body: PartOp) -> JobView:
+        await asyncio.to_thread(ctx.jobs.change_parts, job_id, item_id, body)
+        return ctx.jobs.view(job_id)
+
+    @app.delete("/api/jobs/{job_id}/parts/{item_id:path}", dependencies=auth)
+    async def undo_parts(job_id: str, item_id: str, all: bool = False) -> JobView:
+        await asyncio.to_thread(ctx.jobs.undo_parts, job_id, item_id, all)
+        return ctx.jobs.view(job_id)
+
     @app.post("/api/jobs/{job_id}/design-many/estimate", dependencies=auth)
-    async def design_many_estimate(job_id: str, body: AdjustManyBody) -> DesignEstimate:
-        return ctx.jobs.design_many_estimate(job_id, body.item_ids)
+    async def design_many_estimate(job_id: str, body: DesignManyEstimateBody) -> DesignEstimate:
+        return ctx.jobs.design_many_estimate(job_id, body.item_ids, body.model)
 
     @app.post("/api/jobs/{job_id}/design-many", dependencies=auth)
     async def redesign_many(job_id: str, body: DesignManyBody) -> DesignManyOutcome:
         job, results, cost = await ctx.jobs.redesign_many(
-            job_id, body.item_ids, body.request, body.max_usd
+            job_id, body.item_ids, body.request, body.max_usd, body.model
         )
-        return DesignManyOutcome(job=ctx.jobs.view(job.id), results=results, cost_usd=cost)
+        model = body.model or (job.brief.ai_model if job.brief else "")
+        return DesignManyOutcome(
+            job=ctx.jobs.view(job.id), results=results, cost_usd=cost, model=model
+        )
 
     @app.get("/api/jobs/{job_id}/design/{item_id:path}", dependencies=auth)
-    async def design_estimate(job_id: str, item_id: str) -> DesignEstimate:
-        return ctx.jobs.design_estimate(job_id, item_id)
+    async def design_estimate(
+        job_id: str, item_id: str, model: str | None = None
+    ) -> DesignEstimate:
+        return ctx.jobs.design_estimate(job_id, item_id, model)
 
     @app.post("/api/jobs/{job_id}/design/{item_id:path}", dependencies=auth)
     async def redesign(job_id: str, item_id: str, body: DesignBody) -> DesignOutcome:
-        _, summary, cost = await ctx.jobs.redesign(job_id, item_id, body.request, body.max_usd)
-        return DesignOutcome(job=ctx.jobs.view(job_id), summary=summary, cost_usd=round(cost, 4))
+        job, summary, cost = await ctx.jobs.redesign(
+            job_id, item_id, body.request, body.max_usd, body.model, body.parts
+        )
+        model = body.model or (job.brief.ai_model if job.brief else "")
+        return DesignOutcome(
+            job=ctx.jobs.view(job_id), summary=summary, cost_usd=round(cost, 4), model=model
+        )
 
     @app.delete("/api/jobs/{job_id}/design/{item_id:path}", dependencies=auth)
     async def reset_design(job_id: str, item_id: str) -> JobView:
@@ -700,7 +732,7 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
 
     @app.post("/api/jobs/{job_id}/gates/{gate}/approve", dependencies=auth)
     async def approve(job_id: str, gate: GateId, body: Approve) -> JobView:
-        return ctx.jobs.approve(job_id, gate, body.hash)
+        return await ctx.jobs.approve(job_id, gate, body.hash)
 
     @app.post("/api/jobs/{job_id}/cancel", dependencies=auth)
     async def cancel(job_id: str) -> JobView:

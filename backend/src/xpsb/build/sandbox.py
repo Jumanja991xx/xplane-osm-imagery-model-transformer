@@ -13,6 +13,7 @@ import starlark as sl
 
 from xpsb.build import tools
 from xpsb.build.mesh import GeometryError, Mesh
+from xpsb.build.parts import PartTracker
 
 MAX_SOURCE_BYTES = 100_000
 GEOMETRY_TOOLS = (
@@ -65,6 +66,14 @@ def _dialect() -> sl.Dialect:
     return d
 
 
+def _tracked(tracker: PartTracker, name: str, fn):
+    def call(*args, **kwargs):
+        return tracker.call(name, fn, args, kwargs)
+
+    call.__doc__ = fn.__doc__
+    return call
+
+
 def run_script(
     source: str,
     inputs: ScriptInputs,
@@ -78,8 +87,10 @@ def run_script(
     mesh = Mesh(max_triangles=max_triangles)
     t = tools.Tools(mesh, library, frozenset(inputs.textures), inputs.scan)
     module = sl.Module()
+    tracker = PartTracker(mesh)
     for fname in GEOMETRY_TOOLS:
-        module.add_callable(fname, getattr(t, fname))
+        module.add_callable(fname, _tracked(tracker, fname, getattr(t, fname)))
+    module.add_callable("part", tracker.name)
     for fname in HELPER_TOOLS:
         module.add_callable(fname, getattr(tools, fname))
     for fname, fn in tools.MATH.items():
