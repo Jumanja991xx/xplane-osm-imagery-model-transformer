@@ -3,7 +3,10 @@ progress counts every object, and a broken worker does not lose any."""
 
 from __future__ import annotations
 
+import sys
 import time
+
+import pytest
 
 from xpsb.build import assemble, parallel
 from xpsb.scene import ItemAttrs, SceneItem
@@ -64,6 +67,19 @@ def test_a_failing_pool_falls_back_to_one_process(tmp_path, monkeypatch):
     def broken(*args, **kwargs):
         raise OSError("no processes allowed")
 
-    monkeypatch.setattr(parallel, "ProcessPoolExecutor", broken)
+    monkeypatch.setattr(parallel.subprocess, "Popen", broken)
     res, out, seen, _ = _build(tmp_path, monkeypatch, "4", _items(5))
     assert [r.status for r in res] == ["ok"] * 5 and sorted(seen) == [1, 2, 3, 4, 5]
+
+
+def test_a_dying_worker_loses_no_object(tmp_path, monkeypatch):
+    """A worker that cannot run (here: a command that fails at once) builds nothing;
+    everything is built here instead - or, strict, it is an error."""
+    monkeypatch.setattr(
+        parallel, "worker_command", lambda: [sys.executable, "-c", "raise SystemExit(3)", "--"]
+    )
+    res, out, seen, _ = _build(tmp_path, monkeypatch, "2", _items(4))
+    assert [r.status for r in res] == ["ok"] * 4 and sorted(seen) == [1, 2, 3, 4]
+    monkeypatch.setenv("XPSB_BUILD_STRICT", "1")
+    with pytest.raises(RuntimeError, match="exit 3"):
+        _build(tmp_path, monkeypatch, "2", _items(4))

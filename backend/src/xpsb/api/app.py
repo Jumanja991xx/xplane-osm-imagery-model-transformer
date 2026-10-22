@@ -732,7 +732,7 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
 
     @app.post("/api/jobs/{job_id}/gates/{gate}/approve", dependencies=auth)
     async def approve(job_id: str, gate: GateId, body: Approve) -> JobView:
-        return ctx.jobs.approve(job_id, gate, body.hash)
+        return await ctx.jobs.approve(job_id, gate, body.hash)
 
     @app.post("/api/jobs/{job_id}/cancel", dependencies=auth)
     async def cancel(job_id: str) -> JobView:

@@ -15,7 +15,6 @@ import argparse
 import json
 import logging
 import logging.handlers
-import multiprocessing
 import os
 import secrets
 import socket
@@ -78,9 +77,13 @@ def _watch_stdin(server: uvicorn.Server) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    # The packaged app starts its build processes (build/parallel.py) from its own
-    # executable: they must run the worker, not a second backend.
-    multiprocessing.freeze_support()
+    raw = sys.argv[1:] if argv is None else argv
+    if raw[:1] == ["--build-worker"] and len(raw) == 2:
+        # A build process of build/parallel.py (this program started again).
+        from xpsb.build import parallel
+
+        parallel.worker(Path(raw[1]))
+        return
     args = _parse_args(argv)
     stacks = os.environ.get("XPSB_DUMP_STACKS_S", "")
     if stacks.isdigit():  # diagnostics (smoke test): where does it hang?

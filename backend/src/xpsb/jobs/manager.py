@@ -1652,7 +1652,7 @@ class JobManager:
 
     # ---- approvals ---------------------------------------------------------
 
-    def approve(self, job_id: str, gate: GateId, seen_hash: str) -> JobView:
+    async def approve(self, job_id: str, gate: GateId, seen_hash: str) -> JobView:
         job = self.get(job_id)
         ctx = self._gate_context(job)
         pending = compute_gate(job, ctx)
@@ -1673,10 +1673,23 @@ class JobManager:
                 self._set_state(job, JobState.PLANNING)
                 self._start(job, self._do_plan(job, ctx.design))
             else:
-                job.plan = pipeline.make_plan(
-                    job, self.job_dir(job.id), self.library(), self._foreign_reader(job)
-                )
-                self._set_state(job, JobState.PLANNED)
+                # Built in a thread (all objects, may take a while): the app keeps
+                # answering meanwhile and shows the job as being planned.
+                self._set_state(job, JobState.PLANNING)
+                try:
+                    job.plan = await asyncio.to_thread(
+                        pipeline.make_plan,
+                        job,
+                        self.job_dir(job.id),
+                        self.library(),
+                        self._foreign_reader(job),
+                    )
+                except Exception:
+                    if job.state is JobState.PLANNING:
+                        self._set_state(job, JobState.ANALYZED)
+                    raise
+                if job.state is JobState.PLANNING:  # not cancelled meanwhile
+                    self._set_state(job, JobState.PLANNED)
         elif gate == "C":
             assert ctx.dsftool is not None
             self._set_state(job, JobState.BUILDING)
