@@ -15,6 +15,7 @@ import argparse
 import json
 import logging
 import logging.handlers
+import multiprocessing
 import os
 import secrets
 import socket
@@ -77,6 +78,9 @@ def _watch_stdin(server: uvicorn.Server) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
+    # The packaged app starts its build processes (build/parallel.py) from its own
+    # executable: they must run the worker, not a second backend.
+    multiprocessing.freeze_support()
     args = _parse_args(argv)
     if args.host not in LOOPBACK:
         raise SystemExit("refusing to listen on a non-loopback address")

@@ -121,6 +121,9 @@ def main() -> None:
             **os.environ,
             "XPSB_TOKEN": "smoke-token",
             "XPSB_FIXTURES_DIR": str(FIXTURES),
+            # the packaged exe must start its build processes itself (no fallback)
+            "XPSB_BUILD_WORKERS": "2",
+            "XPSB_BUILD_STRICT": "1",
         }
         proc = subprocess.Popen(
             [

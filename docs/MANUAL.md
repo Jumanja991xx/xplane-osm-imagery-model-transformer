@@ -492,6 +492,12 @@ there under the new objects* is on.
 Use the ground *Aerial image* only where it fits, or tick *Paint the real object out of the
 aerial image below* for that object in the preview.
 
+**Building the preview or the package takes long.**
+The objects are built on all processor cores at once (one core stays free for the app), so
+a faster CPU with more cores helps most. The 3D view itself runs on the graphics card; if
+the preview warns that it runs *without a graphics card*, update the graphics driver and do
+not start the app over remote desktop.
+
 **Blender does nothing / is slow.**
 *Settings → Tools → Test Blender* shows what takes the time. *CPU only* skips the graphics
 card search; the log path is shown for reports.
