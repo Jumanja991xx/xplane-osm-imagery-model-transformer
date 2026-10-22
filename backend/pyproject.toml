@@ -16,6 +16,7 @@ dependencies = [
     "shapely>=2.0",
     "numpy>=1.26",
     "anthropic>=0.70",
+    "starlark-pyo3>=2026.1.2",
 ]
 
 [project.scripts]

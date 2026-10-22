@@ -16,7 +16,7 @@ import numpy as np
 from PIL import Image
 
 from xpsb.imagery.sources import ImagerySource
-from xpsb.imagery.wms import MAX_SIDE_PX, Bounds, WmsError, _http_get
+from xpsb.imagery.wms import MAX_SIDE_PX, Bounds, WmsError, _http_get, service_message
 
 TILE = 256
 MAX_TILES = 600  # politeness: one job never pulls more than this from a server
@@ -43,7 +43,11 @@ def choose_zoom(source: ImagerySource, lat: float, width_m: float, height_m: flo
     return 1
 
 
-def tile_url(template: str, z: int, x: int, y: int) -> str:
+def tile_url(template: str, z: int, x: int, y: int, subdomains: list[str] | None = None) -> str:
+    """Fills an XYZ template. {s} takes the subdomains in turn (the same tile always
+    from the same server, so caches along the way stay useful)."""
+    if "{s}" in template and subdomains:
+        template = template.replace("{s}", subdomains[(x + y) % len(subdomains)])
     return (
         template.replace("{z}", str(z))
         .replace("{x}", str(x))
@@ -56,11 +60,11 @@ def _get_tile(source: ImagerySource, z: int, x: int, y: int) -> Image.Image:
     fixtures = os.environ.get("XPSB_FIXTURES_DIR")
     if fixtures:
         return _fixture_tile(Path(fixtures), z, x, y)
-    data, ctype = _http_get(tile_url(source.url, z, x, y), timeout=60)
+    data, ctype = _http_get(tile_url(source.url, z, x, y, source.subdomains), timeout=60)
     try:
         return Image.open(io.BytesIO(data)).convert("RGB")
     except OSError as exc:
-        raise WmsError(f"tile {z}/{x}/{y} is not an image ({ctype})") from exc
+        raise WmsError(f"tile {z}/{x}/{y}: {service_message(data) or ctype}") from exc
 
 
 def _tile_bounds(z: int, x: int, y: int) -> Bounds:
@@ -123,3 +127,45 @@ def fetch_mosaic(
     )
     out = src[rows][:, cols]
     return Image.fromarray(np.ascontiguousarray(out), "RGB"), gsd
+
+
+def tile_bytes(source: ImagerySource, z: int, x: int, y: int) -> tuple[bytes, str]:
+    """One tile as the server sends it (for the map background), checked to be an image."""
+    if not (0 <= z <= source.max_zoom and 0 <= x < 2**z and 0 <= y < 2**z):
+        raise WmsError(f"tile {z}/{x}/{y} out of range")
+    data, ctype = _http_get(tile_url(source.url, z, x, y, source.subdomains), timeout=30)
+    if not ctype.startswith("image/"):
+        try:
+            Image.open(io.BytesIO(data)).verify()
+        except Exception as exc:
+            raise WmsError(f"tile {z}/{x}/{y}: {service_message(data) or ctype}") from exc
+        ctype = "image/" + (Image.open(io.BytesIO(data)).format or "png").lower()
+    return data, ctype
+
+
+def check_at(
+    source: ImagerySource, lon: float, lat: float, zoom: int = 15
+) -> tuple[bool, str | None]:
+    """Fetches the tile over a place (regional sources have nothing over the sea):
+    (True, None) or (False, what the server said)."""
+    z = min(zoom, source.max_zoom)
+    x = int(_merc_x(lon, z) // TILE)
+    y = int(_merc_y(lat, z) // TILE)
+    try:
+        tile_bytes(source, z, x, y)
+    except WmsError as exc:
+        return False, str(exc)[:300]
+    return True, None
+
+
+# A tile over Europe at a low zoom: enough to know whether the service takes the key.
+CHECK_TILE = (3, 4, 2)
+
+
+def check_source(source: ImagerySource) -> tuple[bool, str | None]:
+    """Fetches one tile: (True, None) or (False, the service's message without the key)."""
+    try:
+        _get_tile(source, *CHECK_TILE)
+    except WmsError as exc:
+        return False, str(exc)[:300]
+    return True, None

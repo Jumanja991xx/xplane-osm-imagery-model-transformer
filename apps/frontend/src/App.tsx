@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "./api/client";
+import { AppHeader } from "./components/AppMenu";
+import { JobsDialog } from "./components/JobsDialog";
 import { MapView } from "./components/MapView";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { Alert, Button, Spinner } from "./components/ui";
@@ -9,29 +11,23 @@ import { useApp } from "./store";
 
 function Shell() {
   const { t } = useT();
-  const { system, settingsOpen, setSettingsOpen } = useApp();
+  const { system, settingsOpen, jobsOpen, setSettingsOpen } = useApp();
   const xplaneMissing = system && !system.xplane?.valid;
 
   return (
     <div className="flex h-full">
       <aside className="flex w-[420px] shrink-0 flex-col border-r border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900">
-        <header className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-          <h1 className="text-sm font-semibold">{t("app.title")}</h1>
-          <Button variant="ghost" onClick={() => setSettingsOpen(true)} data-testid="open-settings">
-            ⚙ {t("app.settings")}
-          </Button>
-        </header>
-        <div className="space-y-2 px-4 pt-3">
-          <Alert>{t("app.milestone_notice")}</Alert>
-          {xplaneMissing && (
+        <AppHeader />
+        {xplaneMissing && (
+          <div className="px-4 pt-3">
             <Alert kind="warning">
               {t("settings.xplane_missing_banner")}{" "}
               <button className="underline" onClick={() => setSettingsOpen(true)}>
                 {t("app.settings")}
               </button>
             </Alert>
-          )}
-        </div>
+          </div>
+        )}
         <div className="min-h-0 flex-1">
           <Wizard />
         </div>
@@ -40,6 +36,7 @@ function Shell() {
         <MapView />
       </main>
       {settingsOpen && <SettingsDialog />}
+      {jobsOpen && <JobsDialog />}
     </div>
   );
 }
@@ -67,6 +64,13 @@ export default function App() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    // Development/browser tests: open an existing job without clicking through the wizard.
+    (window as unknown as { __xpsbOpenJob?: (id: string) => Promise<void> }).__xpsbOpenJob = async (id) =>
+      useApp.getState().setJob(await api.getJob(id));
+  }, []);
 
   const lang: Language = settings?.language ?? (navigator.language.startsWith("de") ? "de" : "en");
 

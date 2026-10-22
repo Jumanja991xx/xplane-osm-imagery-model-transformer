@@ -1,3 +1,4 @@
+import { modelName } from "../../ai";
 import { useEffect, useRef, useState } from "react";
 import {
   api,
@@ -11,11 +12,15 @@ import {
 import { useT, type Translate } from "../../i18n";
 import { CATEGORY_COLORS, categoryLabelKey, draftFor, OBJECT_CATEGORIES, SURFACE_TYPES } from "../../scene";
 import { useApp } from "../../store";
+import { PhotoPanel } from "../PhotoPanel";
 import { ProgressList } from "../ProgressList";
-import { Alert, Button, Checkbox, inputClass, Section, Spinner } from "../ui";
+import { Alert, Button, Checkbox, Section, Spinner, StepBar, inputClass } from "../ui";
 
 const WARNING_NOTES = new Set([
+  "analysis.dropped_category",
   "imagery.failed",
+  "imagery.esri_failed",
+  "imagery.esri_no_key",
   "imagery.not_covered",
   "imagery.custom_missing",
   "analysis.ai_limit_reached",
@@ -50,7 +55,15 @@ function questionText(t: Translate, q: Question): string {
   return q.text ?? t(q.text_key ?? "", q.params);
 }
 
-export function AnalysisStep({ onConfirm }: { onConfirm: () => void }) {
+export function AnalysisStep({
+  onConfirm,
+  onBack,
+  onReanalyze,
+}: {
+  onConfirm: () => void;
+  onBack: () => void;
+  onReanalyze: () => Promise<void>;
+}) {
   const { t } = useT();
   const { job, setJob } = useApp();
   const [error, setError] = useState<string | null>(null);
@@ -139,15 +152,25 @@ export function AnalysisStep({ onConfirm }: { onConfirm: () => void }) {
         </Section>
       )}
 
+      {editable && <DesignTargets job={job} />}
+
       <ItemList job={job} editable={editable} run={run} />
 
       {error && <Alert kind="error">{error}</Alert>}
       {editable && (
-        <div className="flex justify-end">
+        <StepBar back={{ label: t("steps.brief"), onClick: onBack }}>
+          <Button
+            variant="ghost"
+            onClick={() => onReanalyze().catch((e) => setError(e instanceof ApiError ? t(e.key, e.params) : String(e)))}
+            data-testid="reanalyze"
+            title={t("analysis.reanalyze_hint")}
+          >
+            🔄 {t("analysis.reanalyze")}
+          </Button>
           <Button variant="primary" onClick={onConfirm} data-testid="analysis-confirm">
             {t("analysis.confirm")}
           </Button>
-        </div>
+        </StepBar>
       )}
     </div>
   );
@@ -178,7 +201,7 @@ function SourcesSummary({ job }: { job: JobView }) {
       {ai && (
         <div data-testid="ai-summary">
           {t("analysis.ai_summary", {
-            model: t(`model.${ai.model}`),
+            model: modelName(t, ai.model),
             analyzed: ai.analyzed ?? 0,
             cost: formatUsd(ai.cost_usd ?? 0),
           })}
@@ -188,6 +211,45 @@ function SourcesSummary({ job }: { job: JobView }) {
         </div>
       )}
     </div>
+  );
+}
+
+/** What the AI architect will rebuild once the list is confirmed: photos can still be
+ * added now (own ones, street-level and nearby photos), before any money is spent. */
+function DesignTargets({ job }: { job: JobView }) {
+  const { t } = useT();
+  const { selectItem } = useApp();
+  const ids = job.design_targets ?? [];
+  const items = job.analysis?.items ?? [];
+  const targets = ids.map((id) => items.find((i) => i.id === id)).filter(Boolean) as SceneItem[];
+  if (!targets.length) return null;
+  return (
+    <Section title={`🏗 ${t("analysis.targets_title", { count: targets.length })}`}>
+      <p className="text-xs text-zinc-600 dark:text-zinc-300">{t("analysis.targets_hint")}</p>
+      <ul
+        className="divide-y divide-zinc-200 rounded-md bg-white ring-1 ring-accent-200 dark:divide-zinc-700 dark:bg-zinc-800 dark:ring-accent-700/50"
+        data-testid="design-targets"
+      >
+        {targets.map((item) => {
+          const n = item.photos?.length ?? 0;
+          return (
+            <li key={item.id} className="flex items-center gap-2 px-2 py-1.5 text-sm">
+              <span
+                className="h-3 w-3 shrink-0 rounded-sm ring-1 ring-black/20"
+                style={{ background: CATEGORY_COLORS[item.category] }}
+              />
+              <span className="min-w-0 flex-1 truncate">{itemTitle(t, item)}</span>
+              <span className={`shrink-0 text-xs ${n ? "text-emerald-700 dark:text-emerald-400" : "text-amber-600"}`}>
+                📷 {n ? t("analysis.targets_photos", { count: n }) : t("analysis.targets_no_photos")}
+              </span>
+              <Button variant="ghost" onClick={() => selectItem(item.id)} data-testid={`target-photos-${item.id}`}>
+                {t("analysis.targets_add")}
+              </Button>
+            </li>
+          );
+        })}
+      </ul>
+    </Section>
   );
 }
 
@@ -365,6 +427,8 @@ function ItemList({
                 {item.id === selectedItem && (
                   <ItemEditor
                     item={item}
+                    jobId={jobId}
+                    target={false}
                     editable={editable}
                     patch={(p) => run(() => api.updateItem(jobId, item.id, p))}
                     remove={() => run(() => api.deleteItem(jobId, item.id))}
@@ -458,6 +522,7 @@ function ItemList({
                 <ItemRow
                   key={item.id}
                   item={item}
+                  target={(job.design_targets ?? []).includes(item.id)}
                   selected={item.id === selectedItem}
                   editable={editable}
                   onSelect={() => selectItem(item.id === selectedItem ? null : item.id)}
@@ -530,6 +595,7 @@ function ItemList({
 
 function ItemRow({
   item,
+  target,
   selected,
   editable,
   onSelect,
@@ -539,6 +605,7 @@ function ItemRow({
   onMark,
 }: {
   item: SceneItem;
+  target: boolean;
   selected: boolean;
   editable: boolean;
   onSelect: () => void;
@@ -593,34 +660,63 @@ function ItemRow({
           {item.kind === "object" && height != null && (
             <span className="shrink-0 text-xs text-zinc-500">{height} m</span>
           )}
+          {target && (
+            <span className="shrink-0 text-xs" title={t("analysis.target_badge")}>
+              🏗
+            </span>
+          )}
+          {item.research && (
+            <span className="shrink-0 text-xs" title={t("analysis.researched")} data-testid="researched">
+              🔎{(item.photos?.length ?? 0) > 0 ? ` 📷${item.photos?.length}` : ""}
+            </span>
+          )}
           <span className="ml-auto shrink-0 text-[10px] uppercase text-zinc-400">
             {item.edited
               ? t("analysis.badge_edited")
-              : item.source === "ai"
-                ? t("analysis.badge_found")
+              : item.rating
+                ? t("analysis.badge_rating")
+                : item.remembered
+                  ? t("analysis.badge_memory")
+                  : item.source === "ai"
+                    ? t("analysis.badge_found")
                 : item.ai
                   ? t("analysis.badge_ai")
                   : t(`analysis.badge_${item.source}`)}
           </span>
         </button>
       </div>
-      {selected && <ItemEditor item={item} editable={editable} patch={patch} remove={() => run(() => api.deleteItem(jobId, item.id))} />}
+      {selected && (
+        <ItemEditor
+          item={item}
+          jobId={jobId}
+          target={target}
+          editable={editable}
+          patch={patch}
+          remove={() => run(() => api.deleteItem(jobId, item.id))}
+        />
+      )}
     </li>
   );
 }
 
 function ItemEditor({
   item,
+  jobId,
+  target,
   editable,
   patch,
   remove,
 }: {
   item: SceneItem;
+  jobId: string;
+  target: boolean;
   editable: boolean;
   patch: (p: ItemPatch) => Promise<void>;
   remove: () => Promise<void>;
 }) {
   const { t } = useT();
+  const { setJob } = useApp();
+  const split = async () => setJob(await api.splitRow(jobId, item.id));
   const [height, setHeight] = useState(item.attrs?.height_m?.toString() ?? "");
   const [name, setName] = useState(item.name ?? "");
   useEffect(() => {
@@ -645,6 +741,48 @@ function ItemEditor({
           🤖 {item.ai.summary}{" "}
           <span className="text-zinc-400">({t("analysis.confidence", { value: Math.round(item.ai.confidence * 100) })})</span>
         </p>
+      )}
+      {item.research?.facts && (
+        <details className="text-xs" data-testid="research-facts">
+          <summary className="cursor-pointer text-zinc-600 dark:text-zinc-300">
+            🔎 {t("analysis.research_title", { photos: item.photos?.length ?? 0 })}
+          </summary>
+          <pre className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap text-zinc-500">{item.research.facts}</pre>
+          {(item.research.sources ?? []).map((s) => (
+            <div key={s} className="truncate text-zinc-400">
+              {s}
+            </div>
+          ))}
+        </details>
+      )}
+      {(item.tags?.["site:derived"] || item.tags?.["site:name"] || (item.parts?.length ?? 0) > 0) && (
+        <div className="space-y-0.5 text-xs text-zinc-600 dark:text-zinc-300" data-testid="item-context">
+          {item.tags?.["site:derived"] && <p>📐 {t("analysis.site_derived")}</p>}
+          {item.tags?.["site:name"] && !item.tags?.["site:derived"] && (
+            <p>📍 {t("analysis.site_member", { name: item.tags["site:name"] })}</p>
+          )}
+          {(item.parts?.length ?? 0) > 0 && <p>🧩 {t("analysis.parts", { count: item.parts!.length })}</p>}
+        </div>
+      )}
+      {(item.row_members?.length ?? 0) > 1 && (
+        <div className="flex items-center justify-between gap-2 text-xs text-zinc-600 dark:text-zinc-300" data-testid="row-info">
+          <span>🏘️ {t("analysis.row_of", { count: item.row_members!.length })}</span>
+          {editable && (
+            <Button onClick={() => void split()} data-testid="split-row">
+              {t("analysis.split_row")}
+            </Button>
+          )}
+        </div>
+      )}
+      {editable && item.kind === "object" && (
+        <details className="rounded-md bg-zinc-50 p-2 dark:bg-zinc-900/40" open={target} data-testid="item-photos">
+          <summary className="cursor-pointer text-xs font-medium">
+            📷 {t(target ? "analysis.photos_target" : "analysis.photos_other", { count: item.photos?.length ?? 0 })}
+          </summary>
+          <div className="pt-1.5">
+            <PhotoPanel jobId={jobId} item={item} />
+          </div>
+        </details>
       )}
       <div className="grid grid-cols-2 gap-2">
         <label className="space-y-0.5">
@@ -777,7 +915,7 @@ function FindSimilar({ item }: { item: SceneItem }) {
           <p>
             {t("analysis.similar_question", {
               tiles: estimate.tiles,
-              model: t(`model.${estimate.model}`),
+              model: modelName(t, estimate.model),
               cost: formatUsd(Math.min(estimate.estimate_usd, estimate.budget_usd)),
             })}
           </p>

@@ -1,15 +1,30 @@
-import { useState } from "react";
-import { api, ApiError } from "../../api/client";
+import { useEffect, useState } from "react";
+import { api, ApiError, type JobSummary } from "../../api/client";
 import { MAX_AOI_AREA_KM2, ringAreaKm2 } from "../../geo";
 import { useT } from "../../i18n";
 import { useApp } from "../../store";
-import { Alert, Button, Spinner } from "../ui";
+import { JobRow } from "../JobsDialog";
+import { Alert, Button, Spinner, StepBar } from "../ui";
+
+const RECENT_SHOWN = 3;
 
 export function AreaStep() {
   const { t } = useT();
-  const { aoi, drawMode, job, setDrawMode, requestClear, setJob, reset } = useApp();
+  const { aoi, drawMode, job, setDrawMode, requestClear, setJob, reset, setJobsOpen } = useApp();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [recent, setRecent] = useState<JobSummary[]>([]);
+  useEffect(() => {
+    if (!job)
+      void api
+        .listJobs()
+        .then((jobs) => setRecent([...jobs].sort((a, b) => b.updated_at.localeCompare(a.updated_at))))
+        .catch(() => setRecent([]));
+  }, [job]);
+  const open = async (id: string) => {
+    const opened = await api.getJob(id);
+    setJob(opened);
+  };
 
   const geometry = job?.aoi ?? aoi;
   const area = geometry ? ringAreaKm2(geometry.coordinates[0]) : 0;
@@ -73,13 +88,33 @@ export function AreaStep() {
         <p className="text-sm text-zinc-500">{t("area.none")}</p>
       )}
       {tooLarge && <Alert kind="warning">{t("area.too_large", { max: MAX_AOI_AREA_KM2 })}</Alert>}
+      {recent.length > 0 && !aoi && (
+        <div className="space-y-1 pt-2" data-testid="recent-jobs">
+          <h3 className="text-xs font-semibold text-zinc-500 uppercase">{t("area.recent")}</h3>
+          <ul className="divide-y divide-zinc-200 rounded-md bg-white ring-1 ring-zinc-200 dark:divide-zinc-700 dark:bg-zinc-800 dark:ring-zinc-700">
+            {recent.slice(0, RECENT_SHOWN).map((r) => (
+              <JobRow key={r.id} job={r} onOpen={open} />
+            ))}
+          </ul>
+          {recent.length > RECENT_SHOWN && (
+            <button
+              type="button"
+              className="text-xs text-accent-600 hover:underline"
+              onClick={() => setJobsOpen(true)}
+              data-testid="recent-toggle"
+            >
+              {t("area.show_all", { count: recent.length })}
+            </button>
+          )}
+        </div>
+      )}
       {error && <Alert kind="error">{error}</Alert>}
-      <div className="flex justify-end">
+      <StepBar>
         <Button variant="primary" onClick={next} disabled={!aoi || tooLarge || busy} data-testid="area-next">
           {busy && <Spinner />}
-          {t("common.next")}
+          {t("area.next")}
         </Button>
-      </div>
+      </StepBar>
     </div>
   );
 }

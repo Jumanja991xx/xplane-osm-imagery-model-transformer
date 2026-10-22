@@ -7,7 +7,7 @@ Bau mit DSFTool → Installation in einen Test-X-Plane-Ordner.
 ```bash
 python tools/build_dsftool.py                       # einmalig
 mkdir -p "/tmp/xp/X-Plane 12/Custom Scenery" "/tmp/xp/X-Plane 12/Resources"
-XPSB_FAKE_AI=$PWD/backend/tests/fake_ai.py XPSB_FIXTURES_DIR=$PWD/backend/tests/fixtures/speedway pnpm dev:backend  # Terminal 1
+XPSB_FAKE_AI=$PWD/backend/tests/fake_ai.py XPSB_FAKE_AI_DELAY=1.5 XPSB_FIXTURES_DIR=$PWD/backend/tests/fixtures/speedway pnpm dev:backend  # Terminal 1
 VITE_BASEMAP_STYLE=blank pnpm dev:frontend          # Terminal 2 (ohne Internet-Karte)
 uv run --no-project --with playwright python tests/e2e/wizard_e2e.py "/tmp/xp/X-Plane 12"
 ```

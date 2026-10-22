@@ -67,6 +67,20 @@ Testflächen nutzen `airports`. Für echte Flächen legen wir die Reihenfolge in
 
 - Offen (Zaun) vs. geschlossen (Gebäude) bestimmt die **`.fac`-Datei**
   (`RING`, Dach) – nicht die DSF (`WED_FacadePlacement::GetTopoMode`).
+- DSF: Flächen-Fassaden dürfen **Löcher** haben (Innenhöfe): Außenring gegen den
+  Uhrzeigersinn, Löcher im Uhrzeigersinn (`WED_PolygonWithHolesForPolygon`,
+  `WED_DSFExport.cpp`), `param` = Höhe in m, 2 Koordinaten.
+- Typ 1 (`A`/`800`/`FACADE`), Parser `WED_ResourceMgr::GetFac`, Geometrie
+  `WED_FacadePreview.cpp`:
+  - `TEXTURE`, `RING 1`, `TWO_SIDED 0`, `LOD <nah> <fern>` (erst danach Wände),
+    `ROOF <s> <t>` (bis 4 Punkte, Dachtextur), `WALL <min_breite> <max_breite>
+    <min_kurs> <max_kurs> <name>`, `SCALE <m pro Textur s> <m pro Textur t>`,
+    `ROOF_SLOPE <grad> [SLANT]`, `BOTTOM|MIDDLE|TOP <t1> <t2>`,
+    `LEFT|CENTER|RIGHT <s1> <s2>` (Texturanteile 0..1, oder Pixel mit `TEX_SIZE`).
+  - Höhe aus der DSF: es werden so viele Geschosse gestapelt, dass die Höhe am
+    besten passt (BOTTOM → MIDDLE wiederholt → TOP).
+  - `ROOF_SLOPE`: das **letzte** TOP-Stück wird um den Winkel nach innen geklappt
+    (Dachschräge/Mansarde); das flache Dach sitzt auf dem eingerückten Ring.
 
 ## Linien (`.lin`)
 

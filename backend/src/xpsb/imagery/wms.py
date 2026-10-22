@@ -12,6 +12,7 @@ import json
 import logging
 import math
 import os
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -52,6 +53,7 @@ class ImageryInfo(BaseModel):
     width_px: int
     height_px: int
     gsd_m: float
+    package_ok: bool = True  # may go into the package as ground texture
     file: str = "aoi.jpg"
 
 
@@ -85,8 +87,33 @@ def _http_get(url: str, timeout: float = 60) -> tuple[bytes, str]:
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.read(), resp.headers.get("Content-Type", "")
+    except urllib.error.HTTPError as exc:
+        try:
+            detail = service_message(exc.read())
+        except OSError:
+            detail = None
+        raise WmsError(
+            f"{url.split('?')[0]}: HTTP {exc.code}" + (f" – {detail}" if detail else "")
+        ) from None
     except (urllib.error.URLError, TimeoutError) as exc:
         raise WmsError(f"{url.split('?')[0]}: {exc}") from exc
+
+
+def service_message(data: bytes) -> str | None:
+    """Tile servers (ArcGIS among them) answer errors with JSON instead of an image,
+    e.g. {"error": {"code": 498, "message": "Invalid token."}}. Never echoes the URL."""
+    try:
+        body = json.loads(data[:20_000])
+    except ValueError:
+        text = data[:200].decode("utf-8", "replace").strip()
+        return text if text and text.isprintable() else None
+    err = body.get("error") if isinstance(body, dict) else None
+    if isinstance(err, dict):
+        msg = str(err.get("message") or "").strip()
+        code = err.get("code")
+        details = "; ".join(str(d) for d in err.get("details") or [] if d)
+        return " ".join(x for x in (f"[{code}]" if code else "", msg, details) if x)[:300] or None
+    return None
 
 
 def _with_query(url: str, params: dict[str, str]) -> str:
@@ -113,9 +140,24 @@ def capabilities_layers(xml_bytes: bytes) -> list[str]:
     return names
 
 
+def _pick(wanted: str, available: list[str]) -> str | None:
+    """`wanted` is a layer name, or one with {year} for services that name each
+    flight year (the newest is taken)."""
+    if "{year}" not in wanted:
+        return wanted if wanted in available else None
+    pattern = re.compile("^" + re.escape(wanted).replace(re.escape("{year}"), r"(\d{4})") + "$")
+    years = {m.group(1): name for name in available if (m := pattern.match(name))}
+    return years[max(years)] if years else None
+
+
 def choose_layer(source: ImagerySource, available: list[str]) -> str:
-    if source.layer and source.layer in available:
-        return source.layer
+    """Comma-separated layers are drawn together (one city, one port...)."""
+    if source.layer:
+        picked = [
+            name for part in source.layer.split(",") if (name := _pick(part.strip(), available))
+        ]
+        if picked:
+            return ",".join(picked)
     # Skip metadata/greyscale layers when guessing.
     for name in available:
         low = name.lower()
@@ -247,6 +289,7 @@ def fetch_area_image(
         width_px=width,
         height_px=height,
         gsd_m=round(gsd, 3),
+        package_ok=source.package_ok,
     )
     (out_dir / "aoi.json").write_text(info.model_dump_json(indent=2), encoding="utf-8")
     return info

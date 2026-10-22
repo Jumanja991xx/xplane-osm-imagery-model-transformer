@@ -247,7 +247,469 @@
         }
       }
     },
+    "/api/secrets/gemini": {
+      "put": {
+        "summary": "Set Gemini Key",
+        "operationId": "set_gemini_key_api_secrets_gemini_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiKeyBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Gemini Key",
+        "operationId": "delete_gemini_key_api_secrets_gemini_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ai/models": {
+      "get": {
+        "summary": "Ai Models",
+        "description": "The models the app knows (Claude and Gemini), best first per provider.",
+        "operationId": "ai_models_api_ai_models_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AiModelEntry"
+                  },
+                  "type": "array",
+                  "title": "Response Ai Models Api Ai Models Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ai/gemini-models": {
+      "post": {
+        "summary": "Gemini Models",
+        "description": "The Gemini models the user's key may use, as Google reports them now\n(Google renames and retires models often). Asks Google: no costs.",
+        "operationId": "gemini_models_api_ai_gemini_models_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AiModelEntry"
+                  },
+                  "type": "array",
+                  "title": "Response Gemini Models Api Ai Gemini Models Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/secrets/mapillary": {
+      "put": {
+        "summary": "Set Mapillary Token",
+        "operationId": "set_mapillary_token_api_secrets_mapillary_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Set Mapillary Token Api Secrets Mapillary Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Mapillary Token",
+        "operationId": "delete_mapillary_token_api_secrets_mapillary_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Delete Mapillary Token Api Secrets Mapillary Delete"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/secrets/esri": {
+      "put": {
+        "summary": "Set Esri Key",
+        "description": "Stores the key and tries it right away with one tile.",
+        "operationId": "set_esri_key_api_secrets_esri_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeyCheck"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Esri Key",
+        "operationId": "delete_esri_key_api_secrets_esri_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Delete Esri Key Api Secrets Esri Delete"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/imagery/test": {
+      "post": {
+        "summary": "Test Source",
+        "description": "Tries the own XYZ source as entered (before saving) with one tile.",
+        "operationId": "test_source_api_imagery_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceTestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceTest"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/other-sceneries": {
+      "get": {
+        "summary": "Other Sceneries",
+        "description": "Installed sceneries for the same tile (orthos, other objects).",
+        "operationId": "other_sceneries_api_jobs__job_id__other_sceneries_get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OtherScenery"
+                  },
+                  "title": "Response Other Sceneries Api Jobs  Job Id  Other Sceneries Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/places": {
+      "get": {
+        "summary": "Search Places",
+        "description": "Places for the search box on the map (OpenStreetMap data via Photon).",
+        "operationId": "search_places_api_places_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Q"
+            }
+          },
+          {
+            "name": "lon",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lon"
+            }
+          },
+          {
+            "name": "lat",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lat"
+            }
+          },
+          {
+            "name": "final",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Final"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Place"
+                  },
+                  "title": "Response Search Places Api Places Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/blender/test": {
+      "post": {
+        "summary": "Test Blender",
+        "description": "Bakes one test object with the Blender as entered and times it.",
+        "operationId": "test_blender_api_blender_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlenderTestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlenderTest"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/secrets/esri/check": {
+      "post": {
+        "summary": "Check Esri Key",
+        "operationId": "check_esri_key_api_secrets_esri_check_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeyCheck"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobs": {
+      "get": {
+        "summary": "List Jobs",
+        "operationId": "list_jobs_api_jobs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response List Jobs Api Jobs Get"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "summary": "Create Job",
         "operationId": "create_job_api_jobs_post",
@@ -263,6 +725,104 @@
         },
         "responses": {
           "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/reopen": {
+      "post": {
+        "summary": "Reopen",
+        "operationId": "reopen_api_jobs__job_id__reopen_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReopenBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/package-name": {
+      "post": {
+        "summary": "Rename Package",
+        "operationId": "rename_package_api_jobs__job_id__package_name_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
@@ -683,10 +1243,158 @@
         }
       }
     },
+    "/api/jobs/{job_id}/split-row/{item_id}": {
+      "post": {
+        "summary": "Split Row",
+        "operationId": "split_row_api_jobs__job_id__split_row__item_id__post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/basemap/{z}/{x}/{y}": {
+      "get": {
+        "summary": "Basemap Tile",
+        "description": "A tile of the user's own XYZ source for the map background (see basemap.py).",
+        "operationId": "basemap_tile_api_basemap__z___x___y__get",
+        "parameters": [
+          {
+            "name": "z",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Z"
+            }
+          },
+          {
+            "name": "x",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "X"
+            }
+          },
+          {
+            "name": "y",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Y"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/png": {},
+              "image/jpeg": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobs/{job_id}/imagery": {
       "get": {
         "summary": "Job Imagery",
         "operationId": "job_imagery_api_jobs__job_id__imagery_get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "retouched",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Retouched"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/jpeg": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/preview": {
+      "get": {
+        "summary": "Job Preview",
+        "operationId": "job_preview_api_jobs__job_id__preview_get",
         "parameters": [
           {
             "name": "job_id",
@@ -702,7 +1410,958 @@
           "200": {
             "description": "Successful Response",
             "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Job Preview Api Jobs  Job Id  Preview Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/preview/{name}": {
+      "get": {
+        "summary": "Job Preview File",
+        "operationId": "job_preview_file_api_jobs__job_id__preview__name__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/objects/{item_id}": {
+      "delete": {
+        "summary": "Remove Object",
+        "operationId": "remove_object_api_jobs__job_id__objects__item_id__delete",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Adjust Object",
+        "operationId": "adjust_object_api_jobs__job_id__objects__item_id__patch",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdjustBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/placement/{item_id}": {
+      "patch": {
+        "summary": "Place Built",
+        "operationId": "place_built_api_jobs__job_id__placement__item_id__patch",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdjustBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/objects": {
+      "patch": {
+        "summary": "Adjust Many",
+        "operationId": "adjust_many_api_jobs__job_id__objects_patch",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdjustManyBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/design-many/estimate": {
+      "post": {
+        "summary": "Design Many Estimate",
+        "operationId": "design_many_estimate_api_jobs__job_id__design_many_estimate_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdjustManyBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignEstimate"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/design-many": {
+      "post": {
+        "summary": "Redesign Many",
+        "operationId": "redesign_many_api_jobs__job_id__design_many_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DesignManyBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignManyOutcome"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/design/{item_id}": {
+      "get": {
+        "summary": "Design Estimate",
+        "operationId": "design_estimate_api_jobs__job_id__design__item_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignEstimate"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Redesign",
+        "operationId": "redesign_api_jobs__job_id__design__item_id__post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DesignBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignOutcome"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Reset Design",
+        "operationId": "reset_design_api_jobs__job_id__design__item_id__delete",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/photos": {
+      "post": {
+        "summary": "Add Photo",
+        "operationId": "add_photo_api_jobs__job_id__photos_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "item",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PhotoUpload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/photos/{photo_id}": {
+      "get": {
+        "summary": "Photo File",
+        "operationId": "photo_file_api_jobs__job_id__photos__photo_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "photo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Photo Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
               "image/jpeg": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Photo",
+        "operationId": "delete_photo_api_jobs__job_id__photos__photo_id__delete",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "photo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Photo Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/skip-blender": {
+      "post": {
+        "summary": "Skip Blender",
+        "operationId": "skip_blender_api_jobs__job_id__skip_blender_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/textures": {
+      "put": {
+        "summary": "Set Textures",
+        "operationId": "set_textures_api_jobs__job_id__textures_put",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "item",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TexturesBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/texture-preview": {
+      "post": {
+        "summary": "Texture Preview",
+        "operationId": "texture_preview_api_jobs__job_id__texture_preview_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "item",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PhotoTexture"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "image/jpeg": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/photo-search": {
+      "get": {
+        "summary": "Search Photos",
+        "operationId": "search_photos_api_jobs__job_id__photo_search_get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "item",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/photo-search/{candidate_id}/thumb": {
+      "get": {
+        "summary": "Candidate Thumb",
+        "operationId": "candidate_thumb_api_jobs__job_id__photo_search__candidate_id__thumb_get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "candidate_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Candidate Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "image/jpeg": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/photo-search/{candidate_id}/import": {
+      "post": {
+        "summary": "Import Photo",
+        "operationId": "import_photo_api_jobs__job_id__photo_search__candidate_id__import_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "candidate_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Candidate Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
             }
           },
           "422": {
@@ -824,6 +2483,53 @@
   },
   "components": {
     "schemas": {
+      "AdjustBody": {
+        "properties": {
+          "attrs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Attrs"
+          }
+        },
+        "type": "object",
+        "title": "AdjustBody"
+      },
+      "AdjustManyBody": {
+        "properties": {
+          "item_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Item Ids"
+          },
+          "attrs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Attrs"
+          },
+          "height_factor": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 10.0,
+                "exclusiveMinimum": 0.1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height Factor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "item_ids"
+        ],
+        "title": "AdjustManyBody"
+      },
       "AiAssessment": {
         "properties": {
           "model": {
@@ -848,6 +2554,59 @@
           "confidence"
         ],
         "title": "AiAssessment"
+      },
+      "AiModelEntry": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "provider": {
+            "type": "string",
+            "enum": [
+              "anthropic",
+              "google"
+            ],
+            "title": "Provider"
+          },
+          "tier": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "top",
+                  "mid",
+                  "low"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tier"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note",
+            "default": ""
+          },
+          "price_in": {
+            "type": "number",
+            "title": "Price In"
+          },
+          "price_out": {
+            "type": "number",
+            "title": "Price Out"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "provider",
+          "price_in",
+          "price_out"
+        ],
+        "title": "AiModelEntry"
       },
       "AiRunInfo": {
         "properties": {
@@ -886,6 +2645,13 @@
             "type": "integer",
             "title": "Proposals",
             "default": 0
+          },
+          "dropped": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Dropped"
           },
           "limit_reached": {
             "type": "boolean",
@@ -930,11 +2696,6 @@
           },
           "model": {
             "type": "string",
-            "enum": [
-              "claude-opus-5-5",
-              "claude-sonnet-5-5",
-              "claude-haiku-5-5"
-            ],
             "title": "Model",
             "default": "claude-opus-5-5"
           },
@@ -1076,6 +2837,126 @@
         ],
         "title": "Approve"
       },
+      "BlenderTest": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "device": {
+            "type": "string",
+            "title": "Device",
+            "default": ""
+          },
+          "start_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start S"
+          },
+          "gpu_search_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gpu Search S"
+          },
+          "bake_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bake S"
+          },
+          "total_s": {
+            "type": "number",
+            "title": "Total S",
+            "default": 0.0
+          },
+          "gpu_search_hung": {
+            "type": "boolean",
+            "title": "Gpu Search Hung",
+            "default": false
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problem"
+          },
+          "log": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Log"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "title": "BlenderTest"
+      },
+      "BlenderTestBody": {
+        "properties": {
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "device": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "cpu"
+            ],
+            "title": "Device",
+            "default": "auto"
+          }
+        },
+        "type": "object",
+        "title": "BlenderTestBody"
+      },
       "Brief": {
         "properties": {
           "object_categories": {
@@ -1103,6 +2984,10 @@
             "type": "array",
             "title": "Exclusions"
           },
+          "exclusion_scope": {
+            "$ref": "#/components/schemas/ExclusionScope",
+            "default": "objects"
+          },
           "use_ai": {
             "type": "boolean",
             "title": "Use Ai",
@@ -1110,13 +2995,31 @@
           },
           "ai_model": {
             "type": "string",
-            "enum": [
-              "claude-opus-5-5",
-              "claude-sonnet-5-5",
-              "claude-haiku-5-5"
-            ],
             "title": "Ai Model",
             "default": "claude-opus-5-5"
+          },
+          "ai_economy": {
+            "type": "boolean",
+            "title": "Ai Economy",
+            "default": true
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "objects",
+              "city"
+            ],
+            "title": "Mode",
+            "default": "objects"
+          },
+          "city_preset": {
+            "type": "string",
+            "enum": [
+              "central_europe",
+              "central_europe_city"
+            ],
+            "title": "City Preset",
+            "default": "central_europe"
           },
           "ai_cost_limit_usd": {
             "type": "number",
@@ -1129,6 +3032,21 @@
             "type": "boolean",
             "title": "Ai Detect",
             "default": true
+          },
+          "research": {
+            "type": "boolean",
+            "title": "Research",
+            "default": true
+          },
+          "ai_design": {
+            "type": "string",
+            "enum": [
+              "important",
+              "all",
+              "off"
+            ],
+            "title": "Ai Design",
+            "default": "important"
           },
           "detail": {
             "$ref": "#/components/schemas/DetailLevel",
@@ -1191,6 +3109,65 @@
             "minItems": 2,
             "title": "Center"
           },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "default": "medium"
+          },
+          "objects": {
+            "items": {
+              "$ref": "#/components/schemas/PlanObject"
+            },
+            "type": "array",
+            "title": "Objects"
+          },
+          "surfaces": {
+            "type": "integer",
+            "title": "Surfaces",
+            "default": 0
+          },
+          "surface_mode": {
+            "type": "string",
+            "title": "Surface Mode",
+            "default": "material"
+          },
+          "exclusions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Exclusions"
+          },
+          "exclusion_scope": {
+            "type": "string",
+            "title": "Exclusion Scope",
+            "default": "objects"
+          },
+          "exclusion_rects": {
+            "type": "integer",
+            "title": "Exclusion Rects",
+            "default": 0
+          },
+          "foreign_zones": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Foreign Zones"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
           "test_scenery": {
             "type": "boolean",
             "title": "Test Scenery",
@@ -1234,6 +3211,55 @@
           "dsftool_version": {
             "type": "string",
             "title": "Dsftool Version"
+          },
+          "blender": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blender"
+          },
+          "shaded": {
+            "type": "integer",
+            "title": "Shaded",
+            "default": 0
+          },
+          "detailed": {
+            "type": "integer",
+            "title": "Detailed",
+            "default": 0
+          },
+          "blender_problem": {
+            "type": "string",
+            "title": "Blender Problem",
+            "default": ""
+          },
+          "blender_log": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blender Log"
+          },
+          "shaded_stems": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Shaded Stems"
+          },
+          "meshes": {
+            "type": "integer",
+            "title": "Meshes",
+            "default": 0
           }
         },
         "type": "object",
@@ -1243,6 +3269,158 @@
           "dsftool_version"
         ],
         "title": "BuildResult"
+      },
+      "BuildingPart": {
+        "properties": {
+          "geometry": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Geometry"
+          },
+          "osm_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Osm Ref"
+          },
+          "height_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height M"
+          },
+          "min_height_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Height M"
+          },
+          "roof_shape": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roof Shape"
+          },
+          "wall_color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wall Color"
+          },
+          "roof_color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roof Color"
+          },
+          "part": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Part"
+          }
+        },
+        "type": "object",
+        "required": [
+          "geometry"
+        ],
+        "title": "BuildingPart",
+        "description": "An OSM building:part inside the outline of a building (Simple 3D Buildings):\nthe outline is the object, its parts describe the shape in more detail."
+      },
+      "CallCost": {
+        "properties": {
+          "stage": {
+            "type": "string",
+            "title": "Stage",
+            "default": ""
+          },
+          "item": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "input_tokens": {
+            "type": "integer",
+            "title": "Input Tokens",
+            "default": 0
+          },
+          "output_tokens": {
+            "type": "integer",
+            "title": "Output Tokens",
+            "default": 0
+          },
+          "cache_read_tokens": {
+            "type": "integer",
+            "title": "Cache Read Tokens",
+            "default": 0
+          },
+          "cache_write_tokens": {
+            "type": "integer",
+            "title": "Cache Write Tokens",
+            "default": 0
+          },
+          "usd": {
+            "type": "number",
+            "title": "Usd",
+            "default": 0.0
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model"
+        ],
+        "title": "CallCost",
+        "description": "One AI call as billed: the token counts the API reported, priced with the list\nprices in ai/usage.py. `stage`/`item` are filled in by the job's cost book."
       },
       "CreateJob": {
         "properties": {
@@ -1255,6 +3433,137 @@
           "aoi"
         ],
         "title": "CreateJob"
+      },
+      "DesignBody": {
+        "properties": {
+          "request": {
+            "type": "string",
+            "maxLength": 1500,
+            "minLength": 3,
+            "title": "Request"
+          },
+          "max_usd": {
+            "type": "number",
+            "maximum": 1000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Max Usd"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request",
+          "max_usd"
+        ],
+        "title": "DesignBody"
+      },
+      "DesignEstimate": {
+        "properties": {
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "estimate_usd": {
+            "type": "number",
+            "title": "Estimate Usd"
+          },
+          "max_usd": {
+            "type": "number",
+            "title": "Max Usd"
+          },
+          "budget_usd": {
+            "type": "number",
+            "title": "Budget Usd"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model",
+          "estimate_usd",
+          "max_usd",
+          "budget_usd"
+        ],
+        "title": "DesignEstimate",
+        "description": "What a request to the AI architect may cost; shown before anything is sent."
+      },
+      "DesignManyBody": {
+        "properties": {
+          "item_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Item Ids"
+          },
+          "request": {
+            "type": "string",
+            "maxLength": 1500,
+            "minLength": 3,
+            "title": "Request"
+          },
+          "max_usd": {
+            "type": "number",
+            "maximum": 1000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Max Usd"
+          }
+        },
+        "type": "object",
+        "required": [
+          "item_ids",
+          "request",
+          "max_usd"
+        ],
+        "title": "DesignManyBody"
+      },
+      "DesignManyOutcome": {
+        "properties": {
+          "job": {
+            "$ref": "#/components/schemas/JobView"
+          },
+          "results": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Results"
+          },
+          "cost_usd": {
+            "type": "number",
+            "title": "Cost Usd"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job",
+          "results",
+          "cost_usd"
+        ],
+        "title": "DesignManyOutcome"
+      },
+      "DesignOutcome": {
+        "properties": {
+          "job": {
+            "$ref": "#/components/schemas/JobView"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "cost_usd": {
+            "type": "number",
+            "title": "Cost Usd"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job",
+          "summary",
+          "cost_usd"
+        ],
+        "title": "DesignOutcome"
       },
       "DetailLevel": {
         "type": "string",
@@ -1310,6 +3619,14 @@
           "found"
         ],
         "title": "DsfToolStatus"
+      },
+      "ExclusionScope": {
+        "type": "string",
+        "enum": [
+          "objects",
+          "area"
+        ],
+        "title": "ExclusionScope"
       },
       "ExclusionType": {
         "type": "string",
@@ -1476,6 +3793,11 @@
             "type": "number",
             "title": "Gsd M"
           },
+          "package_ok": {
+            "type": "boolean",
+            "title": "Package Ok",
+            "default": true
+          },
           "file": {
             "type": "string",
             "title": "File",
@@ -1506,8 +3828,17 @@
             "type": "string",
             "enum": [
               "auto",
+              "de_states",
               "bayern_dop40",
               "nrw_dop",
+              "swissimage",
+              "basemap_at",
+              "pdok_nl",
+              "ign_fr",
+              "pnoa_es",
+              "usgs_naip",
+              "gsi_jp",
+              "esri",
               "custom",
               "none"
             ],
@@ -1536,6 +3867,13 @@
             "title": "Custom Url",
             "default": ""
           },
+          "custom_subdomains": {
+            "type": "string",
+            "maxLength": 200,
+            "pattern": "^[A-Za-z0-9,\\- ]*$",
+            "title": "Custom Subdomains",
+            "default": ""
+          },
           "custom_layer": {
             "type": "string",
             "maxLength": 200,
@@ -1552,6 +3890,11 @@
             "type": "boolean",
             "title": "Custom Rights Confirmed",
             "default": false
+          },
+          "custom_on_map": {
+            "type": "boolean",
+            "title": "Custom On Map",
+            "default": true
           }
         },
         "type": "object",
@@ -1595,6 +3938,19 @@
               }
             ],
             "title": "Height M"
+          },
+          "min_height_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 300.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Height M"
           },
           "levels": {
             "anyOf": [
@@ -1687,6 +4043,201 @@
               }
             ],
             "title": "Width M"
+          },
+          "flip": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flip"
+          },
+          "rows": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 80.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rows"
+          },
+          "wall_material": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "windows",
+                  "windows_classic",
+                  "windows_arched",
+                  "windows_house",
+                  "plaster",
+                  "stone",
+                  "brick",
+                  "glass",
+                  "metal_sheet",
+                  "concrete",
+                  "wood"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wall Material"
+          },
+          "monument_kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "statue",
+                  "rider",
+                  "bust",
+                  "obelisk",
+                  "column",
+                  "stone"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monument Kind"
+          },
+          "pose": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "standing",
+                  "arm_raised",
+                  "arms_raised",
+                  "pointing",
+                  "seated"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pose"
+          },
+          "holding": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "palm",
+                  "wreath",
+                  "sword",
+                  "torch",
+                  "book",
+                  "flag"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holding"
+          },
+          "robe": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Robe"
+          },
+          "use_scan": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Use Scan"
+          },
+          "shift_x_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000.0,
+                "minimum": -1000.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shift X M"
+          },
+          "shift_y_m": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000.0,
+                "minimum": -1000.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shift Y M"
+          },
+          "turn_deg": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 720.0,
+                "minimum": -720.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Turn Deg"
+          },
+          "hide_below": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hide Below"
+          },
+          "bridge_structure": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "beam",
+                  "arch",
+                  "truss",
+                  "suspension",
+                  "cable_stayed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bridge Structure"
           }
         },
         "type": "object",
@@ -1797,6 +4348,7 @@
           "clarified",
           "analyzing",
           "analyzed",
+          "planning",
           "planned",
           "building",
           "built",
@@ -1922,6 +4474,13 @@
               }
             ]
           },
+          "costs": {
+            "items": {
+              "$ref": "#/components/schemas/CallCost"
+            },
+            "type": "array",
+            "title": "Costs"
+          },
           "pending_gate": {
             "anyOf": [
               {
@@ -1931,6 +4490,13 @@
                 "type": "null"
               }
             ]
+          },
+          "design_targets": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Design Targets"
           }
         },
         "type": "object",
@@ -1942,6 +4508,87 @@
         ],
         "title": "JobView",
         "description": "What the API returns: the job plus the approval currently waiting for the user."
+      },
+      "KeyCheck": {
+        "properties": {
+          "has_esri_key": {
+            "type": "boolean",
+            "title": "Has Esri Key"
+          },
+          "ok": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ok"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "has_esri_key"
+        ],
+        "title": "KeyCheck"
+      },
+      "LibraryPlacement": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "x": {
+            "type": "number",
+            "title": "X"
+          },
+          "y": {
+            "type": "number",
+            "title": "Y"
+          },
+          "heading": {
+            "type": "number",
+            "title": "Heading"
+          },
+          "size": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Size"
+          },
+          "pack": {
+            "type": "string",
+            "title": "Pack",
+            "default": ""
+          },
+          "default": {
+            "type": "boolean",
+            "title": "Default",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "x",
+          "y",
+          "heading"
+        ],
+        "title": "LibraryPlacement",
+        "description": "An object of the X-Plane library placed by a build script."
       },
       "NewItem": {
         "properties": {
@@ -2034,9 +4681,45 @@
           "scaffolding",
           "canopies",
           "barriers",
-          "masts"
+          "masts",
+          "monuments",
+          "bridges"
         ],
         "title": "ObjectCategory"
+      },
+      "OtherScenery": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          },
+          "order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "kind"
+        ],
+        "title": "OtherScenery"
       },
       "PathBody": {
         "properties": {
@@ -2088,6 +4771,356 @@
         ],
         "title": "PendingGate"
       },
+      "Photo": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "user",
+              "wikimedia",
+              "panoramax",
+              "mapillary"
+            ],
+            "title": "Source",
+            "default": "user"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author"
+          },
+          "license": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License"
+          },
+          "page_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Url"
+          },
+          "shareable": {
+            "type": "boolean",
+            "title": "Shareable",
+            "description": "May it go into a scenery package as a texture (see redistributable)?",
+            "readOnly": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "shareable"
+        ],
+        "title": "Photo",
+        "description": "A photo attached to a scene item (file: photos/<id>.jpg in the job folder)."
+      },
+      "PhotoCandidate": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "user",
+              "wikimedia",
+              "panoramax",
+              "mapillary"
+            ],
+            "title": "Source"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author"
+          },
+          "license": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License"
+          },
+          "page_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Url"
+          },
+          "distance_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance M"
+          },
+          "thumb_url": {
+            "type": "string",
+            "title": "Thumb Url"
+          },
+          "image_url": {
+            "type": "string",
+            "title": "Image Url"
+          },
+          "heading": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heading"
+          },
+          "pano": {
+            "type": "boolean",
+            "title": "Pano",
+            "default": false
+          },
+          "bearing": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bearing"
+          },
+          "facing": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Facing"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "source",
+          "thumb_url",
+          "image_url"
+        ],
+        "title": "PhotoCandidate",
+        "description": "A search hit; only its id goes back to the client for thumbnails and import."
+      },
+      "PhotoTexture": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,23}$",
+            "title": "Name"
+          },
+          "photo_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9]{1,40}$",
+            "title": "Photo Id"
+          },
+          "corners": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "maxItems": 4,
+            "minItems": 4,
+            "title": "Corners"
+          },
+          "width_m": {
+            "type": "number",
+            "maximum": 400.0,
+            "minimum": 0.5,
+            "title": "Width M"
+          },
+          "height_m": {
+            "type": "number",
+            "maximum": 200.0,
+            "minimum": 0.5,
+            "title": "Height M"
+          },
+          "repeat": {
+            "type": "boolean",
+            "title": "Repeat",
+            "default": false
+          },
+          "walls": {
+            "type": "boolean",
+            "title": "Walls",
+            "default": false
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "ai",
+              "user"
+            ],
+            "title": "Source",
+            "default": "user"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "photo_id",
+          "corners",
+          "width_m",
+          "height_m"
+        ],
+        "title": "PhotoTexture",
+        "description": "A facade cut out of one of the item's photos (see build/phototex.py): the four\ncorners in the photo (fractions of its width/height, from the top left, in the\norder top-left, top-right, bottom-right, bottom-left) and its real size."
+      },
+      "PhotoUpload": {
+        "properties": {
+          "data": {
+            "type": "string",
+            "maxLength": 40000000,
+            "title": "Data"
+          },
+          "rights_confirmed": {
+            "type": "boolean",
+            "title": "Rights Confirmed",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "PhotoUpload"
+      },
+      "Place": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "default": ""
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "default": ""
+          },
+          "lon": {
+            "type": "number",
+            "title": "Lon"
+          },
+          "lat": {
+            "type": "number",
+            "title": "Lat"
+          },
+          "bbox": {
+            "anyOf": [
+              {
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array",
+                "maxItems": 4,
+                "minItems": 4
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bbox"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "lon",
+          "lat"
+        ],
+        "title": "Place"
+      },
       "PlanItem": {
         "properties": {
           "kind": {
@@ -2130,6 +5163,173 @@
           "count"
         ],
         "title": "PlanItem"
+      },
+      "PlanObject": {
+        "properties": {
+          "item_id": {
+            "type": "string",
+            "title": "Item Id"
+          },
+          "stem": {
+            "type": "string",
+            "title": "Stem"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "anchor": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Anchor"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "error",
+              "skipped"
+            ],
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "default": ""
+          },
+          "triangles": {
+            "type": "integer",
+            "title": "Triangles",
+            "default": 0
+          },
+          "has_mesh": {
+            "type": "boolean",
+            "title": "Has Mesh",
+            "default": true
+          },
+          "designed": {
+            "type": "boolean",
+            "title": "Designed",
+            "default": false
+          },
+          "lit": {
+            "type": "boolean",
+            "title": "Lit",
+            "default": false
+          },
+          "lights": {
+            "type": "integer",
+            "title": "Lights",
+            "default": 0
+          },
+          "photo_textures": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Photo Textures"
+          },
+          "scan": {
+            "type": "boolean",
+            "title": "Scan",
+            "default": false
+          },
+          "heading": {
+            "type": "number",
+            "title": "Heading",
+            "default": 0.0
+          },
+          "extent": {
+            "anyOf": [
+              {
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array",
+                "maxItems": 4,
+                "minItems": 4
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extent"
+          },
+          "top_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top M"
+          },
+          "shaded": {
+            "type": "boolean",
+            "title": "Shaded",
+            "default": false
+          },
+          "detailed": {
+            "type": "boolean",
+            "title": "Detailed",
+            "default": false
+          },
+          "weathered": {
+            "type": "boolean",
+            "title": "Weathered",
+            "default": false
+          },
+          "library": {
+            "items": {
+              "$ref": "#/components/schemas/LibraryPlacement"
+            },
+            "type": "array",
+            "title": "Library"
+          }
+        },
+        "type": "object",
+        "required": [
+          "item_id",
+          "stem",
+          "category",
+          "anchor",
+          "status"
+        ],
+        "title": "PlanObject",
+        "description": "One 3D object of the plan, as generated for the preview."
       },
       "Question": {
         "properties": {
@@ -2283,6 +5483,130 @@
         ],
         "title": "QuestionOption"
       },
+      "RenameBody": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "RenameBody"
+      },
+      "ReopenBody": {
+        "properties": {
+          "to": {
+            "type": "string",
+            "enum": [
+              "planned",
+              "analyzed",
+              "clarified"
+            ],
+            "title": "To"
+          }
+        },
+        "type": "object",
+        "required": [
+          "to"
+        ],
+        "title": "ReopenBody"
+      },
+      "Research": {
+        "properties": {
+          "facts": {
+            "type": "string",
+            "title": "Facts",
+            "default": ""
+          },
+          "wikidata": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wikidata"
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sources"
+          }
+        },
+        "type": "object",
+        "title": "Research",
+        "description": "What the research found out about an object (free sources, no AI)."
+      },
+      "Scan": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "title": "File"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author"
+          },
+          "license": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License"
+          },
+          "page_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Url"
+          },
+          "triangles": {
+            "type": "integer",
+            "title": "Triangles",
+            "default": 0
+          },
+          "up": {
+            "type": "string",
+            "title": "Up",
+            "default": "z"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "title"
+        ],
+        "title": "Scan",
+        "description": "A free 3D scan of the object (Wikimedia Commons), reduced and stored with the\njob (file relative to the job folder); built with scan() in the build script."
+      },
       "SceneItem": {
         "properties": {
           "id": {
@@ -2318,7 +5642,8 @@
             "enum": [
               "osm",
               "user",
-              "ai"
+              "ai",
+              "memory"
             ],
             "title": "Source"
           },
@@ -2378,6 +5703,105 @@
             "type": "boolean",
             "title": "Proposal",
             "default": false
+          },
+          "remembered": {
+            "type": "boolean",
+            "title": "Remembered",
+            "default": false
+          },
+          "rating": {
+            "type": "boolean",
+            "title": "Rating",
+            "default": false
+          },
+          "script": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Script"
+          },
+          "script_request": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Script Request"
+          },
+          "photos": {
+            "items": {
+              "$ref": "#/components/schemas/Photo"
+            },
+            "type": "array",
+            "title": "Photos"
+          },
+          "textures": {
+            "items": {
+              "$ref": "#/components/schemas/PhotoTexture"
+            },
+            "type": "array",
+            "title": "Textures"
+          },
+          "research": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Research"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Scan"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "parts": {
+            "items": {
+              "$ref": "#/components/schemas/BuildingPart"
+            },
+            "type": "array",
+            "title": "Parts"
+          },
+          "approaches": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Approaches"
+          },
+          "ground": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Ground"
+          },
+          "row_members": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Row Members"
           }
         },
         "type": "object",
@@ -2389,6 +5813,30 @@
           "source"
         ],
         "title": "SceneItem"
+      },
+      "SearchResult": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/PhotoCandidate"
+            },
+            "type": "array",
+            "title": "Candidates"
+          },
+          "errors": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Errors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidates",
+          "errors"
+        ],
+        "title": "SearchResult"
       },
       "Settings": {
         "properties": {
@@ -2433,6 +5881,42 @@
             "type": "boolean",
             "title": "Update Check",
             "default": false
+          },
+          "use_blender": {
+            "type": "boolean",
+            "title": "Use Blender",
+            "default": true
+          },
+          "blender_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blender Path"
+          },
+          "blender_device": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "cpu"
+            ],
+            "title": "Blender Device",
+            "default": "auto"
+          },
+          "overpass_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overpass Url"
           }
         },
         "type": "object",
@@ -2482,11 +5966,62 @@
         "title": "SimilarEstimate",
         "description": "What \"find similar\" would do; shown to the user before anything is sent."
       },
+      "SourceTest": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "title": "SourceTest"
+      },
+      "SourceTestBody": {
+        "properties": {
+          "imagery": {
+            "$ref": "#/components/schemas/ImagerySettings"
+          },
+          "lon": {
+            "type": "number",
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "title": "Lon",
+            "default": 11.5
+          },
+          "lat": {
+            "type": "number",
+            "maximum": 85.0,
+            "minimum": -85.0,
+            "title": "Lat",
+            "default": 48.1
+          }
+        },
+        "type": "object",
+        "required": [
+          "imagery"
+        ],
+        "title": "SourceTestBody"
+      },
       "SurfaceMode": {
         "type": "string",
         "enum": [
           "material",
-          "imagery"
+          "imagery",
+          "none"
         ],
         "title": "SurfaceMode"
       },
@@ -2537,6 +6072,32 @@
           "has_api_key": {
             "type": "boolean",
             "title": "Has Api Key"
+          },
+          "has_gemini_key": {
+            "type": "boolean",
+            "title": "Has Gemini Key",
+            "default": false
+          },
+          "has_mapillary_token": {
+            "type": "boolean",
+            "title": "Has Mapillary Token",
+            "default": false
+          },
+          "has_esri_key": {
+            "type": "boolean",
+            "title": "Has Esri Key",
+            "default": false
+          },
+          "blender": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blender"
           }
         },
         "type": "object",
@@ -2550,6 +6111,38 @@
           "has_api_key"
         ],
         "title": "SystemStatus"
+      },
+      "TexturesBody": {
+        "properties": {
+          "textures": {
+            "items": {
+              "$ref": "#/components/schemas/PhotoTexture"
+            },
+            "type": "array",
+            "maxItems": 12,
+            "title": "Textures"
+          }
+        },
+        "type": "object",
+        "required": [
+          "textures"
+        ],
+        "title": "TexturesBody"
+      },
+      "TokenBody": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "maxLength": 1200,
+            "minLength": 10,
+            "title": "Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "title": "TokenBody"
       },
       "ValidationError": {
         "properties": {

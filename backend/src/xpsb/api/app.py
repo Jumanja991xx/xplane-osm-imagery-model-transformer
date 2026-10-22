@@ -8,7 +8,7 @@ import sys
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any, Literal
 
 from fastapi import (
     Body,
@@ -21,18 +21,33 @@ from fastapi import (
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
-from xpsb import __version__
+from xpsb import __version__, places
+from xpsb import blender as blender_mod
+from xpsb.ai import analyze as ai
+from xpsb.ai import providers, usage
 from xpsb.geo import GeoJsonPolygon
-from xpsb.jobs.manager import JobConflict, JobManager, JobNotFound, SimilarEstimate
-from xpsb.jobs.models import Brief, GateId, JobView
+from xpsb.imagery import basemap, xyz
+from xpsb.imagery.sources import ESRI_ACCOUNT, custom_from_settings, esri_source, map_source
+from xpsb.imagery.wms import WmsError
+from xpsb.jobs.manager import (
+    DesignEstimate,
+    JobConflict,
+    JobManager,
+    JobNotFound,
+    SimilarEstimate,
+)
+from xpsb.jobs.models import Brief, GateId, JobState, JobView
 from xpsb.paths import AppPaths
-from xpsb.scene import ItemPatch, NewItem
-from xpsb.secrets import ANTHROPIC_ACCOUNT, SecretStore, normalize_api_key
-from xpsb.settings import Settings, SettingsStore
-from xpsb.xplane import dsftool
+from xpsb.photos import MAPILLARY_ACCOUNT, SearchResult
+from xpsb.scene import ItemPatch, NewItem, PhotoTexture
+from xpsb.secrets import ANTHROPIC_ACCOUNT, GEMINI_ACCOUNT, SecretStore, normalize_api_key
+from xpsb.settings import ImagerySettings, Settings, SettingsStore
+from xpsb.xplane import dsftool, neighbors
+from xpsb.xplane.dsf_text import Tile
+from xpsb.xplane.neighbors import OtherScenery
 from xpsb.xplane_detect import XPlaneCheck, check_xplane_path, detect_xplane_installs
 
 TAURI_ORIGINS = ["tauri://localhost", "http://tauri.localhost", "https://tauri.localhost"]
@@ -71,11 +86,24 @@ class SystemStatus(BaseModel):
     dsftool: DsfToolStatus
     xplane: XPlaneCheck | None
     keyring_available: bool
-    has_api_key: bool
+    has_api_key: bool  # Claude (Anthropic)
+    has_gemini_key: bool = False
+    has_mapillary_token: bool = False
+    has_esri_key: bool = False
+    blender: str | None = None  # version of the Blender the app would use
 
 
 class ApiKeyStatus(BaseModel):
     has_api_key: bool
+
+
+class AiModelEntry(BaseModel):
+    id: str
+    provider: Literal["anthropic", "google"]
+    tier: Literal["top", "mid", "low"] | None = None  # None: loaded from Google
+    note: str = ""
+    price_in: float  # USD per million tokens
+    price_out: float
 
 
 class CreateJob(BaseModel):
@@ -88,6 +116,105 @@ class Approve(BaseModel):
 
 class PathBody(BaseModel):
     path: str
+
+
+class ReopenBody(BaseModel):
+    to: Literal["planned", "analyzed", "clarified"]
+
+
+class RenameBody(BaseModel):
+    name: str = Field(max_length=200)
+
+
+class DesignBody(BaseModel):
+    request: str = Field(min_length=3, max_length=1500)
+    # The maximum the user confirmed; the architect never spends more than this.
+    max_usd: float = Field(gt=0, le=1000)
+
+
+class DesignOutcome(BaseModel):
+    job: JobView
+    summary: str
+    cost_usd: float
+
+
+class AdjustManyBody(BaseModel):
+    item_ids: list[str] = Field(min_length=1, max_length=500)
+    attrs: dict[str, Any] = Field(default_factory=dict)
+    height_factor: float | None = Field(default=None, gt=0.1, le=10)  # e.g. 0.8 = 20 % lower
+
+
+class DesignManyBody(BaseModel):
+    item_ids: list[str] = Field(min_length=1, max_length=200)
+    request: str = Field(min_length=3, max_length=1500)
+    max_usd: float = Field(gt=0, le=1000)
+
+
+class DesignManyOutcome(BaseModel):
+    job: JobView
+    results: list[dict[str, Any]]
+    cost_usd: float
+
+
+class TexturesBody(BaseModel):
+    textures: list[PhotoTexture] = Field(max_length=12)
+
+
+class PhotoUpload(BaseModel):
+    data: str = Field(max_length=40_000_000)  # base64 (optionally as data: URL)
+    # The user confirms they may use the photo for this purpose.
+    rights_confirmed: bool = False
+
+
+class TokenBody(BaseModel):
+    # ArcGIS API keys can be several hundred characters long; the Windows
+    # credential store takes up to 1280.
+    token: str = Field(min_length=10, max_length=1200)
+
+    @property
+    def clean(self) -> str:
+        """Without spaces and line breaks picked up when copying from a web page."""
+        return "".join(self.token.split())
+
+
+class SourceTestBody(BaseModel):
+    imagery: ImagerySettings
+    # where to fetch the test tile (a regional source covers only its region)
+    lon: float = Field(default=11.5, ge=-180, le=180)
+    lat: float = Field(default=48.1, ge=-85, le=85)
+
+
+class SourceTest(BaseModel):
+    ok: bool
+    detail: str | None = None
+
+
+class BlenderTestBody(BaseModel):
+    path: str | None = None  # as entered in the settings (before saving)
+    device: Literal["auto", "cpu"] = "auto"
+
+
+class BlenderTest(BaseModel):
+    ok: bool
+    version: str | None = None
+    device: str = ""
+    start_s: float | None = None
+    gpu_search_s: float | None = None
+    bake_s: float | None = None
+    total_s: float = 0.0
+    gpu_search_hung: bool = False
+    problem: str | None = None
+    log: str | None = None  # where Blender's own messages are
+
+
+class KeyCheck(BaseModel):
+    has_esri_key: bool
+    ok: bool | None = None  # None: not checked (no key)
+    detail: str | None = None
+
+
+class AdjustBody(BaseModel):
+    attrs: dict[str, Any] = Field(default_factory=dict)
 
 
 class SimilarBody(BaseModel):
@@ -161,6 +288,10 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
             xplane=check_xplane_path(s.xplane_path) if s.xplane_path else None,
             keyring_available=ctx.secrets.available(),
             has_api_key=bool(ctx.secrets.get(ANTHROPIC_ACCOUNT)),
+            has_gemini_key=bool(ctx.secrets.get(GEMINI_ACCOUNT)),
+            has_mapillary_token=bool(ctx.secrets.get(MAPILLARY_ACCOUNT)),
+            has_esri_key=bool(ctx.secrets.get(ESRI_ACCOUNT)),
+            blender=getattr(await asyncio.to_thread(ctx.jobs.blender), "version", None),
         )
 
     @app.get("/api/settings", dependencies=auth)
@@ -199,12 +330,165 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
         ctx.secrets.delete(ANTHROPIC_ACCOUNT)
         return ApiKeyStatus(has_api_key=False)
 
+    @app.put("/api/secrets/gemini", dependencies=auth)
+    async def set_gemini_key(body: ApiKeyBody) -> ApiKeyStatus:
+        if not ctx.secrets.available():
+            raise HTTPException(409, detail={"key": "error.keyring_unavailable"})
+        try:
+            key = normalize_api_key(body.api_key)
+        except ValueError:
+            raise HTTPException(422, detail={"key": "error.invalid_api_key"}) from None
+        ctx.secrets.set(GEMINI_ACCOUNT, key)
+        return ApiKeyStatus(has_api_key=True)
+
+    @app.delete("/api/secrets/gemini", dependencies=auth)
+    async def delete_gemini_key() -> ApiKeyStatus:
+        ctx.secrets.delete(GEMINI_ACCOUNT)
+        return ApiKeyStatus(has_api_key=False)
+
+    def _model_entry(model_id: str) -> AiModelEntry:
+        info = providers.KNOWN.get(model_id)
+        p_in, p_out = usage.price(model_id)
+        return AiModelEntry(
+            id=model_id,
+            provider=providers.provider_of(model_id),
+            tier=info.tier if info else None,
+            note=info.note if info else "",
+            price_in=p_in,
+            price_out=p_out,
+        )
+
+    @app.get("/api/ai/models", dependencies=auth)
+    async def ai_models() -> list[AiModelEntry]:
+        """The models the app knows (Claude and Gemini), best first per provider."""
+        return [_model_entry(m.id) for m in providers.MODELS]
+
+    @app.post("/api/ai/gemini-models", dependencies=auth)
+    async def gemini_models() -> list[AiModelEntry]:
+        """The Gemini models the user's key may use, as Google reports them now
+        (Google renames and retires models often). Asks Google: no costs."""
+        key = ctx.secrets.get(GEMINI_ACCOUNT)
+        if not key:
+            raise HTTPException(409, detail={"key": "error.ai_no_key"})
+        from xpsb.ai import gemini
+
+        try:
+            names = await asyncio.to_thread(gemini.list_models, key)
+        except ai.AiAuthError:
+            raise HTTPException(409, detail={"key": "error.ai_auth_failed"}) from None
+        except ai.AiCallError as exc:
+            raise HTTPException(
+                502, detail={"key": "error.ai_call_failed", "detail": str(exc)}
+            ) from None
+        return [_model_entry(n) for n in names if providers.valid_model(n)]
+
+    @app.put("/api/secrets/mapillary", dependencies=auth)
+    async def set_mapillary_token(body: TokenBody) -> dict:
+        if not ctx.secrets.available():
+            raise HTTPException(409, detail={"key": "error.keyring_unavailable"})
+        ctx.secrets.set(MAPILLARY_ACCOUNT, body.clean)
+        return {"has_mapillary_token": True}
+
+    async def check_esri() -> KeyCheck:
+        key = ctx.secrets.get(ESRI_ACCOUNT)
+        if not key:
+            return KeyCheck(has_esri_key=False)
+        ok, detail = await asyncio.to_thread(xyz.check_source, esri_source(key))
+        return KeyCheck(has_esri_key=True, ok=ok, detail=detail)
+
+    @app.put("/api/secrets/esri", dependencies=auth)
+    async def set_esri_key(body: TokenBody) -> KeyCheck:
+        """Stores the key and tries it right away with one tile."""
+        if not ctx.secrets.available():
+            raise HTTPException(409, detail={"key": "error.keyring_unavailable"})
+        ctx.secrets.set(ESRI_ACCOUNT, body.clean)
+        return await check_esri()
+
+    @app.post("/api/imagery/test", dependencies=auth)
+    async def test_source(body: SourceTestBody) -> SourceTest:
+        """Tries the own XYZ source as entered (before saving) with one tile."""
+        if body.imagery.custom_type != "xyz":
+            return SourceTest(ok=False, detail="only XYZ sources can be tested here")
+        source = custom_from_settings(body.imagery)
+        if source is None:
+            return SourceTest(ok=False, detail="incomplete URL ({z}, {x}, {y}; subdomains for {s})")
+        ok, detail = await asyncio.to_thread(xyz.check_at, source, body.lon, body.lat)
+        return SourceTest(ok=ok, detail=detail)
+
+    @app.get("/api/jobs/{job_id}/other-sceneries", dependencies=auth)
+    async def other_sceneries(job_id: str) -> list[OtherScenery]:
+        """Installed sceneries for the same tile (orthos, other objects)."""
+        job = ctx.jobs.get(job_id)
+        own = job.brief.package_name if job.brief else None
+        tile = Tile.containing(*job.aoi_center)
+        return await asyncio.to_thread(
+            neighbors.for_tile, ctx.settings.load().xplane_path, tile, own
+        )
+
+    @app.get("/api/places", dependencies=auth)
+    async def search_places(
+        q: str,
+        lon: float | None = None,
+        lat: float | None = None,
+        final: bool = False,
+    ) -> list[places.Place]:
+        """Places for the search box on the map (OpenStreetMap data via Photon)."""
+        near = (lon, lat) if lon is not None and lat is not None else None
+        try:
+            return await asyncio.to_thread(
+                places.search, q, ctx.settings.load().language, near, final
+            )
+        except places.PlaceError as exc:
+            raise HTTPException(
+                status_code=502, detail={"key": "error.places", "params": {"detail": str(exc)}}
+            ) from exc
+
+    @app.post("/api/blender/test", dependencies=auth)
+    async def test_blender(body: BlenderTestBody) -> BlenderTest:
+        """Bakes one test object with the Blender as entered and times it."""
+        info = await asyncio.to_thread(blender_mod.find, body.path or None)
+        if info is None:
+            return BlenderTest(ok=False, problem="Blender not found")
+        work = ctx.paths.cache / "blender-test"
+        result = await asyncio.to_thread(
+            blender_mod.self_test, info.path, work, body.device == "cpu"
+        )
+        return BlenderTest(version=info.version, log=str(work / "blender-test.log"), **vars(result))
+
+    @app.post("/api/secrets/esri/check", dependencies=auth)
+    async def check_esri_key() -> KeyCheck:
+        return await check_esri()
+
+    @app.delete("/api/secrets/esri", dependencies=auth)
+    async def delete_esri_key() -> dict:
+        ctx.secrets.delete(ESRI_ACCOUNT)
+        return {"has_esri_key": False}
+
+    @app.delete("/api/secrets/mapillary", dependencies=auth)
+    async def delete_mapillary_token() -> dict:
+        ctx.secrets.delete(MAPILLARY_ACCOUNT)
+        return {"has_mapillary_token": False}
+
     # -- jobs -------------------------------------------------------------------
 
     @app.post("/api/jobs", dependencies=auth, status_code=201)
     async def create_job(body: CreateJob) -> JobView:
         job = ctx.jobs.create(body.aoi)
         return ctx.jobs.view(job.id)
+
+    @app.get("/api/jobs", dependencies=auth)
+    async def list_jobs() -> list[dict]:
+        return ctx.jobs.summaries()
+
+    @app.post("/api/jobs/{job_id}/reopen", dependencies=auth)
+    async def reopen(job_id: str, body: ReopenBody) -> JobView:
+        ctx.jobs.reopen(job_id, JobState(body.to))
+        return ctx.jobs.view(job_id)
+
+    @app.post("/api/jobs/{job_id}/package-name", dependencies=auth)
+    async def rename_package(job_id: str, body: RenameBody) -> JobView:
+        ctx.jobs.rename_package(job_id, body.name)
+        return ctx.jobs.view(job_id)
 
     @app.get("/api/jobs/{job_id}", dependencies=auth)
     async def get_job(job_id: str) -> JobView:
@@ -239,10 +523,36 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
         ctx.jobs.update_item(job_id, item_id, body)
         return ctx.jobs.view(job_id)
 
+    @app.post("/api/jobs/{job_id}/split-row/{item_id:path}", dependencies=auth)
+    async def split_row(job_id: str, item_id: str) -> JobView:
+        ctx.jobs.split_row(job_id, item_id)
+        return ctx.jobs.view(job_id)
+
     @app.delete("/api/jobs/{job_id}/items/{item_id:path}", dependencies=auth)
     async def delete_item(job_id: str, item_id: str) -> JobView:
         ctx.jobs.delete_item(job_id, item_id)
         return ctx.jobs.view(job_id)
+
+    @app.get(
+        "/api/basemap/{z}/{x}/{y}",
+        dependencies=auth,
+        response_class=Response,
+        responses={200: {"content": {"image/png": {}, "image/jpeg": {}}}},
+    )
+    async def basemap_tile(z: int, x: int, y: int):
+        """A tile of the user's own XYZ source for the map background (see basemap.py)."""
+        source = map_source(ctx.settings.load().imagery)
+        if source is None:
+            raise HTTPException(404, detail={"key": "error.no_basemap"})
+        try:
+            data, ctype = await asyncio.to_thread(
+                basemap.tile, source, ctx.paths.cache / "basemap", z, x, y
+            )
+        except WmsError as exc:
+            raise HTTPException(
+                502, detail={"key": "error.basemap", "detail": str(exc)[:200]}
+            ) from None
+        return Response(data, media_type=ctype, headers={"Cache-Control": "private, max-age=86400"})
 
     @app.get(
         "/api/jobs/{job_id}/imagery",
@@ -250,11 +560,129 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
         response_class=FileResponse,
         responses={200: {"content": {"image/jpeg": {}}}},
     )
-    async def job_imagery(job_id: str):
-        path = ctx.jobs.imagery_file(job_id)
+    async def job_imagery(job_id: str, retouched: bool = False):
+        path = await asyncio.to_thread(ctx.jobs.imagery_file, job_id, retouched)
         if path is None:
             raise HTTPException(404, detail={"key": "error.no_imagery"})
         return FileResponse(path, media_type="image/jpeg")
+
+    @app.get("/api/jobs/{job_id}/preview", dependencies=auth)
+    async def job_preview(job_id: str) -> dict:
+        return ctx.jobs.preview(job_id)
+
+    @app.get("/api/jobs/{job_id}/preview/{name}", dependencies=auth, response_class=FileResponse)
+    async def job_preview_file(job_id: str, name: str):
+        path = ctx.jobs.preview_file(job_id, name)
+        if path is None:
+            raise HTTPException(404, detail={"key": "error.no_preview"})
+        media = "image/png" if path.suffix == ".png" else "application/json"
+        return FileResponse(path, media_type=media)
+
+    @app.delete("/api/jobs/{job_id}/objects/{item_id:path}", dependencies=auth)
+    async def remove_object(job_id: str, item_id: str) -> JobView:
+        await ctx.jobs.remove_object(job_id, item_id)
+        return ctx.jobs.view(job_id)
+
+    @app.patch("/api/jobs/{job_id}/placement/{item_id:path}", dependencies=auth)
+    async def place_built(job_id: str, item_id: str, body: AdjustBody) -> JobView:
+        await ctx.jobs.place_built(job_id, item_id, body.attrs)
+        return ctx.jobs.view(job_id)
+
+    @app.patch("/api/jobs/{job_id}/objects/{item_id:path}", dependencies=auth)
+    async def adjust_object(job_id: str, item_id: str, body: AdjustBody) -> JobView:
+        await asyncio.to_thread(ctx.jobs.adjust_object, job_id, item_id, body.attrs)
+        return ctx.jobs.view(job_id)
+
+    @app.patch("/api/jobs/{job_id}/objects", dependencies=auth)
+    async def adjust_many(job_id: str, body: AdjustManyBody) -> JobView:
+        job = await asyncio.to_thread(
+            ctx.jobs.adjust_many, job_id, body.item_ids, body.attrs, body.height_factor
+        )
+        return ctx.jobs.view(job.id)
+
+    @app.post("/api/jobs/{job_id}/design-many/estimate", dependencies=auth)
+    async def design_many_estimate(job_id: str, body: AdjustManyBody) -> DesignEstimate:
+        return ctx.jobs.design_many_estimate(job_id, body.item_ids)
+
+    @app.post("/api/jobs/{job_id}/design-many", dependencies=auth)
+    async def redesign_many(job_id: str, body: DesignManyBody) -> DesignManyOutcome:
+        job, results, cost = await ctx.jobs.redesign_many(
+            job_id, body.item_ids, body.request, body.max_usd
+        )
+        return DesignManyOutcome(job=ctx.jobs.view(job.id), results=results, cost_usd=cost)
+
+    @app.get("/api/jobs/{job_id}/design/{item_id:path}", dependencies=auth)
+    async def design_estimate(job_id: str, item_id: str) -> DesignEstimate:
+        return ctx.jobs.design_estimate(job_id, item_id)
+
+    @app.post("/api/jobs/{job_id}/design/{item_id:path}", dependencies=auth)
+    async def redesign(job_id: str, item_id: str, body: DesignBody) -> DesignOutcome:
+        _, summary, cost = await ctx.jobs.redesign(job_id, item_id, body.request, body.max_usd)
+        return DesignOutcome(job=ctx.jobs.view(job_id), summary=summary, cost_usd=round(cost, 4))
+
+    @app.delete("/api/jobs/{job_id}/design/{item_id:path}", dependencies=auth)
+    async def reset_design(job_id: str, item_id: str) -> JobView:
+        await asyncio.to_thread(ctx.jobs.reset_design, job_id, item_id)
+        return ctx.jobs.view(job_id)
+
+    @app.post("/api/jobs/{job_id}/photos", dependencies=auth)
+    async def add_photo(job_id: str, item: str, body: PhotoUpload) -> JobView:
+        await asyncio.to_thread(ctx.jobs.add_photo, job_id, item, body.data, body.rights_confirmed)
+        return ctx.jobs.view(job_id)
+
+    @app.get(
+        "/api/jobs/{job_id}/photos/{photo_id}",
+        dependencies=auth,
+        response_class=FileResponse,
+        responses={200: {"content": {"image/jpeg": {}}}},
+    )
+    async def photo_file(job_id: str, photo_id: str):
+        path = ctx.jobs.photo_file(job_id, photo_id)
+        if path is None:
+            raise HTTPException(404, detail={"key": "error.photo_not_found"})
+        return FileResponse(path, media_type="image/jpeg")
+
+    @app.delete("/api/jobs/{job_id}/photos/{photo_id}", dependencies=auth)
+    async def delete_photo(job_id: str, photo_id: str) -> JobView:
+        ctx.jobs.delete_photo(job_id, photo_id)
+        return ctx.jobs.view(job_id)
+
+    @app.post("/api/jobs/{job_id}/skip-blender", dependencies=auth)
+    async def skip_blender(job_id: str) -> JobView:
+        ctx.jobs.skip_blender(job_id)
+        return ctx.jobs.view(job_id)
+
+    @app.put("/api/jobs/{job_id}/textures", dependencies=auth)
+    async def set_textures(job_id: str, item: str, body: TexturesBody) -> JobView:
+        await asyncio.to_thread(ctx.jobs.set_textures, job_id, item, body.textures)
+        return ctx.jobs.view(job_id)
+
+    @app.post(
+        "/api/jobs/{job_id}/texture-preview",
+        dependencies=auth,
+        responses={200: {"content": {"image/jpeg": {}}}},
+    )
+    async def texture_preview(job_id: str, item: str, body: PhotoTexture) -> Response:
+        data = await asyncio.to_thread(ctx.jobs.texture_preview, job_id, item, body)
+        return Response(content=data, media_type="image/jpeg")
+
+    @app.get("/api/jobs/{job_id}/photo-search", dependencies=auth)
+    async def search_photos(job_id: str, item: str) -> SearchResult:
+        return await asyncio.to_thread(ctx.jobs.search_photos, job_id, item)
+
+    @app.get(
+        "/api/jobs/{job_id}/photo-search/{candidate_id}/thumb",
+        dependencies=auth,
+        responses={200: {"content": {"image/jpeg": {}}}},
+    )
+    async def candidate_thumb(job_id: str, candidate_id: str) -> Response:
+        data = await asyncio.to_thread(ctx.jobs.candidate_thumb, job_id, candidate_id)
+        return Response(content=data, media_type="image/jpeg")
+
+    @app.post("/api/jobs/{job_id}/photo-search/{candidate_id}/import", dependencies=auth)
+    async def import_photo(job_id: str, candidate_id: str) -> JobView:
+        await asyncio.to_thread(ctx.jobs.import_photo, job_id, candidate_id)
+        return ctx.jobs.view(job_id)
 
     @app.post("/api/jobs/{job_id}/gates/{gate}/approve", dependencies=auth)
     async def approve(job_id: str, gate: GateId, body: Approve) -> JobView:

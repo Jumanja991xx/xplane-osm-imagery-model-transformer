@@ -125,7 +125,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/jobs": {
+    "/api/secrets/gemini": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Gemini Key */
+        put: operations["set_gemini_key_api_secrets_gemini_put"];
+        post?: never;
+        /** Delete Gemini Key */
+        delete: operations["delete_gemini_key_api_secrets_gemini_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ai Models
+         * @description The models the app knows (Claude and Gemini), best first per provider.
+         */
+        get: operations["ai_models_api_ai_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/gemini-models": {
         parameters: {
             query?: never;
             header?: never;
@@ -134,8 +172,200 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /**
+         * Gemini Models
+         * @description The Gemini models the user's key may use, as Google reports them now
+         *     (Google renames and retires models often). Asks Google: no costs.
+         */
+        post: operations["gemini_models_api_ai_gemini_models_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/secrets/mapillary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Mapillary Token */
+        put: operations["set_mapillary_token_api_secrets_mapillary_put"];
+        post?: never;
+        /** Delete Mapillary Token */
+        delete: operations["delete_mapillary_token_api_secrets_mapillary_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/secrets/esri": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Esri Key
+         * @description Stores the key and tries it right away with one tile.
+         */
+        put: operations["set_esri_key_api_secrets_esri_put"];
+        post?: never;
+        /** Delete Esri Key */
+        delete: operations["delete_esri_key_api_secrets_esri_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/imagery/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Source
+         * @description Tries the own XYZ source as entered (before saving) with one tile.
+         */
+        post: operations["test_source_api_imagery_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/other-sceneries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Other Sceneries
+         * @description Installed sceneries for the same tile (orthos, other objects).
+         */
+        get: operations["other_sceneries_api_jobs__job_id__other_sceneries_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/places": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Places
+         * @description Places for the search box on the map (OpenStreetMap data via Photon).
+         */
+        get: operations["search_places_api_places_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/blender/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Blender
+         * @description Bakes one test object with the Blender as entered and times it.
+         */
+        post: operations["test_blender_api_blender_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/secrets/esri/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Check Esri Key */
+        post: operations["check_esri_key_api_secrets_esri_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Jobs */
+        get: operations["list_jobs_api_jobs_get"];
+        put?: never;
         /** Create Job */
         post: operations["create_job_api_jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reopen */
+        post: operations["reopen_api_jobs__job_id__reopen_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/package-name": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rename Package */
+        post: operations["rename_package_api_jobs__job_id__package_name_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -246,6 +476,43 @@ export interface paths {
         patch: operations["update_item_api_jobs__job_id__items__item_id__patch"];
         trace?: never;
     };
+    "/api/jobs/{job_id}/split-row/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Split Row */
+        post: operations["split_row_api_jobs__job_id__split_row__item_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/basemap/{z}/{x}/{y}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Basemap Tile
+         * @description A tile of the user's own XYZ source for the map background (see basemap.py).
+         */
+        get: operations["basemap_tile_api_basemap__z___x___y__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs/{job_id}/imagery": {
         parameters: {
             query?: never;
@@ -257,6 +524,282 @@ export interface paths {
         get: operations["job_imagery_api_jobs__job_id__imagery_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Job Preview */
+        get: operations["job_preview_api_jobs__job_id__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/preview/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Job Preview File */
+        get: operations["job_preview_file_api_jobs__job_id__preview__name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/objects/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Object */
+        delete: operations["remove_object_api_jobs__job_id__objects__item_id__delete"];
+        options?: never;
+        head?: never;
+        /** Adjust Object */
+        patch: operations["adjust_object_api_jobs__job_id__objects__item_id__patch"];
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/placement/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Place Built */
+        patch: operations["place_built_api_jobs__job_id__placement__item_id__patch"];
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/objects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Adjust Many */
+        patch: operations["adjust_many_api_jobs__job_id__objects_patch"];
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/design-many/estimate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Design Many Estimate */
+        post: operations["design_many_estimate_api_jobs__job_id__design_many_estimate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/design-many": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Redesign Many */
+        post: operations["redesign_many_api_jobs__job_id__design_many_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/design/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Design Estimate */
+        get: operations["design_estimate_api_jobs__job_id__design__item_id__get"];
+        put?: never;
+        /** Redesign */
+        post: operations["redesign_api_jobs__job_id__design__item_id__post"];
+        /** Reset Design */
+        delete: operations["reset_design_api_jobs__job_id__design__item_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/photos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Photo */
+        post: operations["add_photo_api_jobs__job_id__photos_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/photos/{photo_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Photo File */
+        get: operations["photo_file_api_jobs__job_id__photos__photo_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Photo */
+        delete: operations["delete_photo_api_jobs__job_id__photos__photo_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/skip-blender": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Skip Blender */
+        post: operations["skip_blender_api_jobs__job_id__skip_blender_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/textures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Textures */
+        put: operations["set_textures_api_jobs__job_id__textures_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/texture-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Texture Preview */
+        post: operations["texture_preview_api_jobs__job_id__texture_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/photo-search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search Photos */
+        get: operations["search_photos_api_jobs__job_id__photo_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/photo-search/{candidate_id}/thumb": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Candidate Thumb */
+        get: operations["candidate_thumb_api_jobs__job_id__photo_search__candidate_id__thumb_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/photo-search/{candidate_id}/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Photo */
+        post: operations["import_photo_api_jobs__job_id__photo_search__candidate_id__import_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -301,6 +844,24 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AdjustBody */
+        AdjustBody: {
+            /** Attrs */
+            attrs?: {
+                [key: string]: unknown;
+            };
+        };
+        /** AdjustManyBody */
+        AdjustManyBody: {
+            /** Item Ids */
+            item_ids: string[];
+            /** Attrs */
+            attrs?: {
+                [key: string]: unknown;
+            };
+            /** Height Factor */
+            height_factor?: number | null;
+        };
         /** AiAssessment */
         AiAssessment: {
             /** Model */
@@ -309,6 +870,27 @@ export interface components {
             summary: string;
             /** Confidence */
             confidence: number;
+        };
+        /** AiModelEntry */
+        AiModelEntry: {
+            /** Id */
+            id: string;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "anthropic" | "google";
+            /** Tier */
+            tier?: ("top" | "mid" | "low") | null;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /** Price In */
+            price_in: number;
+            /** Price Out */
+            price_out: number;
         };
         /** AiRunInfo */
         AiRunInfo: {
@@ -341,6 +923,10 @@ export interface components {
              * @default 0
              */
             proposals: number;
+            /** Dropped */
+            dropped?: {
+                [key: string]: number;
+            };
             /**
              * Limit Reached
              * @default false
@@ -361,9 +947,8 @@ export interface components {
             /**
              * Model
              * @default claude-opus-5-5
-             * @enum {string}
              */
-            model: "claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-5-5";
+            model: string;
             /**
              * Job Limit Usd
              * @default 5
@@ -421,6 +1006,49 @@ export interface components {
             /** Hash */
             hash: string;
         };
+        /** BlenderTest */
+        BlenderTest: {
+            /** Ok */
+            ok: boolean;
+            /** Version */
+            version?: string | null;
+            /**
+             * Device
+             * @default
+             */
+            device: string;
+            /** Start S */
+            start_s?: number | null;
+            /** Gpu Search S */
+            gpu_search_s?: number | null;
+            /** Bake S */
+            bake_s?: number | null;
+            /**
+             * Total S
+             * @default 0
+             */
+            total_s: number;
+            /**
+             * Gpu Search Hung
+             * @default false
+             */
+            gpu_search_hung: boolean;
+            /** Problem */
+            problem?: string | null;
+            /** Log */
+            log?: string | null;
+        };
+        /** BlenderTestBody */
+        BlenderTestBody: {
+            /** Path */
+            path?: string | null;
+            /**
+             * Device
+             * @default auto
+             * @enum {string}
+             */
+            device: "auto" | "cpu";
+        };
         /**
          * Brief
          * @description Step 2: what exactly should be built (answers of the clarification dialog).
@@ -434,6 +1062,8 @@ export interface components {
             surface_mode: components["schemas"]["SurfaceMode"];
             /** Exclusions */
             exclusions?: components["schemas"]["ExclusionType"][];
+            /** @default objects */
+            exclusion_scope: components["schemas"]["ExclusionScope"];
             /**
              * Use Ai
              * @default true
@@ -442,9 +1072,25 @@ export interface components {
             /**
              * Ai Model
              * @default claude-opus-5-5
+             */
+            ai_model: string;
+            /**
+             * Ai Economy
+             * @default true
+             */
+            ai_economy: boolean;
+            /**
+             * Mode
+             * @default objects
              * @enum {string}
              */
-            ai_model: "claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-5-5";
+            mode: "objects" | "city";
+            /**
+             * City Preset
+             * @default central_europe
+             * @enum {string}
+             */
+            city_preset: "central_europe" | "central_europe_city";
             /**
              * Ai Cost Limit Usd
              * @default 5
@@ -455,6 +1101,17 @@ export interface components {
              * @default true
              */
             ai_detect: boolean;
+            /**
+             * Research
+             * @default true
+             */
+            research: boolean;
+            /**
+             * Ai Design
+             * @default important
+             * @enum {string}
+             */
+            ai_design: "important" | "all" | "off";
             /** @default medium */
             detail: components["schemas"]["DetailLevel"];
             /** Package Name */
@@ -481,6 +1138,43 @@ export interface components {
                 number
             ];
             /**
+             * Detail
+             * @default medium
+             */
+            detail: string;
+            /** Objects */
+            objects?: components["schemas"]["PlanObject"][];
+            /**
+             * Surfaces
+             * @default 0
+             */
+            surfaces: number;
+            /**
+             * Surface Mode
+             * @default material
+             */
+            surface_mode: string;
+            /** Exclusions */
+            exclusions?: string[];
+            /**
+             * Exclusion Scope
+             * @default objects
+             */
+            exclusion_scope: string;
+            /**
+             * Exclusion Rects
+             * @default 0
+             */
+            exclusion_rects: number;
+            /** Foreign Zones */
+            foreign_zones?: {
+                [key: string]: unknown;
+            }[];
+            /** City */
+            city?: {
+                [key: string]: unknown;
+            } | null;
+            /**
              * Test Scenery
              * @default false
              */
@@ -496,10 +1190,155 @@ export interface components {
             files: string[];
             /** Dsftool Version */
             dsftool_version: string;
+            /** Blender */
+            blender?: string | null;
+            /**
+             * Shaded
+             * @default 0
+             */
+            shaded: number;
+            /**
+             * Detailed
+             * @default 0
+             */
+            detailed: number;
+            /**
+             * Blender Problem
+             * @default
+             */
+            blender_problem: string;
+            /** Blender Log */
+            blender_log?: string | null;
+            /** Shaded Stems */
+            shaded_stems?: string[];
+            /**
+             * Meshes
+             * @default 0
+             */
+            meshes: number;
+        };
+        /**
+         * BuildingPart
+         * @description An OSM building:part inside the outline of a building (Simple 3D Buildings):
+         *     the outline is the object, its parts describe the shape in more detail.
+         */
+        BuildingPart: {
+            /** Geometry */
+            geometry: {
+                [key: string]: unknown;
+            };
+            /** Osm Ref */
+            osm_ref?: string | null;
+            /** Height M */
+            height_m?: number | null;
+            /** Min Height M */
+            min_height_m?: number | null;
+            /** Roof Shape */
+            roof_shape?: string | null;
+            /** Wall Color */
+            wall_color?: string | null;
+            /** Roof Color */
+            roof_color?: string | null;
+            /** Part */
+            part?: string | null;
+        };
+        /**
+         * CallCost
+         * @description One AI call as billed: the token counts the API reported, priced with the list
+         *     prices in ai/usage.py. `stage`/`item` are filled in by the job's cost book.
+         */
+        CallCost: {
+            /**
+             * Stage
+             * @default
+             */
+            stage: string;
+            /** Item */
+            item?: string | null;
+            /** Model */
+            model: string;
+            /**
+             * Input Tokens
+             * @default 0
+             */
+            input_tokens: number;
+            /**
+             * Output Tokens
+             * @default 0
+             */
+            output_tokens: number;
+            /**
+             * Cache Read Tokens
+             * @default 0
+             */
+            cache_read_tokens: number;
+            /**
+             * Cache Write Tokens
+             * @default 0
+             */
+            cache_write_tokens: number;
+            /**
+             * Usd
+             * @default 0
+             */
+            usd: number;
+            /**
+             * At
+             * Format: date-time
+             */
+            at?: string;
         };
         /** CreateJob */
         CreateJob: {
             aoi: components["schemas"]["GeoJsonPolygon"];
+        };
+        /** DesignBody */
+        DesignBody: {
+            /** Request */
+            request: string;
+            /** Max Usd */
+            max_usd: number;
+        };
+        /**
+         * DesignEstimate
+         * @description What a request to the AI architect may cost; shown before anything is sent.
+         */
+        DesignEstimate: {
+            /** Model */
+            model: string;
+            /** Estimate Usd */
+            estimate_usd: number;
+            /** Max Usd */
+            max_usd: number;
+            /** Budget Usd */
+            budget_usd: number;
+        };
+        /** DesignManyBody */
+        DesignManyBody: {
+            /** Item Ids */
+            item_ids: string[];
+            /** Request */
+            request: string;
+            /** Max Usd */
+            max_usd: number;
+        };
+        /** DesignManyOutcome */
+        DesignManyOutcome: {
+            job: components["schemas"]["JobView"];
+            /** Results */
+            results: {
+                [key: string]: unknown;
+            }[];
+            /** Cost Usd */
+            cost_usd: number;
+        };
+        /** DesignOutcome */
+        DesignOutcome: {
+            job: components["schemas"]["JobView"];
+            /** Summary */
+            summary: string;
+            /** Cost Usd */
+            cost_usd: number;
         };
         /**
          * DetailLevel
@@ -517,6 +1356,11 @@ export interface components {
             /** Error */
             error?: string | null;
         };
+        /**
+         * ExclusionScope
+         * @enum {string}
+         */
+        ExclusionScope: "objects" | "area";
         /**
          * ExclusionType
          * @enum {string}
@@ -585,6 +1429,11 @@ export interface components {
             /** Gsd M */
             gsd_m: number;
             /**
+             * Package Ok
+             * @default true
+             */
+            package_ok: boolean;
+            /**
              * File
              * @default aoi.jpg
              */
@@ -597,7 +1446,7 @@ export interface components {
              * @default auto
              * @enum {string}
              */
-            source: "auto" | "bayern_dop40" | "nrw_dop" | "custom" | "none";
+            source: "auto" | "de_states" | "bayern_dop40" | "nrw_dop" | "swissimage" | "basemap_at" | "pdok_nl" | "ign_fr" | "pnoa_es" | "usgs_naip" | "gsi_jp" | "esri" | "custom" | "none";
             /**
              * Custom Type
              * @default wms
@@ -615,6 +1464,11 @@ export interface components {
              */
             custom_url: string;
             /**
+             * Custom Subdomains
+             * @default
+             */
+            custom_subdomains: string;
+            /**
              * Custom Layer
              * @default
              */
@@ -629,6 +1483,11 @@ export interface components {
              * @default false
              */
             custom_rights_confirmed: boolean;
+            /**
+             * Custom On Map
+             * @default true
+             */
+            custom_on_map: boolean;
         };
         /** InstallResult */
         InstallResult: {
@@ -644,6 +1503,8 @@ export interface components {
         ItemAttrs: {
             /** Height M */
             height_m?: number | null;
+            /** Min Height M */
+            min_height_m?: number | null;
             /** Levels */
             levels?: number | null;
             /** Roof Shape */
@@ -660,6 +1521,32 @@ export interface components {
             covered?: boolean | null;
             /** Width M */
             width_m?: number | null;
+            /** Flip */
+            flip?: boolean | null;
+            /** Rows */
+            rows?: number | null;
+            /** Wall Material */
+            wall_material?: ("windows" | "windows_classic" | "windows_arched" | "windows_house" | "plaster" | "stone" | "brick" | "glass" | "metal_sheet" | "concrete" | "wood") | null;
+            /** Monument Kind */
+            monument_kind?: ("statue" | "rider" | "bust" | "obelisk" | "column" | "stone") | null;
+            /** Pose */
+            pose?: ("standing" | "arm_raised" | "arms_raised" | "pointing" | "seated") | null;
+            /** Holding */
+            holding?: ("none" | "palm" | "wreath" | "sword" | "torch" | "book" | "flag") | null;
+            /** Robe */
+            robe?: boolean | null;
+            /** Use Scan */
+            use_scan?: boolean | null;
+            /** Shift X M */
+            shift_x_m?: number | null;
+            /** Shift Y M */
+            shift_y_m?: number | null;
+            /** Turn Deg */
+            turn_deg?: number | null;
+            /** Hide Below */
+            hide_below?: boolean | null;
+            /** Bridge Structure */
+            bridge_structure?: ("beam" | "arch" | "truss" | "suspension" | "cable_stayed") | null;
         };
         /**
          * ItemPatch
@@ -697,7 +1584,7 @@ export interface components {
          * JobState
          * @enum {string}
          */
-        JobState: "draft" | "clarified" | "analyzing" | "analyzed" | "planned" | "building" | "built" | "installing" | "installed" | "failed" | "cancelled";
+        JobState: "draft" | "clarified" | "analyzing" | "analyzed" | "planning" | "planned" | "building" | "built" | "installing" | "installed" | "failed" | "cancelled";
         /**
          * JobView
          * @description What the API returns: the job plus the approval currently waiting for the user.
@@ -737,7 +1624,46 @@ export interface components {
             /** Approvals */
             approvals?: components["schemas"]["Approval"][];
             error?: components["schemas"]["JobError"] | null;
+            /** Costs */
+            costs?: components["schemas"]["CallCost"][];
             pending_gate?: components["schemas"]["PendingGate"] | null;
+            /** Design Targets */
+            design_targets?: string[];
+        };
+        /** KeyCheck */
+        KeyCheck: {
+            /** Has Esri Key */
+            has_esri_key: boolean;
+            /** Ok */
+            ok?: boolean | null;
+            /** Detail */
+            detail?: string | null;
+        };
+        /**
+         * LibraryPlacement
+         * @description An object of the X-Plane library placed by a build script.
+         */
+        LibraryPlacement: {
+            /** Path */
+            path: string;
+            /** X */
+            x: number;
+            /** Y */
+            y: number;
+            /** Heading */
+            heading: number;
+            /** Size */
+            size?: number[];
+            /**
+             * Pack
+             * @default
+             */
+            pack: string;
+            /**
+             * Default
+             * @default true
+             */
+            default: boolean;
         };
         /** NewItem */
         NewItem: {
@@ -769,7 +1695,21 @@ export interface components {
          * ObjectCategory
          * @enum {string}
          */
-        ObjectCategory: "buildings" | "grandstands" | "scaffolding" | "canopies" | "barriers" | "masts";
+        ObjectCategory: "buildings" | "grandstands" | "scaffolding" | "canopies" | "barriers" | "masts" | "monuments" | "bridges";
+        /** OtherScenery */
+        OtherScenery: {
+            /** Name */
+            name: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Order */
+            order?: number | null;
+        };
         /** PathBody */
         PathBody: {
             /** Path */
@@ -792,6 +1732,141 @@ export interface components {
             /** Hash */
             hash: string;
         };
+        /**
+         * Photo
+         * @description A photo attached to a scene item (file: photos/<id>.jpg in the job folder).
+         */
+        Photo: {
+            /** Id */
+            id: string;
+            /**
+             * Source
+             * @default user
+             * @enum {string}
+             */
+            source: "user" | "wikimedia" | "panoramax" | "mapillary";
+            /** Title */
+            title?: string | null;
+            /** Author */
+            author?: string | null;
+            /** License */
+            license?: string | null;
+            /** Page Url */
+            page_url?: string | null;
+            /**
+             * Shareable
+             * @description May it go into a scenery package as a texture (see redistributable)?
+             */
+            readonly shareable: boolean;
+        };
+        /**
+         * PhotoCandidate
+         * @description A search hit; only its id goes back to the client for thumbnails and import.
+         */
+        PhotoCandidate: {
+            /** Id */
+            id: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "user" | "wikimedia" | "panoramax" | "mapillary";
+            /** Title */
+            title?: string | null;
+            /** Author */
+            author?: string | null;
+            /** License */
+            license?: string | null;
+            /** Page Url */
+            page_url?: string | null;
+            /** Distance M */
+            distance_m?: number | null;
+            /** Thumb Url */
+            thumb_url: string;
+            /** Image Url */
+            image_url: string;
+            /** Heading */
+            heading?: number | null;
+            /**
+             * Pano
+             * @default false
+             */
+            pano: boolean;
+            /** Bearing */
+            bearing?: number | null;
+            /** Facing */
+            facing?: boolean | null;
+        };
+        /**
+         * PhotoTexture
+         * @description A facade cut out of one of the item's photos (see build/phototex.py): the four
+         *     corners in the photo (fractions of its width/height, from the top left, in the
+         *     order top-left, top-right, bottom-right, bottom-left) and its real size.
+         */
+        PhotoTexture: {
+            /** Name */
+            name: string;
+            /** Photo Id */
+            photo_id: string;
+            /** Corners */
+            corners: number[][];
+            /** Width M */
+            width_m: number;
+            /** Height M */
+            height_m: number;
+            /**
+             * Repeat
+             * @default false
+             */
+            repeat: boolean;
+            /**
+             * Walls
+             * @default false
+             */
+            walls: boolean;
+            /**
+             * Source
+             * @default user
+             * @enum {string}
+             */
+            source: "ai" | "user";
+        };
+        /** PhotoUpload */
+        PhotoUpload: {
+            /** Data */
+            data: string;
+            /**
+             * Rights Confirmed
+             * @default false
+             */
+            rights_confirmed: boolean;
+        };
+        /** Place */
+        Place: {
+            /** Name */
+            name: string;
+            /**
+             * Detail
+             * @default
+             */
+            detail: string;
+            /**
+             * Kind
+             * @default
+             */
+            kind: string;
+            /** Lon */
+            lon: number;
+            /** Lat */
+            lat: number;
+            /** Bbox */
+            bbox?: [
+                number,
+                number,
+                number,
+                number
+            ] | null;
+        };
         /** PlanItem */
         PlanItem: {
             /** Kind */
@@ -804,6 +1879,98 @@ export interface components {
             params?: {
                 [key: string]: string | number | null;
             };
+        };
+        /**
+         * PlanObject
+         * @description One 3D object of the plan, as generated for the preview.
+         */
+        PlanObject: {
+            /** Item Id */
+            item_id: string;
+            /** Stem */
+            stem: string;
+            /** Category */
+            category: string;
+            /** Name */
+            name?: string | null;
+            /** Anchor */
+            anchor: [
+                number,
+                number
+            ];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "error" | "skipped";
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+            /**
+             * Triangles
+             * @default 0
+             */
+            triangles: number;
+            /**
+             * Has Mesh
+             * @default true
+             */
+            has_mesh: boolean;
+            /**
+             * Designed
+             * @default false
+             */
+            designed: boolean;
+            /**
+             * Lit
+             * @default false
+             */
+            lit: boolean;
+            /**
+             * Lights
+             * @default 0
+             */
+            lights: number;
+            /** Photo Textures */
+            photo_textures?: string[];
+            /**
+             * Scan
+             * @default false
+             */
+            scan: boolean;
+            /**
+             * Heading
+             * @default 0
+             */
+            heading: number;
+            /** Extent */
+            extent?: [
+                number,
+                number,
+                number,
+                number
+            ] | null;
+            /** Top M */
+            top_m?: number | null;
+            /**
+             * Shaded
+             * @default false
+             */
+            shaded: boolean;
+            /**
+             * Detailed
+             * @default false
+             */
+            detailed: boolean;
+            /**
+             * Weathered
+             * @default false
+             */
+            weathered: boolean;
+            /** Library */
+            library?: components["schemas"]["LibraryPlacement"][];
         };
         /**
          * Question
@@ -842,6 +2009,61 @@ export interface components {
                 [key: string]: string | number | null;
             };
         };
+        /** RenameBody */
+        RenameBody: {
+            /** Name */
+            name: string;
+        };
+        /** ReopenBody */
+        ReopenBody: {
+            /**
+             * To
+             * @enum {string}
+             */
+            to: "planned" | "analyzed" | "clarified";
+        };
+        /**
+         * Research
+         * @description What the research found out about an object (free sources, no AI).
+         */
+        Research: {
+            /**
+             * Facts
+             * @default
+             */
+            facts: string;
+            /** Wikidata */
+            wikidata?: string | null;
+            /** Sources */
+            sources?: string[];
+        };
+        /**
+         * Scan
+         * @description A free 3D scan of the object (Wikimedia Commons), reduced and stored with the
+         *     job (file relative to the job folder); built with scan() in the build script.
+         */
+        Scan: {
+            /** File */
+            file: string;
+            /** Title */
+            title: string;
+            /** Author */
+            author?: string | null;
+            /** License */
+            license?: string | null;
+            /** Page Url */
+            page_url?: string | null;
+            /**
+             * Triangles
+             * @default 0
+             */
+            triangles: number;
+            /**
+             * Up
+             * @default z
+             */
+            up: string;
+        };
         /** SceneItem */
         SceneItem: {
             /** Id */
@@ -861,7 +2083,7 @@ export interface components {
              * Source
              * @enum {string}
              */
-            source: "osm" | "user" | "ai";
+            source: "osm" | "user" | "ai" | "memory";
             /** Name */
             name?: string | null;
             /** Osm Ref */
@@ -887,6 +2109,47 @@ export interface components {
              * @default false
              */
             proposal: boolean;
+            /**
+             * Remembered
+             * @default false
+             */
+            remembered: boolean;
+            /**
+             * Rating
+             * @default false
+             */
+            rating: boolean;
+            /** Script */
+            script?: string | null;
+            /** Script Request */
+            script_request?: string | null;
+            /** Photos */
+            photos?: components["schemas"]["Photo"][];
+            /** Textures */
+            textures?: components["schemas"]["PhotoTexture"][];
+            research?: components["schemas"]["Research"] | null;
+            scan?: components["schemas"]["Scan"] | null;
+            /** Parts */
+            parts?: components["schemas"]["BuildingPart"][];
+            /** Approaches */
+            approaches?: {
+                [key: string]: unknown;
+            }[];
+            /** Ground */
+            ground?: number[][];
+            /** Row Members */
+            row_members?: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** SearchResult */
+        SearchResult: {
+            /** Candidates */
+            candidates: components["schemas"]["PhotoCandidate"][];
+            /** Errors */
+            errors: {
+                [key: string]: string;
+            };
         };
         /** Settings */
         Settings: {
@@ -907,6 +2170,21 @@ export interface components {
              * @default false
              */
             update_check: boolean;
+            /**
+             * Use Blender
+             * @default true
+             */
+            use_blender: boolean;
+            /** Blender Path */
+            blender_path?: string | null;
+            /**
+             * Blender Device
+             * @default auto
+             * @enum {string}
+             */
+            blender_device: "auto" | "cpu";
+            /** Overpass Url */
+            overpass_url?: string | null;
         };
         /** SimilarBody */
         SimilarBody: {
@@ -927,11 +2205,32 @@ export interface components {
             /** Budget Usd */
             budget_usd: number;
         };
+        /** SourceTest */
+        SourceTest: {
+            /** Ok */
+            ok: boolean;
+            /** Detail */
+            detail?: string | null;
+        };
+        /** SourceTestBody */
+        SourceTestBody: {
+            imagery: components["schemas"]["ImagerySettings"];
+            /**
+             * Lon
+             * @default 11.5
+             */
+            lon: number;
+            /**
+             * Lat
+             * @default 48.1
+             */
+            lat: number;
+        };
         /**
          * SurfaceMode
          * @enum {string}
          */
-        SurfaceMode: "material" | "imagery";
+        SurfaceMode: "material" | "imagery" | "none";
         /**
          * SurfaceType
          * @enum {string}
@@ -951,6 +2250,33 @@ export interface components {
             keyring_available: boolean;
             /** Has Api Key */
             has_api_key: boolean;
+            /**
+             * Has Gemini Key
+             * @default false
+             */
+            has_gemini_key: boolean;
+            /**
+             * Has Mapillary Token
+             * @default false
+             */
+            has_mapillary_token: boolean;
+            /**
+             * Has Esri Key
+             * @default false
+             */
+            has_esri_key: boolean;
+            /** Blender */
+            blender?: string | null;
+        };
+        /** TexturesBody */
+        TexturesBody: {
+            /** Textures */
+            textures: components["schemas"]["PhotoTexture"][];
+        };
+        /** TokenBody */
+        TokenBody: {
+            /** Token */
+            token: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -1218,6 +2544,384 @@ export interface operations {
             };
         };
     };
+    set_gemini_key_api_secrets_gemini_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApiKeyBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_gemini_key_api_secrets_gemini_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyStatus"];
+                };
+            };
+        };
+    };
+    ai_models_api_ai_models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiModelEntry"][];
+                };
+            };
+        };
+    };
+    gemini_models_api_ai_gemini_models_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiModelEntry"][];
+                };
+            };
+        };
+    };
+    set_mapillary_token_api_secrets_mapillary_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TokenBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_mapillary_token_api_secrets_mapillary_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    set_esri_key_api_secrets_esri_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TokenBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeyCheck"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_esri_key_api_secrets_esri_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    test_source_api_imagery_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourceTestBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceTest"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    other_sceneries_api_jobs__job_id__other_sceneries_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OtherScenery"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_places_api_places_get: {
+        parameters: {
+            query: {
+                q: string;
+                lon?: number | null;
+                lat?: number | null;
+                final?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Place"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_blender_api_blender_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BlenderTestBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlenderTest"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_esri_key_api_secrets_esri_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeyCheck"];
+                };
+            };
+        };
+    };
+    list_jobs_api_jobs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
     create_job_api_jobs_post: {
         parameters: {
             query?: never;
@@ -1233,6 +2937,76 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reopen_api_jobs__job_id__reopen_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReopenBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_package_api_jobs__job_id__package_name_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1525,7 +3299,106 @@ export interface operations {
             };
         };
     };
+    split_row_api_jobs__job_id__split_row__item_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    basemap_tile_api_basemap__z___x___y__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                z: number;
+                x: number;
+                y: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": unknown;
+                    "image/jpeg": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     job_imagery_api_jobs__job_id__imagery_get: {
+        parameters: {
+            query?: {
+                retouched?: boolean;
+            };
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    job_preview_api_jobs__job_id__preview_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -1542,7 +3415,653 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    job_preview_file_api_jobs__job_id__preview__name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_object_api_jobs__job_id__objects__item_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    adjust_object_api_jobs__job_id__objects__item_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdjustBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    place_built_api_jobs__job_id__placement__item_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdjustBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    adjust_many_api_jobs__job_id__objects_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdjustManyBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    design_many_estimate_api_jobs__job_id__design_many_estimate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdjustManyBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DesignEstimate"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    redesign_many_api_jobs__job_id__design_many_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DesignManyBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DesignManyOutcome"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    design_estimate_api_jobs__job_id__design__item_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DesignEstimate"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    redesign_api_jobs__job_id__design__item_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DesignBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DesignOutcome"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_design_api_jobs__job_id__design__item_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_photo_api_jobs__job_id__photos_post: {
+        parameters: {
+            query: {
+                item: string;
+            };
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhotoUpload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    photo_file_api_jobs__job_id__photos__photo_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
                     "image/jpeg": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_photo_api_jobs__job_id__photos__photo_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    skip_blender_api_jobs__job_id__skip_blender_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_textures_api_jobs__job_id__textures_put: {
+        parameters: {
+            query: {
+                item: string;
+            };
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TexturesBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    texture_preview_api_jobs__job_id__texture_preview_post: {
+        parameters: {
+            query: {
+                item: string;
+            };
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhotoTexture"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                    "image/jpeg": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_photos_api_jobs__job_id__photo_search_get: {
+        parameters: {
+            query: {
+                item: string;
+            };
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    candidate_thumb_api_jobs__job_id__photo_search__candidate_id__thumb_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                    "image/jpeg": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_photo_api_jobs__job_id__photo_search__candidate_id__import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
                 };
             };
             /** @description Validation Error */

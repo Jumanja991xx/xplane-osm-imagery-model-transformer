@@ -14,7 +14,9 @@ import base64
 import io
 import logging
 import math
+import threading
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
@@ -26,14 +28,14 @@ from xpsb.ai.usage import cost_usd
 from xpsb.catalog import ObjectCategory, SurfaceType
 from xpsb.geo import METERS_PER_DEG_LAT, meters_per_deg_lon
 from xpsb.imagery.wms import ImageryInfo, crop
-from xpsb.jobs.models import AiRunInfo, Question, QuestionOption
+from xpsb.jobs.models import AiRunInfo, CallCost, Question, QuestionOption
 from xpsb.scene import AiAssessment, SceneItem
 
 log = logging.getLogger(__name__)
 
-BATCH_SIZE = 6
+BATCH_SIZE = 12  # the fixed cost of a call (instructions, thinking) shared by more items
 MAX_ITEMS = 300
-CROP_MAX_PX = 768
+CROP_MAX_PX = 576
 CROP_MIN_PX = 256
 MIN_MARGIN_M = 25.0  # enough surroundings to see e.g. the track in front of a stand
 CATEGORY_CHANGE_CONFIDENCE = 0.75
@@ -87,6 +89,8 @@ class AiBatchResult(BaseModel):
 
 # ---- transport (real API or fake in tests) -------------------------------------
 
+DEFAULT_MAX_TOKENS = 16000
+
 
 @dataclass
 class AiResponse:
@@ -95,6 +99,9 @@ class AiResponse:
     input_tokens: int
     output_tokens: int
     refused: bool = False
+    stop_reason: str = "end_turn"  # "max_tokens": cut off at the output limit
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
 
 
 class AiTransport(Protocol):
@@ -106,6 +113,7 @@ class AiTransport(Protocol):
         content: list[dict],
         output_format: type[BaseModel],
         effort: str = "low",
+        max_tokens: int = DEFAULT_MAX_TOKENS,
     ) -> AiResponse: ...
 
 
@@ -114,17 +122,27 @@ class AiAuthError(RuntimeError):
 
 
 class AiCallError(RuntimeError):
-    pass
+    def __init__(self, message: str, key: str | None = None):
+        super().__init__(message)
+        self.key = key  # i18n key for the user, if more specific than "call failed"
+
+
+CACHE = {"type": "ephemeral"}
 
 
 class AnthropicTransport:
-    """Claude Messages API. The key lives only in this object, never in logs or files."""
+    """Claude Messages API (Gemini: ai/gemini.py, same interface). The key lives only
+    in this object, never in logs or files."""
 
     def __init__(self, api_key: str):
         import anthropic
 
         self._anthropic = anthropic
-        self._client = anthropic.Anthropic(api_key=api_key, max_retries=3, timeout=180)
+        # Streamed: long answers (build scripts) never hit an HTTP timeout; the
+        # timeout is the longest pause between two parts of the answer.
+        self._client = anthropic.Anthropic(
+            api_key=api_key, max_retries=3, timeout=anthropic.Timeout(600.0, connect=20.0)
+        )
 
     def __call__(
         self,
@@ -134,22 +152,36 @@ class AnthropicTransport:
         content: list[dict],
         output_format: type[BaseModel],
         effort: str = "low",
+        max_tokens: int = DEFAULT_MAX_TOKENS,
     ) -> AiResponse:
         a = self._anthropic
+        # The schema goes in output_config and the answer is validated here, so an
+        # answer cut off at max_tokens is reported as such instead of raising mid-stream.
+        output_config: dict[str, Any] = {
+            "format": {
+                "type": "json_schema",
+                "schema": a.transform_schema(output_format.model_json_schema()),
+            }
+        }
+        if "haiku" not in model:  # effort steers thinking (and cost)
+            output_config["effort"] = effort
         try:
-            response = self._client.beta.messages.parse(
+            with self._client.beta.messages.stream(
                 model=model,
-                max_tokens=16000,
-                system=system,
+                max_tokens=max_tokens,
+                # The system prompt is the same for every call of a stage (and often
+                # thousands of tokens): cached, later calls read it at a fraction of
+                # the price. Content blocks may carry their own cache_control (a
+                # prefix shared by several calls, e.g. the architect's photos).
+                system=[{"type": "text", "text": system, "cache_control": CACHE}],
                 messages=[{"role": "user", "content": content}],
-                output_format=output_format,
-                # Effort steers thinking (and cost); Haiku runs without it.
-                **({} if "haiku" in model else {"output_config": {"effort": effort}}),
+                output_config=output_config,
                 # If the model declines, the server retries on its default fallback
                 # model; the answer says which model replied and we tell the user.
                 fallbacks="default",
                 betas=["server-side-fallback-2026-07-01"],
-            )
+            ) as stream:
+                response = stream.get_final_message()
         except (a.AuthenticationError, a.PermissionDeniedError) as exc:
             raise AiAuthError(type(exc).__name__) from None
         except a.APIStatusError as exc:
@@ -158,16 +190,38 @@ class AnthropicTransport:
         except a.APIConnectionError as exc:
             raise AiCallError(type(exc).__name__) from None
         usage = response.usage
-        refused = response.stop_reason == "refusal"
+        stop = str(response.stop_reason or "")
+        parsed = None
+        if stop not in ("refusal", "max_tokens"):
+            texts = [b.text for b in response.content if b.type == "text"]
+            try:
+                parsed = output_format.model_validate_json(texts[-1]) if texts else None
+            except ValueError:  # pydantic's ValidationError is a ValueError
+                parsed = None
         return AiResponse(
-            parsed=None if refused else response.parsed_output,
+            parsed=parsed,
             model=str(response.model),
-            input_tokens=usage.input_tokens
-            + (usage.cache_creation_input_tokens or 0)
-            + (usage.cache_read_input_tokens or 0),
+            input_tokens=usage.input_tokens,
             output_tokens=usage.output_tokens,
-            refused=refused,
+            cache_read_tokens=usage.cache_read_input_tokens or 0,
+            cache_write_tokens=usage.cache_creation_input_tokens or 0,
+            refused=stop == "refusal",
+            stop_reason=stop,
         )
+
+
+def needs_rating(item: SceneItem) -> bool:
+    """Whether the AI can add anything: not for items left out of the plan, fences
+    and walls (thin lines it hardly sees), or buildings OSM already describes fully
+    (height, roof form and both colours)."""
+    if not item.included or item.remembered or str(item.category) == "barriers":
+        return False
+    a = item.attrs
+    if str(item.category) == "buildings" and item.name is None:
+        known = (a.height_m is not None or a.levels is not None) and a.roof_shape
+        if known and a.roof_color and a.wall_color:
+            return False
+    return True
 
 
 # ---- prompt --------------------------------------------------------------------
@@ -187,7 +241,9 @@ For every feature return one entry with the same item_id.
 Object categories: {objects}.
 - buildings: houses, halls, club houses; grandstands: spectator stands with seating;
   scaffolding: temporary scaffolding/structures; canopies: roofs without walls (pit roofs,
-  carports, tents); barriers: fences, walls, guard rails; masts: light masts, poles, towers.
+  carports, tents); barriers: fences, walls, guard rails; masts: light masts, poles, towers;
+monuments: statues, busts, equestrian statues, obelisks, memorial columns; bridges: road,
+rail and foot bridges.
 Surface types: {surfaces}.
 - dirt: speedway cinder, sand, compacted earth; tartan: athletics track; markings: painted lines.
 Only use categories of the same kind as the feature (object stays object, surface stays surface).
@@ -314,7 +370,12 @@ def _clean_color(value: str | None) -> str | None:
 def apply_result(item: SceneItem, r: AiItemResult, model: str) -> Question | None:
     """Merges one AI answer into the item. Returns a question for the user, if any."""
     attrs = item.attrs
-    explicit_height = "height" in item.tags or "building:levels" in item.tags
+    user_set = item.source in ("user", "memory")
+    explicit_height = (
+        "height" in item.tags
+        or "building:levels" in item.tags
+        or (user_set and attrs.height_m is not None)
+    )
     if r.height_m is not None and not explicit_height and 0 < r.height_m <= 300:
         attrs.height_m = round(r.height_m, 1)
     if r.levels is not None and attrs.levels is None and 0 <= r.levels <= 100:
@@ -331,7 +392,8 @@ def apply_result(item: SceneItem, r: AiItemResult, model: str) -> Question | Non
 
     confidence = min(1.0, max(0.0, r.confidence))
     changed_category = (
-        r.category != item.category
+        not user_set  # the user chose the category when drawing
+        and r.category != item.category
         and _valid_category(item.kind, r.category)
         and confidence >= CATEGORY_CHANGE_CONFIDENCE
     )
@@ -381,6 +443,64 @@ def apply_answer(item: SceneItem, field_name: str, value: str) -> None:
 
 # ---- run -----------------------------------------------------------------------
 
+PARALLEL_CALLS = 4  # Claude requests in flight at the same time
+
+
+class Budget:
+    """Thread-safe cost book: every call reserves its estimate before it is sent,
+    so parallel calls together can never exceed the limit."""
+
+    def __init__(self, limit_usd: float, run_info: AiRunInfo, on_cost):
+        self.limit = limit_usd
+        self.info = run_info
+        self.on_cost = on_cost
+        self.reserved = 0.0
+        self.lock = threading.Lock()
+
+    # Estimates are rough; with calls in flight in parallel we keep a safety margin
+    # so the actual spending stays within the limit the user approved.
+    SAFETY = 1.5
+
+    def reserve(self, estimate: float) -> bool:
+        estimate *= self.SAFETY
+        with self.lock:
+            if self.info.cost_usd + self.reserved + estimate > self.limit:
+                self.info.limit_reached = True
+                return False
+            self.reserved += estimate
+            return True
+
+    def free(self) -> float:
+        """What is left of the limit right now (nothing reserved for this yet)."""
+        with self.lock:
+            return max(0.0, self.limit - self.info.cost_usd - self.reserved)
+
+    def settle(self, estimate: float, response: AiResponse | None) -> None:
+        with self.lock:
+            self.reserved -= estimate * self.SAFETY
+            if response is None:
+                return
+            spent = cost_usd(
+                response.model,
+                response.input_tokens,
+                response.output_tokens,
+                response.cache_read_tokens,
+                response.cache_write_tokens,
+            )
+            self.info.cost_usd = round(self.info.cost_usd + spent, 6)
+            if response.model not in self.info.models_used:
+                self.info.models_used.append(response.model)
+        self.on_cost(
+            CallCost(
+                model=response.model,
+                input_tokens=response.input_tokens,
+                output_tokens=response.output_tokens,
+                cache_read_tokens=response.cache_read_tokens,
+                cache_write_tokens=response.cache_write_tokens,
+                usd=round(spent, 6),
+            )
+        )
+
 
 @dataclass
 class AiRun:
@@ -389,7 +509,7 @@ class AiRun:
     notes: str
     budget_usd: float  # min(job limit, what is left of the monthly limit)
     transport: AiTransport
-    on_cost: Callable[[float], None] = lambda usd: None  # ledger
+    on_cost: Callable[[CallCost], None] = lambda call: None  # ledger and the job's cost book
     progress: Callable[[float], None] = lambda p: None
     should_stop: Callable[[], bool] = lambda: False
     questions: list[Question] = field(default_factory=list)
@@ -427,7 +547,7 @@ def run(
     if result.error_key:
         return result
     todo = items[:MAX_ITEMS]
-    result.skipped = len(items) - len(todo)
+    result.skipped += len(items) - len(todo)
     system = system_prompt(cfg.language, cfg.notes, cfg.context)
 
     prepared: list[tuple[SceneItem, bytes, float]] = []
@@ -440,53 +560,60 @@ def run(
         prepared.append((item, png, gsd))
 
     batches = [prepared[i : i + BATCH_SIZE] for i in range(0, len(prepared), BATCH_SIZE)]
-    for index, batch in enumerate(batches):
-        if cfg.should_stop():
-            break
-        estimate = estimate_cost(cfg.model, [image_tokens(png) for _, png, _ in batch])
-        if result.cost_usd + estimate > cfg.budget_usd:
-            result.limit_reached = True
-            result.skipped += sum(len(b) for b in batches[index:])
-            break
+    budget = Budget(cfg.budget_usd, result, cfg.on_cost)
+    lock = threading.Lock()
+    done = [0]
 
+    def rate(batch) -> None:
+        if cfg.should_stop() or result.error_key:
+            with lock:
+                result.skipped += len(batch)
+            return
+        estimate = estimate_cost(cfg.model, [image_tokens(png) for _, png, _ in batch])
+        if not budget.reserve(estimate):
+            with lock:
+                result.skipped += len(batch)
+            return
         content: list[dict] = []
         for item, png, gsd in batch:
             content.append({"type": "text", "text": item_text(item, gsd)})
             content.append(png_block(png))
-
+        response = None
         try:
             response = cfg.transport(
                 model=cfg.model, system=system, content=content, output_format=AiBatchResult
             )
         except AiAuthError:
-            result.error_key = "analysis.ai_auth_failed"
-            result.skipped += sum(len(b) for b in batches[index:])
-            break
+            with lock:
+                result.error_key = "analysis.ai_auth_failed"
+                result.skipped += len(batch)
+            return
         except AiCallError as exc:
             log.warning("AI call failed: %s", exc)
-            result.error_key = "analysis.ai_call_failed"
-            result.error_detail = str(exc)
-            result.skipped += sum(len(b) for b in batches[index:])
-            break
+            with lock:
+                result.error_key = "analysis.ai_call_failed"
+                result.error_detail = str(exc)
+                result.skipped += len(batch)
+            return
+        finally:
+            budget.settle(estimate, response)
+        with lock:
+            if response.refused or response.parsed is None:
+                result.skipped += len(batch)
+            else:
+                by_id = {r.item_id: r for r in response.parsed.items}
+                for item, _, _ in batch:
+                    r = by_id.get(item.id)
+                    if r is None:
+                        result.skipped += 1
+                        continue
+                    question = apply_result(item, r, response.model)
+                    if question:
+                        cfg.questions.append(question)
+                    result.analyzed += 1
+            done[0] += 1
+            cfg.progress(done[0] / len(batches))
 
-        spent = cost_usd(response.model, response.input_tokens, response.output_tokens)
-        result.cost_usd = round(result.cost_usd + spent, 6)
-        cfg.on_cost(spent)
-        if response.model not in result.models_used:
-            result.models_used.append(response.model)
-
-        if response.refused or response.parsed is None:
-            result.skipped += len(batch)
-        else:
-            by_id = {r.item_id: r for r in response.parsed.items}
-            for item, _, _ in batch:
-                r = by_id.get(item.id)
-                if r is None:
-                    result.skipped += 1
-                    continue
-                question = apply_result(item, r, response.model)
-                if question:
-                    cfg.questions.append(question)
-                result.analyzed += 1
-        cfg.progress((index + 1) / len(batches))
+    with ThreadPoolExecutor(max_workers=PARALLEL_CALLS) as pool:
+        list(pool.map(rate, batches))
     return result

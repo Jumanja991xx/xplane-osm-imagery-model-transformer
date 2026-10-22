@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 
+import pytest
 from conftest import AUTH, FIXTURES, HOCKENHEIM_AOI, wait_for_state
 from PIL import Image
 
@@ -51,6 +52,17 @@ def analyze(client, job: dict) -> dict:
     return job
 
 
+def wait_until_rated(client, jid: str) -> dict:
+    import time
+
+    for _ in range(100):
+        job = client.get(f"/api/jobs/{jid}", headers=AUTH).json()
+        if not any(i.get("rating") for i in job["analysis"]["items"]):
+            return job
+        time.sleep(0.05)
+    raise AssertionError("rating did not finish")
+
+
 def keys(items) -> set[str]:
     return {i["key"] for i in items}
 
@@ -86,6 +98,8 @@ def test_overpass_query_uses_polygon_filter():
     q = overpass.build_query([(8.5, 49.0), (8.6, 49.0), (8.6, 49.1), (8.5, 49.0)])
     assert 'poly:"49.0000000 8.5000000 49.0000000 8.6000000 49.1000000 8.6000000"' in q
     assert q.rstrip().endswith("out geom tags;")
+    # Named grounds enclosing the whole area (no node inside it) are asked for as well.
+    assert "is_in(" in q and 'way(pivot.encl)["leisure"]["name"]' in q
 
 
 def test_wms_layer_choice_and_tiling(tmp_path):
@@ -117,7 +131,7 @@ def test_crop_has_outline_and_sensible_size(tmp_path):
         with Image.open(io.BytesIO(png)) as crop:
             assert ai.CROP_MIN_PX <= max(crop.size) <= ai.CROP_MAX_PX
             assert ai.OUTLINE in {c for _, c in crop.getcolors(1 << 20)}
-        assert 0 < gsd <= info.gsd_m
+        assert 0 < gsd <= info.gsd_m * 1.5  # big objects: a little coarser (cheaper)
 
 
 def test_apply_result_keeps_osm_facts():
@@ -170,6 +184,24 @@ def test_gate_a_lists_sources_cost_and_upload(client):
     imagery = next(i for i in items if i["key"] == "gate.a.imagery")
     assert imagery["params"]["attribution"] == "Test-Luftbild"
     assert job["pending_gate"]["blocked"] is False
+    # The user knows beforehand roughly how long it takes.
+    duration = next(i for i in items if i["key"] == "gate.a.duration")["params"]
+    assert 1 <= duration["min"] < duration["max"] <= 15
+
+
+def test_durations_grow_with_the_work():
+    from xpsb.jobs import gates
+    from xpsb.jobs.models import Brief
+
+    base = {"object_categories": ["buildings"], "package_name": "X", "use_ai": True}
+    quick = gates.analysis_minutes(Brief(**base, ai_detect=False, research=False), 1, True)
+    full = gates.analysis_minutes(Brief(**base, ai_detect=True), 4, True)
+    assert quick[1] < full[1]
+    assert gates.design_minutes("claude-opus-5-5", 9) > gates.design_minutes("claude-opus-5-5", 3)
+    assert (
+        gates.design_minutes("claude-haiku-5-5", 3)[1]
+        < gates.design_minutes("claude-opus-5-5", 3)[1]
+    )
 
 
 def test_custom_source_needs_confirmed_rights(client):
@@ -179,9 +211,14 @@ def test_custom_source_needs_confirmed_rights(client):
 
 
 def test_area_outside_open_sources_is_announced(client):
-    job = setup(client, imagery={"source": "auto"})
+    # Hockenheim lies in Baden-Württemberg: the Bavarian imagery does not cover it
+    job = setup(client, imagery={"source": "bayern_dop40"})
     assert "gate.a.imagery.not_covered" in keys(job["pending_gate"]["items"])
     assert "gate.a.ai_needs_imagery" in keys(job["pending_gate"]["items"])
+    # "auto" finds the state's own open imagery
+    job = setup(client, imagery={"source": "auto"})
+    imagery = next(i for i in job["pending_gate"]["items"] if i["key"] == "gate.a.imagery")
+    assert imagery["params"]["source"].startswith("Baden-Württemberg")
 
 
 def test_analysis_with_ai_questions_and_editor(client, fake_ai, app_ctx):
@@ -189,10 +226,15 @@ def test_analysis_with_ai_questions_and_editor(client, fake_ai, app_ctx):
     a = job["analysis"]
     assert a["imagery"]["attribution"] == "Test-Luftbild"
     assert len(a["items"]) == 10
-    assert a["ai"]["analyzed"] == 10 and a["ai"]["models_used"] == ["claude-sonnet-5-5"]
-    # 2 calls à 3000 in / 1500 out on Sonnet ($2/$10 per MTok)
-    assert len(fake_ai.calls) == 2
-    assert abs(a["ai"]["cost_usd"] - 2 * 0.021) < 1e-9
+    # The fence is not rated (a thin line the AI hardly sees; nothing to gain).
+    assert a["ai"]["analyzed"] == 9 and a["ai"]["models_used"] == ["claude-sonnet-5-5"]
+    # 1 call (all 9 in one batch) à 3000 in / 1500 out on Sonnet ($2/$10 per MTok)
+    assert len(fake_ai.calls) == 1
+    assert abs(a["ai"]["cost_usd"] - 0.021) < 1e-9
+    # every call is in the job's cost book (the overview when installing)
+    assert [c["stage"] for c in job["costs"]] == ["analysis"]
+    assert job["costs"][0]["input_tokens"] == 3000 and job["costs"][0]["output_tokens"] == 1500
+    assert abs(sum(c["usd"] for c in job["costs"]) - a["ai"]["cost_usd"]) < 1e-9
     assert fake_ai.keys == ["sk-ant-test"]
     assert app_ctx.jobs.ledger.month_spent() > 0
 
@@ -275,10 +317,17 @@ def test_analysis_with_ai_questions_and_editor(client, fake_ai, app_ctx):
     r = client.get(f"/api/jobs/{jid}/imagery", headers=AUTH)
     assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
 
+    # The drawn scaffolding is rated by the AI in the background (height, roof ...).
+    job = wait_until_rated(client, jid)
+    drawn = next(i for i in job["analysis"]["items"] if i["id"] == "user/1")
+    assert drawn["ai"] is not None and drawn["attrs"]["height_m"] == 6  # user value kept
+    assert drawn["category"] == "scaffolding"
     job = client.post(
         f"/api/jobs/{jid}/gates/B/approve", json={"hash": job["pending_gate"]["hash"]}, headers=AUTH
     ).json()
-    assert job["state"] == "planned"
+    assert job["state"] == "planning"  # the AI architect builds the important objects first
+    job = wait_for_state(client, jid, {"planned", "analyzed"})
+    assert job["state"] == "planned", job["error"]
     confirmed = {
         i["label_key"]: i["count"] for i in job["plan"]["items"] if i["kind"] == "confirmed"
     }
@@ -290,8 +339,9 @@ def test_analysis_with_ai_questions_and_editor(client, fake_ai, app_ctx):
     assert r.status_code == 409
 
 
-def test_cost_limit_stops_before_spending(client, fake_ai):
+def test_cost_limit_stops_before_spending(client, fake_ai, monkeypatch):
     # First call costs more than estimated ($0.056): the next estimate no longer fits.
+    monkeypatch.setattr(ai, "BATCH_SIZE", 5)  # two batches for the 9 items rated
     fake_ai.tokens = (3000, 5000)
     job = analyze(client, setup(client, brief={**ALL, "ai_cost_limit_usd": 0.07}))
     a = job["analysis"]
@@ -345,3 +395,392 @@ def test_rating_knows_the_area(client, fake_ai):
     ratings = [c for c in fake_ai.calls if c["format"] == "AiBatchResult"]
     assert "race/running track (sport: speedway)" in ratings[0]["system"]
     assert "grandstands" in ratings[0]["system"] and "solar panels" in ratings[0]["system"]
+
+
+# ---- AI architect ------------------------------------------------------------------
+
+
+def planned(client, brief=None) -> dict:
+    # The automatic design has its own test; here the plan is made right away.
+    brief = {**ALL, "ai_design": "off", **(brief or {})}
+    job = analyze(client, setup(client, brief=brief))
+    # Open questions block approval B: answer them.
+    answers = {q["id"]: "9" for q in job["analysis"]["questions"] if not q.get("answer")}
+    if answers:
+        client.post(f"/api/jobs/{job['id']}/answers", json=answers, headers=AUTH)
+    job = client.get(f"/api/jobs/{job['id']}", headers=AUTH).json()
+    r = client.post(
+        f"/api/jobs/{job['id']}/gates/B/approve",
+        json={"hash": job["pending_gate"]["hash"]},
+        headers=AUTH,
+    )
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_architect_writes_fixes_and_checks_a_script(client, fake_ai, app_ctx):
+    job = planned(client)
+    jid = job["id"]
+    obj = next(o for o in job["plan"]["objects"] if o["category"] == "buildings")
+    url = f"/api/jobs/{jid}/design/{obj['item_id']}"
+
+    est = client.get(url, headers=AUTH).json()
+    assert 0 < est["estimate_usd"] <= est["max_usd"] <= est["budget_usd"] + 5
+    fake_ai.calls.clear()
+
+    # The first script is broken ("kaputt"): the sandbox error goes back to the model.
+    r = client.post(
+        url,
+        json={"request": "kaputt: mach eine Glashalle mit Turm", "max_usd": est["max_usd"]},
+        headers=AUTH,
+    )
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["summary"] == "Passt so." and out["cost_usd"] > 0
+    job_now = client.get(f"/api/jobs/{jid}", headers=AUTH).json()
+    corrections = [c for c in job_now["costs"] if c["stage"] == "correction"]
+    assert (
+        len(corrections) == 3 and abs(sum(c["usd"] for c in corrections) - out["cost_usd"]) < 1e-6
+    )
+    formats = [c["format"] for c in fake_ai.calls]
+    assert formats == ["ArchitectScript", "ArchitectScript", "ArchitectReview"]
+    first = fake_ai.calls[0]["content"]
+    assert any(b["type"] == "image" for b in first)  # aerial crop and current views
+    assert "Current script:" in "".join(b.get("text", "") for b in first)
+    assert "failed in the sandbox" in "".join(
+        b.get("text", "") for b in fake_ai.calls[1]["content"]
+    )
+    assert "extrude(" in fake_ai.calls[0]["system"]  # tool reference
+
+    # Every step is reported live (shown while the user waits).
+    import time
+
+    for _ in range(50):  # events from the worker thread arrive via the event loop
+        steps = [e.key for e in app_ctx.jobs.events(jid).events if e.stage == "design"]
+        if "design.step.checking" in steps:
+            break
+        time.sleep(0.05)
+    assert steps == [
+        "design.step.writing",
+        "design.step.testing",
+        "design.step.fixing",
+        "design.step.testing",
+        "design.step.checking",
+    ]
+    job = out["job"]
+    item = next(i for i in job["analysis"]["items"] if i["id"] == obj["item_id"])
+    assert "cylinder(" in item["script"] and item["script_request"].startswith("kaputt")
+    plan_obj = next(o for o in job["plan"]["objects"] if o["item_id"] == obj["item_id"])
+    assert plan_obj["status"] == "ok" and plan_obj["triangles"] > obj["triangles"]
+    assert "gate.c.custom_scripts" in keys(job["pending_gate"]["items"])
+
+    # Back to the default script, free of charge.
+    fake_ai.calls.clear()
+    job = client.delete(url, headers=AUTH).json()
+    item = next(i for i in job["analysis"]["items"] if i["id"] == obj["item_id"])
+    assert item["script"] is None and not fake_ai.calls
+    assert "gate.c.custom_scripts" not in keys(job["pending_gate"]["items"])
+
+
+def test_architect_never_exceeds_the_confirmed_maximum(client, fake_ai):
+    job = planned(client)
+    obj = next(o for o in job["plan"]["objects"] if o["category"] == "buildings")
+    fake_ai.calls.clear()
+    r = client.post(
+        f"/api/jobs/{job['id']}/design/{obj['item_id']}",
+        json={"request": "einen Turm bitte", "max_usd": 0.0001},
+        headers=AUTH,
+    )
+    assert r.status_code == 409 and r.json()["detail"]["key"] == "error.ai_budget_exhausted"
+    assert not fake_ai.calls
+
+
+def test_architect_answer_cut_off_or_declined(client, fake_ai):
+    job = planned(client)
+    obj = next(o for o in job["plan"]["objects"] if o["category"] == "buildings")
+    url = f"/api/jobs/{job['id']}/design/{obj['item_id']}"
+    est = client.get(url, headers=AUTH).json()
+
+    # Cut off once at the output limit: asked again for a more compact script.
+    fake_ai.calls.clear()
+    fake_ai.cut_off = 1
+    r = client.post(url, json={"request": "detailreicher", "max_usd": est["max_usd"]}, headers=AUTH)
+    assert r.status_code == 200, r.text
+    second = "".join(b.get("text", "") for b in fake_ai.calls[1]["content"])
+    assert "cut off at the output limit" in second
+    # the answers may never cost more than the confirmed maximum
+    from xpsb.ai.usage import cost_usd
+
+    for c in fake_ai.calls:
+        assert cost_usd(c["model"], 0, c["max_tokens"]) <= est["max_usd"]
+    assert r.json()["cost_usd"] <= est["max_usd"]
+
+    # Cut off twice: a clear message instead of "refused".
+    fake_ai.cut_off = 2
+    r = client.post(url, json={"request": "noch mehr", "max_usd": est["max_usd"]}, headers=AUTH)
+    assert r.status_code == 409 and r.json()["detail"]["key"] == "error.ai_too_long"
+    fake_ai.cut_off = 0
+
+    fake_ai.refuse = True
+    r = client.post(url, json={"request": "anders", "max_usd": est["max_usd"]}, headers=AUTH)
+    assert r.status_code == 409 and r.json()["detail"]["key"] == "error.ai_refused"
+
+
+# ---- photos of real objects --------------------------------------------------------
+
+
+def test_photos_upload_search_import_and_use(client, fake_ai, app_ctx):
+    import base64
+    import io
+
+    from PIL import Image
+
+    job = planned(client, brief={"research": False})
+    jid = job["id"]
+    obj = next(o for o in job["plan"]["objects"] if o["category"] == "buildings")
+    item_id = obj["item_id"]
+    est_before = client.get(f"/api/jobs/{jid}/design/{item_id}", headers=AUTH).json()
+
+    # Own photo: only with confirmed rights; stored without EXIF (no GPS of private photos).
+    img = Image.new("RGB", (2400, 1600), (120, 140, 160))
+    exif = Image.Exif()
+    exif[0x010F] = "SecretCam"
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", exif=exif)
+    data = base64.b64encode(buf.getvalue()).decode()
+    url = f"/api/jobs/{jid}/photos?item={item_id}"
+    r = client.post(url, json={"data": data}, headers=AUTH)
+    assert r.status_code == 409 and r.json()["detail"]["key"] == "error.photo_rights"
+    job = client.post(url, json={"data": data, "rights_confirmed": True}, headers=AUTH).json()
+    item = next(i for i in job["analysis"]["items"] if i["id"] == item_id)
+    assert len(item["photos"]) == 1 and item["photos"][0]["source"] == "user"
+    stored = client.get(f"/api/jobs/{jid}/photos/{item['photos'][0]['id']}", headers=AUTH)
+    with Image.open(io.BytesIO(stored.content)) as s:
+        assert max(s.size) == 1600 and not s.getexif()
+    bad = client.post(
+        url, json={"data": "bm90IGFuIGltYWdl", "rights_confirmed": True}, headers=AUTH
+    )
+    assert bad.json()["detail"]["key"] == "error.photo_invalid"
+
+    # Open sources (offline fixtures); Mapillary only with the user's token.
+    found = client.get(f"/api/jobs/{jid}/photo-search?item={item_id}", headers=AUTH).json()
+    assert {c["source"] for c in found["candidates"]} == {"wikimedia", "panoramax"}
+    client.put("/api/secrets/mapillary", json={"token": "MLY|1234567890"}, headers=AUTH)
+    found = client.get(f"/api/jobs/{jid}/photo-search?item={item_id}", headers=AUTH).json()
+    assert {c["source"] for c in found["candidates"]} == {"wikimedia", "panoramax", "mapillary"}
+    dists = [c["distance_m"] for c in found["candidates"]]
+    assert dists == sorted(dists) and not found["errors"]
+    wiki = next(c for c in found["candidates"] if c["source"] == "wikimedia")
+    assert wiki["author"] == "Max Muster" and wiki["license"] == "CC BY-SA 4.0"
+    thumb = client.get(f"/api/jobs/{jid}/photo-search/{wiki['id']}/thumb", headers=AUTH)
+    assert thumb.status_code == 200 and thumb.content[:2] == b"\xff\xd8"
+    job = client.post(f"/api/jobs/{jid}/photo-search/{wiki['id']}/import", headers=AUTH).json()
+    item = next(i for i in job["analysis"]["items"] if i["id"] == item_id)
+    assert [p["source"] for p in item["photos"]] == ["user", "wikimedia"]
+    assert item["photos"][1]["author"] == "Max Muster"
+
+    # A facade cut out of the own photo becomes a texture on all walls of the model.
+    own = item["photos"][0]["id"]
+    tex = {
+        "name": "front",
+        "photo_id": own,
+        "corners": [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]],
+        "width_m": 20,
+        "height_m": 10,
+        "walls": True,
+    }
+    prev = client.post(f"/api/jobs/{jid}/texture-preview?item={item_id}", json=tex, headers=AUTH)
+    assert prev.status_code == 200 and prev.content[:2] == b"\xff\xd8"
+    crossed = {**tex, "corners": [[0.1, 0.1], [0.9, 0.9], [0.9, 0.1], [0.1, 0.9]]}
+    r = client.post(f"/api/jobs/{jid}/texture-preview?item={item_id}", json=crossed, headers=AUTH)
+    assert r.status_code == 409 and r.json()["detail"]["key"] == "error.texture_corners"
+    job = client.put(
+        f"/api/jobs/{jid}/textures?item={item_id}", json={"textures": [tex]}, headers=AUTH
+    ).json()
+    planned_obj = next(o for o in job["plan"]["objects"] if o["item_id"] == item_id)
+    assert planned_obj["photo_textures"] == [own]
+    assert "photo_textures" in [i["kind"] for i in job["plan"]["items"]]
+    item = next(i for i in job["analysis"]["items"] if i["id"] == item_id)
+    assert item["photos"][0]["shareable"] is True and item["textures"][0]["name"] == "front"
+
+    # The architect gets the photos (and the estimate accounts for them).
+    est = client.get(f"/api/jobs/{jid}/design/{item_id}", headers=AUTH).json()
+    assert est["estimate_usd"] > est_before["estimate_usd"]
+    fake_ai.calls.clear()
+    r = client.post(
+        f"/api/jobs/{jid}/design/{item_id}",
+        json={"request": "so wie auf den Fotos", "max_usd": est["max_usd"]},
+        headers=AUTH,
+    )
+    assert r.status_code == 200, r.text
+    first = fake_ai.calls[0]["content"]
+    jpegs = [b for b in first if b["type"] == "image" and b["source"]["media_type"] == "image/jpeg"]
+    assert len(jpegs) == 2
+    assert "Wikimedia Commons" in "".join(b.get("text", "") for b in first)
+
+    assert "id=" + own in "".join(b.get("text", "") for b in first)  # photos have ids
+    assert "may be used as texture" in "".join(b.get("text", "") for b in first)
+
+    # Removing a photo deletes the file and its textures too.
+    pid = item["photos"][0]["id"]
+    job = client.delete(f"/api/jobs/{jid}/photos/{pid}", headers=AUTH).json()
+    assert client.get(f"/api/jobs/{jid}/photos/{pid}", headers=AUTH).status_code == 404
+    item = next(i for i in job["analysis"]["items"] if i["id"] == item_id)
+    assert item["textures"] == []
+
+
+# ---- research ----------------------------------------------------------------------
+
+
+def test_research_collects_facts_and_photos(client, fake_ai):
+    job = setup(client)
+    assert "gate.a.research" in keys(job["pending_gate"]["items"])
+    job = analyze(client, job)
+    researched = [i for i in job["analysis"]["items"] if i.get("research")]
+    assert researched, "named/important objects get researched"
+    stand = next(i for i in researched if i["name"] == "Haupttribüne")
+    facts = stand["research"]["facts"]
+    for text in (
+        "Wikidata Q999001",
+        "Type: Stadion",
+        "Capacity: 5000 people",
+        "Opened/built: 1965",
+        "Architect: Max Baumeister",
+        "Wikipedia: Der Speedway Testring",
+        "OSM tags:",
+    ):
+        assert text in facts, text
+    assert stand["photos"] and stand["photos"][0]["source"] == "wikimedia"
+
+
+def test_research_can_be_switched_off(client, fake_ai):
+    job = setup(client, brief={**ALL, "research": False})
+    assert "gate.a.research" not in keys(job["pending_gate"]["items"])
+    job = analyze(client, job)
+    assert not any(i.get("research") for i in job["analysis"]["items"])
+
+
+# ---- automatic design when the plan is made ----------------------------------------
+
+
+def test_architect_builds_the_important_objects_automatically(client, fake_ai, app_ctx):
+    job = analyze(client, setup(client))  # ai_design defaults to "important"
+    gate = client.get(f"/api/jobs/{job['id']}", headers=AUTH).json()["pending_gate"]
+    answers = {q["id"]: "9" for q in job["analysis"]["questions"]}
+    if answers:
+        client.post(f"/api/jobs/{job['id']}/answers", json=answers, headers=AUTH)
+    view = client.get(f"/api/jobs/{job['id']}", headers=AUTH).json()
+    gate = view["pending_gate"]
+    by_key = {i["key"]: i for i in gate["items"]}
+    design = by_key["gate.b.design"]["params"]
+    assert design["count"] >= 2 and "Haupttribüne" in design["names"]
+    # Step 3 already shows which objects these are (photos can be added before).
+    targets = view["design_targets"]
+    assert len(targets) == design["count"]
+    assert by_key["gate.b.design_duration"]["params"]["max"] >= 1
+    cost = by_key["gate.b.design_cost"]["params"]
+    assert 0 < cost["estimate_usd"] <= cost["max_usd"]
+
+    fake_ai.calls.clear()
+    r = client.post(
+        f"/api/jobs/{job['id']}/gates/B/approve", json={"hash": gate["hash"]}, headers=AUTH
+    )
+    assert r.status_code == 200 and r.json()["state"] == "planning"
+    job = wait_for_state(client, job["id"], {"planned", "analyzed"})
+    assert job["state"] == "planned", job["error"]
+    designed = [i for i in job["analysis"]["items"] if i.get("script")]
+    assert len(designed) == design["count"]
+    assert all(i["script_request"] == "auto" for i in designed)
+    # the research facts and the photos went to the architect
+    first = "".join(b.get("text", "") for b in fake_ai.calls[0]["content"])
+    assert "What is known about the real object" in first
+    assert "plan.designed" in {i["label_key"] for i in job["plan"]["items"]}
+    assert sum(o["designed"] for o in job["plan"]["objects"]) == design["count"]
+    # The user saw per object what was going on.
+    events = app_ctx.jobs.events(job["id"]).events
+    for tid in targets:
+        mine = [e for e in events if e.stage == f"design:{tid}"]
+        assert mine[0].key == "design.obj.waiting"
+        steps = [e.key for e in mine]
+        assert "design.step.preparing" in steps and "design.step.writing" in steps
+        assert mine[-1].params["status"] == "done" and mine[-1].params["cost_usd"] > 0
+    overall = [e for e in events if e.stage == "design"][-2]
+    assert overall.params["cost_max"] >= overall.params["cost_usd"] > 0
+
+
+def test_no_automatic_design_without_budget_or_when_off(client, fake_ai):
+    job = analyze(client, setup(client, brief={**ALL, "ai_cost_limit_usd": 0.05}))
+    answers = {q["id"]: "9" for q in job["analysis"]["questions"]}
+    if answers:
+        client.post(f"/api/jobs/{job['id']}/answers", json=answers, headers=AUTH)
+    gate = client.get(f"/api/jobs/{job['id']}", headers=AUTH).json()["pending_gate"]
+    keys_ = keys(gate["items"])
+    assert "gate.b.design" not in keys_ and "gate.b.design_cut" in keys_
+    r = client.post(
+        f"/api/jobs/{job['id']}/gates/B/approve", json={"hash": gate["hash"]}, headers=AUTH
+    )
+    assert r.json()["state"] == "planned"
+
+
+def test_costs_follow_the_bill_with_cache_and_long_prompts():
+    from xpsb.ai.usage import cost_usd
+
+    # Opus 5.5: $4 in, $20 out, cache reads 0.05x, writes 1.25x
+    assert cost_usd("claude-opus-5-5", 1_000_000, 0) == pytest.approx(4.0)
+    assert cost_usd("claude-opus-5-5", 0, 0, cache_read_tokens=1_000_000) == pytest.approx(0.20)
+    assert cost_usd("claude-opus-5-5", 0, 0, cache_write_tokens=1_000_000) == pytest.approx(5.0)
+    # Sonnet 5.5: cache reads 0.1x
+    assert cost_usd("claude-sonnet-5-5", 0, 1_000_000, 1_000_000) == pytest.approx(10.2)
+    # Haiku 5.5: a second rate card above 100k prompt tokens
+    assert cost_usd("claude-haiku-5-5", 100_000, 0) == pytest.approx(0.01)
+    assert cost_usd("claude-haiku-5-5", 200_000, 1_000_000) == pytest.approx(0.1 + 2.5)
+
+
+def test_several_objects_at_once_quick_controls_and_ai(client, fake_ai, app_ctx):
+    job = planned(client)
+    jid = job["id"]
+    houses = [o for o in job["plan"]["objects"] if o["status"] == "ok" and o["top_m"]]
+    assert len(houses) >= 2
+    ids = [o["item_id"] for o in houses[:2]]
+    # "All of them 20 % lower": each from its own current height.
+    r = client.patch(
+        f"/api/jobs/{jid}/objects",
+        json={"item_ids": ids, "attrs": {"roof_shape": "flat"}, "height_factor": 0.8},
+        headers=AUTH,
+    )
+    assert r.status_code == 200, r.text
+    items = {i["id"]: i for i in r.json()["analysis"]["items"]}
+    for o in houses[:2]:
+        it = items[o["item_id"]]
+        base = o["top_m"] if it["attrs"]["height_m"] is None else None
+        assert it["attrs"]["roof_shape"] == "flat" and it["edited"]
+        assert (
+            it["attrs"]["height_m"] is not None and it["attrs"]["height_m"] < (base or 1e9) + 1e-6
+        )
+
+    # One request to the AI architect for both: estimate first, then each is designed.
+    buildings = [o["item_id"] for o in job["plan"]["objects"] if o["category"] == "buildings"][:2]
+    est = client.post(
+        f"/api/jobs/{jid}/design-many/estimate", json={"item_ids": buildings}, headers=AUTH
+    ).json()
+    single = client.get(f"/api/jobs/{jid}/design/{buildings[0]}", headers=AUTH).json()
+    assert est["max_usd"] >= single["max_usd"] * 1.5
+    fake_ai.calls.clear()
+    r = client.post(
+        f"/api/jobs/{jid}/design-many",
+        json={
+            "item_ids": buildings,
+            "request": "Mach Läden ins Erdgeschoss",
+            "max_usd": est["max_usd"],
+        },
+        headers=AUTH,
+    )
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert [x["item_id"] for x in out["results"]] == buildings
+    assert all(x["ok"] for x in out["results"]) and out["cost_usd"] > 0
+    assert out["cost_usd"] <= est["max_usd"] + 1e-9
+    after = {i["id"]: i for i in out["job"]["analysis"]["items"]}
+    assert all(after[i]["script"] and "Läden" in after[i]["script_request"] for i in buildings)
+    corrections = [c for c in out["job"]["costs"] if c["stage"] == "correction"]
+    assert {c["item"] for c in corrections} == {after[i]["name"] or i for i in buildings}

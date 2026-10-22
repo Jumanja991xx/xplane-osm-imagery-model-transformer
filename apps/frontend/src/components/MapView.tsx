@@ -8,6 +8,7 @@ import {
   NavigationControl,
   ScaleControl,
   setWorkerUrl,
+  type RasterSourceSpecification,
   type StyleSpecification,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -23,27 +24,103 @@ import {
   ValidateNotSelfIntersecting,
 } from "terra-draw";
 import { TerraDrawMapLibreGLAdapter } from "terra-draw-maplibre-gl-adapter";
-import { api, ApiError, imageryObjectUrl, type JobView } from "../api/client";
+import {
+  api,
+  ApiError,
+  backend,
+  imageryObjectUrl,
+  type ImagerySettings,
+  type JobView,
+} from "../api/client";
 import { bbox, CATEGORY_COLORS, DEFAULT_HEIGHTS } from "../scene";
 import { useT } from "../i18n";
+import { PlaceSearch } from "./PlaceSearch";
 import { useApp } from "../store";
+
+/** A raster tile server. `template` takes {z}, {x}, {y} (or {-y} for TMS rows) and
+ * {s}, which becomes one URL per subdomain: MapLibre spreads the requests over them. */
+export interface RasterSpec {
+  template: string;
+  subdomains?: string[];
+  maxzoom?: number;
+  tileSize?: number;
+  attribution?: string;
+}
+
+export function rasterSource(spec: RasterSpec): RasterSourceSpecification {
+  const tms = spec.template.includes("{-y}");
+  const template = spec.template.split("{-y}").join("{y}");
+  const subdomains = (spec.subdomains ?? []).map((s) => s.trim()).filter(Boolean);
+  const tiles =
+    template.includes("{s}") && subdomains.length > 0
+      ? subdomains.map((s) => template.split("{s}").join(s))
+      : [template];
+  return {
+    type: "raster",
+    tiles,
+    tileSize: spec.tileSize ?? 256,
+    maxzoom: spec.maxzoom ?? 20,
+    scheme: tms ? "tms" : "xyz",
+    ...(spec.attribution ? { attribution: spec.attribution } : {}),
+  };
+}
 
 // OpenStreetMap standard map in the German style (openstreetmap.de): shows more
 // detail (buildings, tracks, names) than vector styles at the zoom levels we use.
+// Its server ends at zoom 19; MapLibre enlarges those tiles beyond.
+const OSM_DE: RasterSpec = {
+  template: "https://tile.openstreetmap.de/{z}/{x}/{y}.png",
+  maxzoom: 19,
+  attribution:
+    '© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>-Mitwirkende',
+};
+
 const BASEMAP_STYLE: StyleSpecification = {
   version: 8,
-  sources: {
-    osm: {
-      type: "raster",
-      tiles: ["https://tile.openstreetmap.de/{z}/{x}/{y}.png"],
-      tileSize: 256,
-      maxzoom: 19,
-      attribution:
-        '© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>-Mitwirkende',
-    },
-  },
-  layers: [{ id: "osm", type: "raster", source: "osm" }],
+  sources: { basemap: rasterSource(OSM_DE) },
+  layers: [{ id: "basemap", type: "raster", source: "basemap" }],
 };
+
+/** The map background for the settings: the user's own XYZ source (through the
+ * backend, see backend imagery/basemap.py) if it is complete, confirmed and wanted,
+ * else the OpenStreetMap map. */
+async function basemapFor(imagery: ImagerySettings | undefined): Promise<RasterSpec> {
+  if (
+    !imagery ||
+    imagery.source !== "custom" ||
+    imagery.custom_type !== "xyz" ||
+    !imagery.custom_rights_confirmed ||
+    !imagery.custom_on_map ||
+    !/^https?:\/\//.test(imagery.custom_url) ||
+    !imagery.custom_url.includes("{z}") ||
+    !imagery.custom_url.includes("{x}")
+  ) {
+    return OSM_DE;
+  }
+  const { baseUrl } = await backend();
+  // A new URL also means new tiles: a version in the address keeps old ones out of caches.
+  const version = encodeURIComponent(`${imagery.custom_url}|${imagery.custom_subdomains ?? ""}`).slice(-40);
+  return {
+    template: `${baseUrl}/api/basemap/{z}/{x}/{y}?v=${hashCode(version)}`,
+    maxzoom: imagery.custom_max_zoom,
+    attribution: imagery.custom_attribution || undefined,
+  };
+}
+
+function hashCode(text: string): string {
+  let h = 0;
+  for (let i = 0; i < text.length; i++) h = (Math.imul(31, h) + text.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
+/** Swaps only the background: drawn areas, the scene and the aerial image stay. */
+function applyBasemap(map: MapLibreMap, spec: RasterSpec): void {
+  if (map.getLayer("basemap")) map.removeLayer("basemap");
+  if (map.getSource("basemap")) map.removeSource("basemap");
+  map.addSource("basemap", rasterSource(spec));
+  const above = map.getStyle().layers.find((l) => l.id !== "background" && l.id !== "basemap");
+  map.addLayer({ id: "basemap", type: "raster", source: "basemap" }, above?.id);
+}
 
 // Used when the basemap cannot be loaded (offline, blocked): drawing still works.
 const BLANK_STYLE: StyleSpecification = {
@@ -74,6 +151,14 @@ export function MapView() {
   const drawMode = useApp((s) => s.drawMode);
   const clearRequest = useApp((s) => s.clearRequest);
 
+  // Tiles of the user's own source come from the backend, which wants the app's token.
+  const auth = useRef<{ baseUrl: string; token: string } | null>(null);
+  useEffect(() => {
+    void backend()
+      .then((b) => (auth.current = b))
+      .catch(() => undefined);
+  }, []);
+
   useEffect(() => {
     if (!container.current) return;
     const map = new MapLibreMap({
@@ -82,14 +167,25 @@ export function MapView() {
       center: [10.4, 51.1],
       zoom: 5,
       attributionControl: { compact: true },
+      transformRequest: (url) => {
+        const b = auth.current;
+        if (b && url.startsWith(`${b.baseUrl}/api/basemap/`)) {
+          return { url, headers: { Authorization: `Bearer ${b.token}` } };
+        }
+        return { url };
+      },
     });
     if (import.meta.env.DEV) {
       // Lets browser tests move the map without a place search (arrives in M2).
       (window as unknown as { __xpsbMap?: MapLibreMap }).__xpsbMap = map;
     }
+    // Only a style that never loads is replaced. Later errors (a tile that fails while
+    // others are still loading) must not: the new style would drop the drawing layers.
     let fellBack = false;
+    let loaded = false;
+    map.once("load", () => (loaded = true));
     map.on("error", () => {
-      if (!fellBack && !map.isStyleLoaded()) {
+      if (!fellBack && !loaded) {
         fellBack = true;
         map.setStyle(BLANK_STYLE);
       }
@@ -152,8 +248,11 @@ export function MapView() {
 
   useSceneSync(map);
 
+  // Terra Draw writes into its own map sources without checking that they exist.
+  const drawable = () => (map?.getSource("td-polygon") ? drawRef.current : null);
+
   useEffect(() => {
-    const draw = drawRef.current;
+    const draw = drawable();
     if (!draw) return;
     if (drawMode === "none") {
       draw.setMode("static");
@@ -164,16 +263,18 @@ export function MapView() {
   }, [drawMode]);
 
   useEffect(() => {
-    drawRef.current?.clear();
+    drawable()?.clear();
   }, [clearRequest]);
 
   const { t } = useT();
   const hasScene = useApp((s) => Boolean(s.job?.analysis?.items?.length));
   const view3d = useApp((s) => s.view3d);
   const setView3d = useApp((s) => s.setView3d);
+  const noJob = useApp((s) => !s.job);
   return (
     <div className="relative h-full w-full">
       <div ref={container} className="h-full w-full" data-testid="map" />
+      {map && noJob && <PlaceSearch map={map} />}
       {hasScene && (
         <button
           type="button"
@@ -409,6 +510,36 @@ function useSceneSync(map: MapLibreMap | null) {
       }
     }
   }, [map, selected]);
+
+  // Map background follows the settings (own XYZ source or OpenStreetMap), unless a
+  // style was fixed when the app was built (VITE_BASEMAP_STYLE).
+  const imagerySettings = useApp((s) => s.settings?.imagery);
+  const basemapKey = imagerySettings
+    ? [
+        imagerySettings.source,
+        imagerySettings.custom_type,
+        imagerySettings.custom_url,
+        imagerySettings.custom_subdomains,
+        imagerySettings.custom_max_zoom,
+        imagerySettings.custom_attribution,
+        imagerySettings.custom_rights_confirmed,
+        imagerySettings.custom_on_map,
+      ].join("|")
+    : "";
+  useEffect(() => {
+    if (!map || import.meta.env.VITE_BASEMAP_STYLE) return;
+    let cancelled = false;
+    const apply = (spec: RasterSpec) => {
+      if (cancelled) return;
+      if (map.isStyleLoaded()) applyBasemap(map, spec);
+      else map.once("load", () => !cancelled && applyBasemap(map, spec));
+    };
+    void basemapFor(imagerySettings).then(apply, () => undefined);
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, basemapKey]);
 
   // Aerial image of the job, under everything else.
   const imageryKey = imagery && job ? `${job.id}:${imagery.west}:${imagery.north}` : null;

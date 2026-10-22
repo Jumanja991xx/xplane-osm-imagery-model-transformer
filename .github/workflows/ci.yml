@@ -26,7 +26,17 @@ jobs:
           uv run ruff format --check . ../tools
       - name: Tests
         working-directory: backend
-        run: uv run pytest -q
+        shell: bash
+        run: |
+          uv run pytest -q -rfE 2>&1 | tee pytest.log
+          status=${PIPESTATUS[0]}
+          # Failed tests as annotations: readable without the full log.
+          grep -E "^(FAILED|ERROR) " pytest.log | cut -c1-900 | sed 's/^/::error title=pytest::/' || true
+          # No test named (pytest itself crashed): the end of the log instead.
+          if [ "$status" != 0 ] && ! grep -qE "^(FAILED|ERROR) " pytest.log; then
+            echo "::error title=pytest (log tail)::$(tail -n 40 pytest.log | cut -c1-200 | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')"
+          fi
+          exit $status
 
   frontend:
     name: Frontend
@@ -67,9 +77,18 @@ jobs:
 
       - name: Backend tests on Windows (paths, CREATE_NO_WINDOW, DSFTool.exe)
         working-directory: backend
+        shell: bash
         run: |
           uv sync
-          uv run pytest -q
+          uv run pytest -q -rfE 2>&1 | tee pytest.log
+          status=${PIPESTATUS[0]}
+          # Failed tests as annotations: readable without the full log.
+          grep -E "^(FAILED|ERROR) " pytest.log | cut -c1-900 | sed 's/^/::error title=pytest::/' || true
+          # No test named (pytest itself crashed): the end of the log instead.
+          if [ "$status" != 0 ] && ! grep -qE "^(FAILED|ERROR) " pytest.log; then
+            echo "::error title=pytest (log tail)::$(tail -n 40 pytest.log | cut -c1-200 | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')"
+          fi
+          exit $status
 
       - name: Package backend (PyInstaller, one folder)
         working-directory: backend
@@ -88,6 +107,8 @@ jobs:
 
       - name: Build installer
         run: pnpm tauri build
+        env:
+          VITE_BUILD_ID: ${{ github.sha }}  # shown in the settings: which build is installed
 
       - uses: actions/upload-artifact@v4
         with:

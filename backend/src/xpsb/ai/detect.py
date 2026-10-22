@@ -13,7 +13,11 @@ from __future__ import annotations
 import io
 import logging
 import math
+import threading
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from typing import Literal
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -24,9 +28,12 @@ from shapely.geometry.base import BaseGeometry
 from xpsb.ai.analyze import (
     LANG_NAMES,
     OUTLINE,
+    PARALLEL_CALLS,
     AiAuthError,
     AiCallError,
     AiRun,
+    Budget,
+    _clean_color,
     png_block,
 )
 from xpsb.ai.usage import cost_usd
@@ -40,6 +47,10 @@ log = logging.getLogger(__name__)
 
 TILE_M = 160.0
 OVERLAP_M = 30.0
+# Areas up to this size go to the AI as ONE picture: the whole venue in view gives
+# much more consistent results than cut-up tiles (stands are recognised as stands).
+OVERVIEW_MAX_M = 450.0
+OVERVIEW_SEND_PX = 1400
 PASSES = 2  # second look with the first finds outlined: catches what was missed
 SEARCH_EFFORT = "medium"
 TILE_SEND_PX = 1000  # tiles are scaled to this size (more detail for the model)
@@ -50,7 +61,7 @@ DUPLICATE_IOU = 0.3
 KNOWN_OVERLAP = 0.5  # share of a find already covered by a known item
 
 # Price estimate per tile before sending (input: image + prompt; output incl. thinking).
-TILE_INPUT_TOKENS_EST = math.ceil(TILE_SEND_PX * TILE_SEND_PX / 750) + 1500
+TILE_INPUT_TOKENS_EST = math.ceil(OVERVIEW_SEND_PX * OVERVIEW_SEND_PX / 750) + 1800
 TILE_OUTPUT_TOKENS_EST = 3500
 
 
@@ -60,6 +71,10 @@ class AiFind(BaseModel):
     polygon: list[list[float]]  # [[x, y], ...] in pixels of the sent tile
     name: str | None
     height_m: float | None
+    covered: bool | None  # has a roof (stands, canopies)
+    roof_material: Literal["solar", "metal", "membrane", "tiles", "flat", "glass"] | None
+    roof_color: str | None
+    seat_color: str | None
     confidence: float
     summary: str
 
@@ -75,11 +90,14 @@ class Tile:
     y0: int
     x1: int
     y1: int
+    overview: bool = False  # the whole area in one picture
 
 
 def plan_tiles(
     info: ImageryInfo, tile_m: float = TILE_M, overlap_m: float = OVERLAP_M
 ) -> list[Tile]:
+    if max(info.width_px, info.height_px) * info.gsd_m <= OVERVIEW_MAX_M:
+        return [Tile(0, 0, 0, info.width_px, info.height_px, overview=True)]
     size = max(1, round(tile_m / info.gsd_m))
     step = max(1, round((tile_m - overlap_m) / info.gsd_m))
     xs = list(range(0, max(1, info.width_px - size) + 1, step)) or [0]
@@ -98,6 +116,9 @@ def plan_tiles(
 
 
 def count_tiles(width_m: float, height_m: float) -> int:
+    if max(width_m, height_m) <= OVERVIEW_MAX_M:
+        return 1
+
     def n(length: float) -> int:
         return max(1, math.ceil((length - OVERLAP_M) / (TILE_M - OVERLAP_M)))
 
@@ -174,6 +195,10 @@ surfaces: {", ".join(surfaces) or "(none)"}
 - grandstands: spectator stands (rows of seats/steps), often long and narrow, often roofed;
   buildings: closed buildings; canopies: roofs without walls (pit roofs, carports, tents);
   scaffolding: temporary structures, stages, camera towers; masts: light masts, poles;
+  monuments: free-standing statues, equestrian statues, obelisks, memorial columns;
+  bridges: road, rail and foot bridges over water, valleys, roads or railways - outline
+  the deck from bank to bank (a long narrow shape; its shadow on the water is not part
+  of it);
   barriers: only skip them (fences are too thin to see reliably).
 - Context matters: structures lined up along the edge of a race track, sports pitch or arena
   and facing it are almost always grandstands, also when they are roofed - including roofs
@@ -183,7 +208,9 @@ surfaces: {", ".join(surfaces) or "(none)"}
 - Outline each find as a polygon of 4 corners (or up to 8 for L-shapes) in pixel coordinates
   of this image, x to the right, y down, following the visible roof/edge as closely as you can.
 - Skip anything that is mostly outlined in magenta already, cars, trees and shadows.
-- height_m: estimate from shadows and context, or null.
+- height_m: estimate from shadows and context (for roofed stands: height of the roof), or null.
+- covered: true if it has a roof; roof_material: solar (photovoltaic modules), metal,
+  membrane, tiles, flat or glass; roof_color / seat_color as #rrggbb where visible.
 - confidence 0..1; only report finds with confidence of at least {MIN_CONFIDENCE}.
 - summary: one short sentence in {lang}; name: a short label in {lang} or null.
 - An empty list is a fine answer.
@@ -224,7 +251,8 @@ def render_tile(
 ) -> tuple[bytes, float]:
     """Tile PNG with known outlines and grid; returns (png, scale sent/original)."""
     piece = image.crop((tile.x0, tile.y0, tile.x1, tile.y1))
-    scale = TILE_SEND_PX / max(piece.width, piece.height)
+    target = OVERVIEW_SEND_PX if tile.overview else TILE_SEND_PX
+    scale = target / max(piece.width, piece.height)
     piece = piece.resize(
         (round(piece.width * scale), round(piece.height * scale)), Image.Resampling.BICUBIC
     )
@@ -362,6 +390,9 @@ def _covered_by(poly: Polygon, others: list[BaseGeometry]) -> bool:
 
 def _proposal(find: AiFind, poly: Polygon, model: str, confidence: float) -> SceneItem:
     height = find.height_m if find.height_m and 0 < find.height_m <= 150 else None
+    covered = find.covered
+    if find.roof_material in ("solar", "metal", "membrane", "tiles", "glass") and covered is None:
+        covered = True
     return SceneItem(
         id="",
         kind=find.kind,  # type: ignore[arg-type]
@@ -369,7 +400,13 @@ def _proposal(find: AiFind, poly: Polygon, model: str, confidence: float) -> Sce
         geometry=_rounded(mapping(poly)),
         source="ai",
         name=(find.name or None) and find.name[:80],
-        attrs=ItemAttrs(height_m=round(height, 1) if height else None),
+        attrs=ItemAttrs(
+            height_m=round(height, 1) if height else None,
+            covered=covered,
+            material=f"roof:{find.roof_material}" if find.roof_material else None,
+            roof_color=_clean_color(find.roof_color),
+            seat_color=_clean_color(find.seat_color),
+        ),
         ai=AiAssessment(model=model, summary=find.summary[:300], confidence=confidence),
         included=False,
         proposal=True,
@@ -392,26 +429,47 @@ class _Scan:
         self.items, self.aoi, self.image, self.info, self.cfg = items, aoi, image, info, cfg
         self.objects, self.surfaces = objects, surfaces
         self.result = AiRunInfo(model=cfg.model)
+        self.budget = Budget(cfg.budget_usd, self.result, cfg.on_cost)
+        self.lock = threading.Lock()
         self.tiles = plan_tiles(info)
         self.finds: list[tuple[float, SceneItem, Polygon]] = []
+        self.found_in: set[int] = set()  # tiles where something new was found
 
     def known(self) -> list[SceneItem]:
         return self.items + [item for _, item, _ in self.finds]
 
-    def run(self, system: str, extra: list[dict], prefix: str, step: int, steps: int) -> bool:
-        """One look at every tile. False if the run has to stop (limit, error, cancel)."""
+    def drop(self, reason: str) -> None:
+        with self.lock:
+            self.result.dropped[reason] = self.result.dropped.get(reason, 0) + 1
+
+    def run(
+        self,
+        system: str,
+        extra: list[dict],
+        prefix: str,
+        step: int,
+        steps: int,
+        tiles: list[Tile] | None = None,
+    ) -> bool:
+        """One look at every tile (or `tiles`), several in parallel. False if the run
+        has to stop (limit, error, cancel)."""
+        tiles = self.tiles if tiles is None else tiles
         known_objects = [shape(it.geometry) for it in self.items if it.kind == "object"]
         known_surfaces = [shape(it.geometry) for it in self.items if it.kind == "surface"]
-        for n, tile in enumerate(self.tiles):
-            if self.cfg.should_stop():
-                return False
-            if self.result.cost_usd + estimate_tile_cost(self.cfg.model) > self.cfg.budget_usd:
-                self.result.limit_reached = True
-                return False
-            png, scale = render_tile(self.image, self.info, tile, self.known())
+        outlined = self.known()  # what this look already sees outlined in magenta
+        estimate = estimate_tile_cost(self.cfg.model)
+        done = [0]
+
+        def look(tile: Tile) -> None:
+            if self.cfg.should_stop() or self.result.error_key:
+                return
+            if not self.budget.reserve(estimate):
+                return
+            png, scale = render_tile(self.image, self.info, tile, outlined)
             w, h = Image.open(io.BytesIO(png)).size
             text = tile_text(self.info, tile, w, h, scale, len(self.tiles))
             content = [*extra, {"type": "text", "text": f"{prefix}{text}"}, png_block(png)]
+            response = None
             try:
                 response = self.cfg.transport(
                     model=self.cfg.model,
@@ -422,38 +480,55 @@ class _Scan:
                 )
             except AiAuthError:
                 self.result.error_key = "analysis.ai_auth_failed"
-                return False
+                return
             except AiCallError as exc:
                 log.warning("AI object search failed: %s", exc)
                 self.result.error_key = "analysis.ai_call_failed"
                 self.result.error_detail = str(exc)
-                return False
-            r = self.result
-            spent = cost_usd(response.model, response.input_tokens, response.output_tokens)
-            r.cost_usd = round(r.cost_usd + spent, 6)
-            r.tiles_searched += 1
-            self.cfg.on_cost(spent)
-            if response.model not in r.models_used:
-                r.models_used.append(response.model)
-            self.cfg.progress((step * len(self.tiles) + n + 1) / (steps * len(self.tiles)))
+                return
+            finally:
+                self.budget.settle(estimate, response)
+            with self.lock:
+                self.result.tiles_searched += 1
+                done[0] += 1
+                self.cfg.progress((step * len(self.tiles) + done[0]) / (steps * len(self.tiles)))
             if response.refused or response.parsed is None:
-                continue
+                self.drop("too_long" if response.stop_reason == "max_tokens" else "refused")
+                return
             for find in response.parsed.finds:
                 confidence = min(1.0, max(0.0, find.confidence))
-                if confidence < MIN_CONFIDENCE or not _valid_category(
-                    find.kind, find.category, self.objects, self.surfaces
-                ):
+                if confidence < MIN_CONFIDENCE:
+                    self.drop("low_confidence")
+                    continue
+                if not _valid_category(find.kind, find.category, self.objects, self.surfaces):
+                    known_kind = find.category in (
+                        {c.value for c in ObjectCategory}
+                        if find.kind == "object"
+                        else {c.value for c in SurfaceType}
+                    )
+                    # "category": exists, but the user did not ask for it.
+                    self.drop("category" if known_kind else "unknown_category")
                     continue
                 poly = find_to_polygon(self.image, self.info, tile, scale, find)
-                if poly is None or not self.aoi.contains(poly.representative_point()):
+                if poly is None:
+                    self.drop("shape")
+                    continue
+                if not self.aoi.contains(poly.representative_point()):
+                    self.drop("outside")
                     continue
                 known = known_objects if find.kind == "object" else known_surfaces
                 if _covered_by(poly, known):
+                    self.drop("known")
                     continue
-                self.finds.append(
-                    (confidence, _proposal(find, poly, response.model, confidence), poly)
-                )
-        return True
+                with self.lock:
+                    self.finds.append(
+                        (confidence, _proposal(find, poly, response.model, confidence), poly)
+                    )
+                    self.found_in.add(tile.index)
+
+        with ThreadPoolExecutor(max_workers=PARALLEL_CALLS) as pool:
+            list(pool.map(look, tiles))
+        return not (self.result.error_key or self.result.limit_reached or self.cfg.should_stop())
 
     def proposals(self) -> list[SceneItem]:
         # Overlapping tiles and passes see the same thing twice: keep the most confident.
@@ -480,15 +555,37 @@ def search(
     objects: list[str],
     surfaces: list[str],
     passes: int = PASSES,
+    on_pass: Callable[[int, int], None] | None = None,
 ) -> tuple[list[SceneItem], AiRunInfo]:
     """Runs in a worker thread. Returns new proposal items and the run info."""
     scan = _Scan(items, aoi, image, info, cfg, objects, surfaces)
     system = system_prompt(cfg.language, cfg.notes, objects, surfaces, area_context(items))
     for step in range(passes):
+        tiles = scan.tiles if step == 0 else around(scan.tiles, scan.found_in)
+        if not tiles:
+            break  # nothing new anywhere: another look would find nothing either
+        if on_pass:
+            on_pass(step + 1, passes)  # tells the user which look is running
         prefix = "" if step == 0 else SECOND_PASS + "\n"
-        if not scan.run(system, [], prefix, step, passes):
+        if not scan.run(system, [], prefix, step, passes, tiles):
             break
     return scan.proposals(), scan.result
+
+
+def around(tiles: list[Tile], found: set[int]) -> list[Tile]:
+    """The tiles where something was found and their neighbours: where a second
+    look pays (stands next to stands, the rest of a row). Elsewhere the first look
+    already saw everything there is."""
+    hits = [t for t in tiles if t.index in found]
+    out = []
+    for t in tiles:
+        w, h = t.x1 - t.x0, t.y1 - t.y0
+        if any(
+            t.x0 - w < o.x1 and o.x0 < t.x1 + w and t.y0 - h < o.y1 and o.y0 < t.y1 + h
+            for o in hits
+        ):
+            out.append(t)
+    return out
 
 
 def find_similar(
@@ -507,7 +604,12 @@ def find_similar(
     extra = [{"type": "text", "text": "EXAMPLE:"}, png_block(crop)]
     scan = _Scan(items, aoi, image, info, cfg, [category], [])
     scan.run(similar_prompt(cfg.language, category), extra, "TILE: ", 0, 1)
-    return scan.proposals(), scan.result
+    found = scan.proposals()
+    # "Like this one": what the user confirmed on the example beats the AI's guess.
+    copy = {k: v for k, v in example.attrs.model_dump().items() if v is not None}
+    for item in found:
+        item.attrs = item.attrs.model_copy(update=copy)
+    return found, scan.result
 
 
 def similar_cost_estimate(info_tiles: int, model: str) -> float:

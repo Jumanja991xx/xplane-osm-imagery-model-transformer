@@ -6,11 +6,14 @@ import json
 import os
 import threading
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import AfterValidator, BaseModel, Field, ValidationError
 
-AiModel = Literal["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"]
+from xpsb.ai.providers import check_model
+
+# Claude or Gemini (see ai/providers.py: known models and Gemini ids from Google).
+AiModel = Annotated[str, AfterValidator(check_model)]
 
 
 class AiSettings(BaseModel):
@@ -20,7 +23,22 @@ class AiSettings(BaseModel):
     monthly_limit_usd: float = Field(default=20.0, ge=0, le=10000)
 
 
-ImagerySourceChoice = Literal["auto", "bayern_dop40", "nrw_dop", "custom", "none"]
+ImagerySourceChoice = Literal[
+    "auto",
+    "de_states",
+    "bayern_dop40",
+    "nrw_dop",
+    "swissimage",
+    "basemap_at",
+    "pdok_nl",
+    "ign_fr",
+    "pnoa_es",
+    "usgs_naip",
+    "gsi_jp",
+    "esri",
+    "custom",
+    "none",
+]
 
 
 class ImagerySettings(BaseModel):
@@ -29,10 +47,18 @@ class ImagerySettings(BaseModel):
     custom_type: Literal["wms", "xyz"] = "wms"
     custom_max_zoom: int = Field(default=19, ge=10, le=23)  # XYZ only
     custom_url: str = Field(default="", max_length=1000)
+    # XYZ only: servers a {s} in the URL rotates through, e.g. "a,b,c" or "mt0,mt1".
+    custom_subdomains: str = Field(default="", max_length=200, pattern=r"^[A-Za-z0-9,\- ]*$")
     custom_layer: str = Field(default="", max_length=200)
     custom_attribution: str = Field(default="", max_length=300)
     # The user confirms they may use the custom source for this purpose.
     custom_rights_confirmed: bool = False
+    # XYZ only: also show the custom source as the background of the map.
+    custom_on_map: bool = True
+
+    @property
+    def subdomains(self) -> list[str]:
+        return [part.strip() for part in self.custom_subdomains.split(",") if part.strip()]
 
 
 class Settings(BaseModel):
@@ -43,6 +69,13 @@ class Settings(BaseModel):
     imagery: ImagerySettings = Field(default_factory=ImagerySettings)
     # Off until the user opts in (no network traffic without consent).
     update_check: bool = False
+    # Blender (installed by the user) bakes soft shading into the textures at build time.
+    use_blender: bool = True
+    blender_path: str | None = None
+    # "auto": the graphics card if Cycles finds one; "cpu": skip the search (it can hang).
+    blender_device: Literal["auto", "cpu"] = "auto"
+    # An Overpass server of the user's own (or their company's), asked first.
+    overpass_url: str | None = None
 
 
 class SettingsStore:
