@@ -203,3 +203,49 @@ def test_the_deck_meets_the_banks_of_a_valley():
     flat = b.model_copy(update={"ground": []})
     deck_flat = assemble._script_inputs(flat, items, "medium").params["bridge"]["deck"]
     assert {p[2] for p in deck_flat} == {6.0}  # no terrain: the guessed height
+
+
+def test_ways_side_by_side_are_one_bridge():
+    """Szabadság híd: two carriageways, the tram tracks and two footways run side by
+    side over the river - one bridge (named after the road), wide enough for all,
+    its axis in the middle; not five bridges."""
+    els = [
+        _line(
+            1,
+            [(-80, 6), (80, 6)],
+            bridge="yes",
+            layer="1",
+            highway="secondary",
+            name="Szabadság híd",
+        ),
+        _line(
+            2,
+            [(80, -6), (-80, -6)],
+            bridge="yes",
+            layer="1",
+            highway="secondary",
+            name="Szabadság híd",
+        ),
+        _line(3, [(-80, 0), (80, 0)], bridge="yes", layer="1", railway="tram"),
+        _line(4, [(-80, 10), (80, 10)], bridge="yes", layer="1", highway="footway"),
+        _line(5, [(-80, -10), (80, -10)], bridge="yes", layer="1", highway="footway"),
+        # another bridge 200 m downstream stays a bridge of its own
+        _line(6, [(-80, 210), (80, 210)], bridge="yes", layer="1", highway="primary"),
+    ]
+    bridges = _bridges(_run(els))
+    assert len(bridges) == 2
+    main = next(b for b in bridges if b.name)
+    assert main.name == "Szabadság híd"
+    assert main.attrs.width_m >= 20.0
+    mid = shape(main.geometry).interpolate(0.5, normalized=True)
+    assert abs(mid.y - LAT0) * METERS_PER_DEG_LAT < 1.5  # in the middle of the ways
+
+
+def test_bridge_outlines_tagged_as_building_are_bridges():
+    els = _river_crossing(highway="primary", name="Lánchíd")
+    els.append(
+        {"type": "way", "id": 30, "geometry": rect(-60, -8, 60, 8), "tags": {"building": "bridge"}}
+    )
+    items = _run(els)
+    assert len(_bridges(items)) == 1
+    assert not [it for it in items if str(it.category) == "buildings"]
