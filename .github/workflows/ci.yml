@@ -28,6 +28,8 @@ jobs:
         working-directory: backend
         shell: bash
         run: |
+          # bash runs with -e -o pipefail: keep going after failed tests to report them
+          set +e +o pipefail
           uv run pytest -q -rfE 2>&1 | tee pytest.log
           status=${PIPESTATUS[0]}
           # Failed tests as annotations: readable without the full log.
@@ -85,6 +87,8 @@ jobs:
             if [ "$attempt" = 3 ]; then echo "::error title=uv sync::dependencies could not be installed"; exit 1; fi
             sleep $((attempt * 15))
           done
+          # bash runs with -e -o pipefail: keep going after failed tests to report them
+          set +e +o pipefail
           uv run pytest -q -rfE 2>&1 | tee pytest.log
           status=${PIPESTATUS[0]}
           # Failed tests as annotations: readable without the full log.
