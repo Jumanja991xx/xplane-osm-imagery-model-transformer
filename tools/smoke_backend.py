@@ -112,6 +112,17 @@ def build_test_scenery(base: str) -> None:
     print("built:", job["build"]["dsftool_version"], files)
 
 
+def _annotate(exc: Exception, data: Path) -> None:
+    """The error and the end of the backend log as a GitHub annotation (CI logs are
+    not always at hand; annotations are)."""
+    text = f"{type(exc).__name__}: {exc}"
+    for log in sorted(data.rglob("*.log")):
+        lines = log.read_text(encoding="utf-8", errors="replace").splitlines()[-40:]
+        text += f"\n--- {log.name} ---\n" + "\n".join(line[:300] for line in lines)
+    body = text[-6000:].replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+    print(f"::error title=smoke test::{body}", flush=True)
+
+
 def main() -> None:
     exe = sys.argv[1]
     extra = sys.argv[2:]  # e.g. --resources-dir <dir with bin/DSFTool.exe>
@@ -161,7 +172,11 @@ def main() -> None:
                 system = json.loads(resp.read())
             print("system:", json.dumps(system, indent=1))
             assert system["dsftool"]["found"], "DSFTool not found by the packaged backend"
-            build_test_scenery(base)
+            try:
+                build_test_scenery(base)
+            except Exception as exc:
+                _annotate(exc, Path(data))
+                raise
 
             proc.stdin.close()
             proc.wait(timeout=20)
