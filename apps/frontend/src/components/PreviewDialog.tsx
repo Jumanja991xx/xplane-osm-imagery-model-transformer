@@ -12,7 +12,7 @@ import {
   type PreviewLight,
   type PreviewObject,
 } from "../api/client";
-import { hasKeyFor } from "../ai";
+import { hasKeyFor, modelGroups, modelLabel, modelName, useAiModels } from "../ai";
 import { useT } from "../i18n";
 import { CATEGORY_COLORS, categoryLabelKey } from "../scene";
 import { useApp } from "../store";
@@ -831,8 +831,10 @@ function MultiControls({
   const [text, setText] = useState("");
   const [estimate, setEstimate] = useState<{ estimate_usd: number; max_usd: number; budget_usd: number; model: string } | null>(null);
   const [results, setResults] = useState<{ item_id: string; ok: boolean; summary: string; error: string | null }[] | null>(null);
-  const [cost, setCost] = useState<number | null>(null);
-  const aiReady = useApp((s) => Boolean(s.job?.brief?.use_ai && hasKeyFor(s.job?.brief?.ai_model, s.system)));
+  const [cost, setCost] = useState<{ usd: number; model: string } | null>(null);
+  const aiReady = useApp((s) => Boolean(s.job?.brief?.use_ai && (s.system?.has_api_key || s.system?.has_gemini_key)));
+  const jobModel = useApp((s) => s.job?.brief?.ai_model ?? "");
+  const [model, setModel] = useState(jobModel);
   const ids = objects.map((o) => o.item_id);
   const names = new Map(objects.map((o) => [o.item_id, o.name || o.stem]));
 
@@ -858,6 +860,12 @@ function MultiControls({
   };
   const adjust = (attrs: Partial<ItemAttrs>, factor?: number) =>
     run(async () => refresh(await api.adjustMany(jobId, ids, attrs, factor)));
+  const estimateWith = (m: string) => run(async () => setEstimate(await api.designManyEstimate(jobId, ids, m)));
+  const pickModel = (m: string) => {
+    setModel(m);
+    setEstimate(null);
+    if (text.trim().length >= 3) void estimateWith(m);
+  };
 
   return (
     <div className="space-y-2 rounded-md border border-accent-600/40 bg-accent-600/5 p-2" data-testid="multi-controls">
@@ -936,10 +944,11 @@ function MultiControls({
           }}
           data-testid="multi-ai-text"
         />
+        <ModelSelect value={model} onChange={pickModel} disabled={busy} testId="multi-ai-model" />
         {!estimate ? (
           <Button
             disabled={busy || text.trim().length < 3}
-            onClick={() => void run(async () => setEstimate(await api.designManyEstimate(jobId, ids)))}
+            onClick={() => void estimateWith(model)}
             data-testid="multi-ai-estimate"
           >
             {t("multi.ai_estimate")}
@@ -952,7 +961,7 @@ function MultiControls({
                 typical: estimate.estimate_usd.toFixed(2),
                 max: estimate.max_usd.toFixed(2),
                 budget: estimate.budget_usd.toFixed(2),
-                model: estimate.model,
+                model: modelName(t, estimate.model),
               })}
             </p>
             <Button
@@ -960,9 +969,10 @@ function MultiControls({
               disabled={busy || estimate.max_usd > estimate.budget_usd}
               onClick={() =>
                 void run(async () => {
-                  const out = await api.designMany(jobId, ids, text.trim(), estimate.max_usd);
+                  setResults(null);
+                  const out = await api.designMany(jobId, ids, text.trim(), estimate.max_usd, estimate.model);
                   setResults(out.results as never);
-                  setCost(out.cost_usd);
+                  setCost({ usd: out.cost_usd, model: out.model });
                   setEstimate(null);
                   await refresh(out.job);
                 })
@@ -982,9 +992,12 @@ function MultiControls({
                 {r.ok ? "✓" : "✗"} {names.get(r.item_id)}: {r.ok ? r.summary : t(r.error ?? "error.architect_failed")}
               </li>
             ))}
-            {cost !== null && <li className="text-zinc-500">{t("multi.ai_spent", { usd: cost.toFixed(3) })}</li>}
+            {cost !== null && (
+              <li className="text-zinc-500">{t("multi.ai_spent", { usd: cost.usd.toFixed(3), model: modelName(t, cost.model) })}</li>
+            )}
           </ul>
         )}
+        {results?.some((r) => !r.ok) && !busy && <TryStronger current={cost?.model ?? model} onPick={pickModel} />}
           </>
         )}
       </div>
@@ -1641,6 +1654,77 @@ function DesignProgress({ itemId, since, started }: { itemId: string; since: num
   );
 }
 
+/** Which AI answers this request – the job's model by default; another one (e.g. a
+ * stronger) when the first did not manage. Models without a key cannot be chosen. */
+function ModelSelect({
+  value,
+  onChange,
+  disabled,
+  testId,
+}: {
+  value: string;
+  onChange: (model: string) => void;
+  disabled?: boolean;
+  testId: string;
+}) {
+  const { t } = useT();
+  const system = useApp((s) => s.system);
+  const [models] = useAiModels();
+  return (
+    <label className="flex items-center gap-1.5 text-xs">
+      <span className="shrink-0 text-zinc-600 dark:text-zinc-300">{t("design.model")}</span>
+      <select
+        className="min-w-0 flex-1 rounded border border-zinc-300 bg-white px-1 py-0.5 dark:border-zinc-600 dark:bg-zinc-800"
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        data-testid={testId}
+      >
+        {modelGroups(models, value).map((g) =>
+          g.models.length ? (
+            <optgroup key={g.provider} label={t(`provider.${g.provider}`)}>
+              {g.models.map((m) => (
+                <option key={m.id} value={m.id} disabled={!hasKeyFor(m.id, system)}>
+                  {modelLabel(t, m)}
+                  {!hasKeyFor(m.id, system) ? ` (${t("brief.no_key")})` : ""}
+                </option>
+              ))}
+            </optgroup>
+          ) : null,
+        )}
+      </select>
+    </label>
+  );
+}
+
+/** The best model with a key that is not the one that just failed (or null). */
+function useStrongerModel(current: string): string | null {
+  const system = useApp((s) => s.system);
+  const [models] = useAiModels();
+  const rank = { top: 0, mid: 1, low: 2 } as Record<string, number>;
+  const now = models.find((m) => m.id === current);
+  const better = models
+    .filter((m) => m.id !== current && hasKeyFor(m.id, system) && !m.note)
+    .filter((m) => !now?.tier || rank[m.tier ?? "low"] < rank[now.tier])
+    .sort((a, b) => rank[a.tier ?? "low"] - rank[b.tier ?? "low"]);
+  return better[0]?.id ?? null;
+}
+
+/** After a failed answer: offer to ask a stronger model (cost is shown again first). */
+function TryStronger({ current, onPick, disabled }: { current: string; onPick: (model: string) => void; disabled?: boolean }) {
+  const { t } = useT();
+  const stronger = useStrongerModel(current);
+  if (!stronger) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs" data-testid="design-try-stronger">
+      <span className="text-zinc-600 dark:text-zinc-300">{t("design.try_stronger", { model: modelName(t, current) })}</span>
+      <Button onClick={() => onPick(stronger)} disabled={disabled}>
+        {t("design.try_with", { model: modelName(t, stronger) })}
+      </Button>
+    </div>
+  );
+}
+
 /** Request to the AI architect in own words: cost first, then send, then keep or reset. */
 function DesignPanel({
   jobId,
@@ -1663,6 +1747,8 @@ function DesignPanel({
   const [done, setDone] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState<{ since: number; started: number } | null>(null);
+  const [model, setModel] = useState(job?.brief?.ai_model ?? "");
+  const [failed, setFailed] = useState(false);
   if (!item) return null;
   const aiOn = Boolean(job?.brief?.use_ai);
 
@@ -1682,9 +1768,9 @@ function DesignPanel({
     const next = view.plan?.objects?.find((o) => o.item_id === object.item_id);
     if (next) await onAdjusted({ ...object, ...next });
   };
-  const check = () =>
+  const check = (m = model) =>
     run(async () => {
-      const e = await api.designEstimate(jobId, object.item_id);
+      const e = await api.designEstimate(jobId, object.item_id, m);
       setEstimate({ typical: e.estimate_usd, max: Math.min(e.max_usd, e.budget_usd), budget: e.budget_usd, model: e.model });
     });
   const send = () =>
@@ -1692,14 +1778,26 @@ function DesignPanel({
       if (!estimate) return;
       const events = useApp.getState().events;
       setSending({ since: events.length ? events[events.length - 1].seq : 0, started: Date.now() });
-      const out = await api.redesign(jobId, object.item_id, text.trim(), estimate.max).finally(() =>
-        setSending(null),
-      );
+      setFailed(false);
+      setDone(null);
+      const out = await api
+        .redesign(jobId, object.item_id, text.trim(), estimate.max, estimate.model)
+        .catch((e) => {
+          setFailed(true);
+          throw e;
+        })
+        .finally(() => setSending(null));
       setEstimate(null);
       setText("");
-      setDone(t("design.done", { summary: out.summary, cost: out.cost_usd.toFixed(3) }));
+      setDone(t("design.done", { summary: out.summary, cost: out.cost_usd.toFixed(3), model: modelName(t, out.model) }));
       await showNew(out.job);
     });
+  const pickModel = (m: string) => {
+    setModel(m);
+    setEstimate(null);
+    setFailed(false);
+    if (text.trim().length >= 3) void check(m);
+  };
   const reset = () =>
     run(async () => {
       setDone(null);
@@ -1734,8 +1832,9 @@ function DesignPanel({
             disabled={busy}
             data-testid="design-text"
           />
+          <ModelSelect value={model} onChange={pickModel} disabled={busy} testId="design-model" />
           {!estimate ? (
-            <Button onClick={check} disabled={busy || text.trim().length < 3} data-testid="design-check">
+            <Button onClick={() => void check()} disabled={busy || text.trim().length < 3} data-testid="design-check">
               {t("design.check")}
             </Button>
           ) : (
@@ -1745,7 +1844,7 @@ function DesignPanel({
                   typical: estimate.typical.toFixed(2),
                   max: estimate.max.toFixed(2),
                   budget: estimate.budget.toFixed(2),
-                  model: estimate.model,
+                  model: modelName(t, estimate.model),
                 })}
               </p>
               <Button variant="primary" onClick={send} disabled={busy || estimate.max <= 0} data-testid="design-send">
@@ -1758,6 +1857,7 @@ function DesignPanel({
       )}
       {done && <Alert kind="success">{done}</Alert>}
       {error && <Alert kind="error">{error}</Alert>}
+      {failed && !busy && <TryStronger current={model} onPick={pickModel} />}
     </div>
   );
 }

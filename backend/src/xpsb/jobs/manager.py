@@ -983,12 +983,14 @@ class JobManager:
         self._save(job)
         return job
 
-    def design_many_estimate(self, job_id: str, item_ids: list[str]) -> DesignEstimate:
+    def design_many_estimate(
+        self, job_id: str, item_ids: list[str], model: str | None = None
+    ) -> DesignEstimate:
         """What one request to the AI architect for all these objects may cost."""
         typical = most = 0.0
         estimate = None
         for item_id in dict.fromkeys(item_ids):
-            estimate = self.design_estimate(job_id, item_id)
+            estimate = self.design_estimate(job_id, item_id, model)
             typical += estimate.estimate_usd
             most += estimate.max_usd
         if estimate is None:
@@ -998,7 +1000,12 @@ class JobManager:
         )
 
     async def redesign_many(
-        self, job_id: str, item_ids: list[str], request: str, max_usd: float
+        self,
+        job_id: str,
+        item_ids: list[str],
+        request: str,
+        max_usd: float,
+        model: str | None = None,
     ) -> tuple[Job, list[dict], float]:
         """One request in the user's words for several objects ("add the shop fronts
         that are missing"): the AI architect changes each of them, a few at a time,
@@ -1006,10 +1013,10 @@ class JobManager:
         from concurrent.futures import ThreadPoolExecutor
 
         ids = list(dict.fromkeys(item_ids))
-        job, _ = self._design_ready(job_id, ids[0]) if ids else (None, None)
+        job, _ = self._design_ready(job_id, ids[0], model) if ids else (None, None)
         if job is None:
             raise JobConflict("error.item_not_found", item="")
-        items = [self._design_ready(job_id, i)[1] for i in ids]
+        items = [self._design_ready(job_id, i, model)[1] for i in ids]
         if job_id in self._busy:
             raise JobConflict("error.job_running")
         assert job.plan is not None
@@ -1017,7 +1024,7 @@ class JobManager:
         if budget <= 0:
             raise JobConflict("error.ai_budget_exhausted")
         # Each object gets its share of the confirmed maximum, by its own estimate.
-        maxima = [self.design_estimate(job_id, it.id).max_usd for it in items]
+        maxima = [self.design_estimate(job_id, it.id, model).max_usd for it in items]
         scale = min(1.0, budget / max(sum(maxima), 1e-9))
         log = self.events(job_id)
 
@@ -1028,7 +1035,7 @@ class JobManager:
                 )
 
             return self._design_call(
-                job, it, request, share, job.plan.detail, on_step, "correction"
+                job, it, request, share, job.plan.detail, on_step, "correction", model
             )
 
         self._busy.add(job_id)
@@ -1068,13 +1075,19 @@ class JobManager:
 
     # ---- AI architect: own build script for one object -------------------------
 
-    def _design_ready(self, job_id: str, item_id: str) -> tuple[Job, SceneItem]:
+    def _design_ready(
+        self, job_id: str, item_id: str, model: str | None = None
+    ) -> tuple[Job, SceneItem]:
+        """`model`: another AI model than the job's for this one request (the user
+        tries a stronger one when the first did not manage)."""
         job = self._planned(job_id)
         item = self._item(job, item_id)
         assert job.brief is not None
         if not job.brief.use_ai:
             raise JobConflict("error.ai_off")
-        if not self._ai_key(job.brief.ai_model):
+        if model is not None and not providers.valid_model(model):
+            raise JobConflict("error.ai_model_unavailable", model=model)
+        if not self._ai_key(model or job.brief.ai_model):
             raise JobConflict("error.ai_no_key")
         if item.kind != "object":
             raise JobConflict("error.similar_objects_only")
@@ -1085,30 +1098,38 @@ class JobManager:
 
         return item.script or DEFAULT_SCRIPTS.get(str(item.category), "")
 
-    def design_estimate(self, job_id: str, item_id: str) -> DesignEstimate:
+    def design_estimate(
+        self, job_id: str, item_id: str, model: str | None = None
+    ) -> DesignEstimate:
         from xpsb.ai import architect
 
-        job, item = self._design_ready(job_id, item_id)
+        job, item = self._design_ready(job_id, item_id, model)
         assert job.brief is not None
+        model = model or job.brief.ai_model
         typical, most = architect.cost_estimate(
-            job.brief.ai_model,
+            model,
             len(self._current_script(item)),
             len(item.photos),
             len(self.library().offer()),
         )
         return DesignEstimate(
-            model=job.brief.ai_model,
+            model=model,
             estimate_usd=round(typical, 3),
             max_usd=round(most, 3),
             budget_usd=round(self._similar_budget(job), 4),
         )
 
     async def redesign(
-        self, job_id: str, item_id: str, request: str, max_usd: float
+        self,
+        job_id: str,
+        item_id: str,
+        request: str,
+        max_usd: float,
+        model: str | None = None,
     ) -> tuple[Job, str, float]:
         """Runs only after the user confirmed the estimate (max_usd is what they saw).
         Returns the job, the architect's summary and what it cost."""
-        job, item = self._design_ready(job_id, item_id)
+        job, item = self._design_ready(job_id, item_id, model)
         if job_id in self._busy:
             raise JobConflict("error.job_running")
         assert job.brief is not None and job.analysis is not None and job.plan is not None
@@ -1133,6 +1154,7 @@ class JobManager:
                 job.plan.detail,
                 on_step,
                 "correction",
+                model,
             )
         finally:
             self._busy.discard(job_id)
@@ -1162,6 +1184,7 @@ class JobManager:
         detail: str,
         on_step,
         stage: str = "design",
+        model: str | None = None,
     ):
         """One run of the AI architect for one object (worker thread)."""
         from xpsb.ai import architect
@@ -1176,12 +1199,13 @@ class JobManager:
                     aerial, _ = ai.render_crop(img.convert("RGB"), job.analysis.imagery, item)
                 except ValueError:
                     aerial = None
+        model = model or job.brief.ai_model
         cfg = ai.AiRun(
-            model=job.brief.ai_model,
+            model=model,
             language=self._settings.load().language,
             notes=job.brief.notes,
             budget_usd=budget,
-            transport=self._transport(job.brief.ai_model),
+            transport=self._transport(model),
             on_cost=pipeline.cost_book(job, self.ledger, stage, item.name or item.id),
         )
         inputs = assemble._script_inputs(item, job.analysis.items, detail)

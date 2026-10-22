@@ -1802,7 +1802,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AdjustManyBody"
+                "$ref": "#/components/schemas/DesignManyEstimateBody"
               }
             }
           }
@@ -1901,6 +1901,22 @@
             "schema": {
               "type": "string",
               "title": "Item Id"
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model"
             }
           }
         ],
@@ -3559,6 +3575,17 @@
             "maximum": 1000.0,
             "exclusiveMinimum": 0.0,
             "title": "Max Usd"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
           }
         },
         "type": "object",
@@ -3619,6 +3646,17 @@
             "maximum": 1000.0,
             "exclusiveMinimum": 0.0,
             "title": "Max Usd"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
           }
         },
         "type": "object",
@@ -3628,6 +3666,35 @@
           "max_usd"
         ],
         "title": "DesignManyBody"
+      },
+      "DesignManyEstimateBody": {
+        "properties": {
+          "item_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Item Ids"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          }
+        },
+        "type": "object",
+        "required": [
+          "item_ids"
+        ],
+        "title": "DesignManyEstimateBody"
       },
       "DesignManyOutcome": {
         "properties": {
@@ -3645,13 +3712,18 @@
           "cost_usd": {
             "type": "number",
             "title": "Cost Usd"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
           }
         },
         "type": "object",
         "required": [
           "job",
           "results",
-          "cost_usd"
+          "cost_usd",
+          "model"
         ],
         "title": "DesignManyOutcome"
       },
@@ -3667,13 +3739,18 @@
           "cost_usd": {
             "type": "number",
             "title": "Cost Usd"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
           }
         },
         "type": "object",
         "required": [
           "job",
           "summary",
-          "cost_usd"
+          "cost_usd",
+          "model"
         ],
         "title": "DesignOutcome"
       },

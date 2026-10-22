@@ -80,7 +80,9 @@ class FakeAi:
             raise AiCallError(self.fail_call)
         if output_format in (ArchitectScript, ArchitectReview):
             time.sleep(self.architect_delay)
-            if self.refuse:
+            asked = "\n".join(b.get("text", "") for b in content)
+            # Browser test: a small model that does not manage a hard request.
+            if self.refuse or ("zu schwer" in asked and "haiku" in model):
                 return AiResponse(
                     None, model, self.tokens[0], 0, refused=True, stop_reason="refusal"
                 )

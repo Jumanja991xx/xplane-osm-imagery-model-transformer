@@ -181,23 +181,34 @@ export const api = {
   renamePackage: (id: string, name: string) =>
     request<JobView>("POST", `/api/jobs/${id}/package-name`, { name }),
   listJobs: () => request<JobSummary[]>("GET", "/api/jobs"),
-  designEstimate: (id: string, itemId: string) =>
-    request<S["DesignEstimate"]>("GET", `/api/jobs/${id}/design/${itemId}`),
-  redesign: (id: string, itemId: string, text: string, maxUsd: number) =>
-    request<S["DesignOutcome"]>("POST", `/api/jobs/${id}/design/${itemId}`, { request: text, max_usd: maxUsd }),
+  designEstimate: (id: string, itemId: string, model?: string) =>
+    request<S["DesignEstimate"]>(
+      "GET",
+      `/api/jobs/${id}/design/${itemId}${model ? `?model=${encodeURIComponent(model)}` : ""}`,
+    ),
+  redesign: (id: string, itemId: string, text: string, maxUsd: number, model?: string) =>
+    request<S["DesignOutcome"]>("POST", `/api/jobs/${id}/design/${itemId}`, {
+      request: text,
+      max_usd: maxUsd,
+      model: model ?? null,
+    }),
   adjustMany: (id: string, itemIds: string[], attrs: Partial<ItemAttrs>, heightFactor?: number) =>
     request<JobView>("PATCH", `/api/jobs/${id}/objects`, {
       item_ids: itemIds,
       attrs,
       height_factor: heightFactor ?? null,
     }),
-  designManyEstimate: (id: string, itemIds: string[]) =>
-    request<S["DesignEstimate"]>("POST", `/api/jobs/${id}/design-many/estimate`, { item_ids: itemIds }),
-  designMany: (id: string, itemIds: string[], text: string, maxUsd: number) =>
+  designManyEstimate: (id: string, itemIds: string[], model?: string) =>
+    request<S["DesignEstimate"]>("POST", `/api/jobs/${id}/design-many/estimate`, {
+      item_ids: itemIds,
+      model: model ?? null,
+    }),
+  designMany: (id: string, itemIds: string[], text: string, maxUsd: number, model?: string) =>
     request<S["DesignManyOutcome"]>("POST", `/api/jobs/${id}/design-many`, {
       item_ids: itemIds,
       request: text,
       max_usd: maxUsd,
+      model: model ?? null,
     }),
   resetDesign: (id: string, itemId: string) => request<JobView>("DELETE", `/api/jobs/${id}/design/${itemId}`),
   addPhoto: (id: string, itemId: string, data: string) =>

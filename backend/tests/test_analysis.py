@@ -786,6 +786,63 @@ def test_several_objects_at_once_quick_controls_and_ai(client, fake_ai, app_ctx)
     assert {c["item"] for c in corrections} == {after[i]["name"] or i for i in buildings}
 
 
+def test_another_model_for_one_request(client, fake_ai):
+    """In the 3D preview the user can ask a stronger model when the job's did not
+    manage: estimate, request and bill name that model; its key must be there."""
+    job = planned(client, brief={"ai_model": "claude-haiku-5-5"})
+    jid = job["id"]
+    item_id = next(o["item_id"] for o in job["plan"]["objects"] if o["category"] == "buildings")
+    url = f"/api/jobs/{jid}/design/{item_id}"
+    cheap = client.get(url, headers=AUTH).json()
+    est = client.get(url, params={"model": "claude-opus-5-5"}, headers=AUTH).json()
+    assert cheap["model"] == "claude-haiku-5-5" and est["model"] == "claude-opus-5-5"
+    assert est["max_usd"] > cheap["max_usd"]
+    fake_ai.calls.clear()
+    fake_ai.transport_models.clear()
+    r = client.post(
+        url,
+        json={"request": "Turm höher", "max_usd": est["max_usd"], "model": "claude-opus-5-5"},
+        headers=AUTH,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["model"] == "claude-opus-5-5"
+    assert fake_ai.transport_models == ["claude-opus-5-5"]
+    assert {c["model"] for c in fake_ai.calls} == {"claude-opus-5-5"}
+    # the job keeps its own model
+    assert r.json()["job"]["brief"]["ai_model"] == "claude-haiku-5-5"
+
+    # Several objects at once, too.
+    ids = [o["item_id"] for o in job["plan"]["objects"] if o["category"] == "buildings"][:2]
+    est = client.post(
+        f"/api/jobs/{jid}/design-many/estimate",
+        json={"item_ids": ids, "model": "claude-sonnet-5-5"},
+        headers=AUTH,
+    ).json()
+    assert est["model"] == "claude-sonnet-5-5"
+    fake_ai.transport_models.clear()
+    r = client.post(
+        f"/api/jobs/{jid}/design-many",
+        json={
+            "item_ids": ids,
+            "request": "Läden",
+            "max_usd": est["max_usd"],
+            "model": est["model"],
+        },
+        headers=AUTH,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["model"] == "claude-sonnet-5-5"
+    assert set(fake_ai.transport_models) == {"claude-sonnet-5-5"}
+
+    # Gemini without a Gemini key: refused before anything is sent; unknown: refused.
+    r = client.get(url, params={"model": "gemini-3.8-flash"}, headers=AUTH)
+    assert r.status_code == 409 and r.json()["detail"]["key"] == "error.ai_no_key"
+    r = client.get(url, params={"model": "gpt-5"}, headers=AUTH)
+    assert r.status_code == 409 and r.json()["detail"]["key"] == "error.ai_model_unavailable"
+    r = client.post(url, json={"request": "x y z", "max_usd": 1, "model": "gpt-5"}, headers=AUTH)
+    assert r.status_code == 422
+
+
 def test_a_deleted_item_can_be_brought_back(client):
     """Deleting from the list can be undone: the item comes back as it was."""
     job = analyze(client, setup(client))

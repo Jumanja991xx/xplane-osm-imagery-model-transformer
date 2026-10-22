@@ -1342,6 +1342,8 @@ export interface components {
             request: string;
             /** Max Usd */
             max_usd: number;
+            /** Model */
+            model?: string | null;
         };
         /**
          * DesignEstimate
@@ -1365,6 +1367,15 @@ export interface components {
             request: string;
             /** Max Usd */
             max_usd: number;
+            /** Model */
+            model?: string | null;
+        };
+        /** DesignManyEstimateBody */
+        DesignManyEstimateBody: {
+            /** Item Ids */
+            item_ids: string[];
+            /** Model */
+            model?: string | null;
         };
         /** DesignManyOutcome */
         DesignManyOutcome: {
@@ -1375,6 +1386,8 @@ export interface components {
             }[];
             /** Cost Usd */
             cost_usd: number;
+            /** Model */
+            model: string;
         };
         /** DesignOutcome */
         DesignOutcome: {
@@ -1383,6 +1396,8 @@ export interface components {
             summary: string;
             /** Cost Usd */
             cost_usd: number;
+            /** Model */
+            model: string;
         };
         /**
          * DetailLevel
@@ -3724,7 +3739,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["AdjustManyBody"];
+                "application/json": components["schemas"]["DesignManyEstimateBody"];
             };
         };
         responses: {
@@ -3785,7 +3800,9 @@ export interface operations {
     };
     design_estimate_api_jobs__job_id__design__item_id__get: {
         parameters: {
-            query?: never;
+            query?: {
+                model?: string | null;
+            };
             header?: never;
             path: {
                 job_id: string;
