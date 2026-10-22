@@ -4,15 +4,15 @@ Running a build script and baking its textures is pure Python/numpy work for one
 object at a time, so the objects are spread over worker processes (threads would
 wait for each other on Python's global lock).
 
-The workers are this program started again with `--build-worker <dir>` - plain
-processes, no multiprocessing machinery (which hangs in the packaged Windows app).
-The directory holds what all objects share (context.pkl, with the object of each
-task) and one empty task file per object; each worker takes the next free task by
-renaming its file (atomic, so no object is built twice) and leaves the result next
-to it. The task file is never opened: on Windows a virus scanner or a second worker
-may hold a just-renamed file for a moment, so every file access retries a little.
-The workers end when no task is left, so none stay behind. Whatever was not built
-by them (a worker could not start or died) is built in this process as before.
+The workers are this program started again with `--build-worker <dir> <n>` -
+plain processes, no multiprocessing machinery (which hangs in the packaged Windows
+app). The directory holds what all objects share (context.pkl); worker n builds
+its own fixed share of the objects (every n-th) and writes one result file per
+object. Nothing is shared between the workers, so there is nothing to race for
+(claiming tasks by renaming files was not exclusive on Windows). A virus scanner
+may hold a fresh file for a moment, so file accesses retry a little. The workers
+end with their share, so none stay behind. Whatever was not built by them (a
+worker could not start or died) is built in this process as before.
 
 XPSB_BUILD_WORKERS sets the number of processes (1 = no extra processes);
 XPSB_BUILD_STRICT=1 turns a failing worker into an error instead of the fallback.
@@ -77,7 +77,7 @@ def _retry(fn, attempts: int = 40):
 
 
 def _dump(obj, path: Path) -> None:
-    tmp = path.with_suffix(".part")
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.part")
     data = pickle.dumps(obj, protocol=pickle.HIGHEST_PROTOCOL)
     _retry(lambda: tmp.write_bytes(data))
     _retry(lambda: tmp.replace(path))  # readers never see half a file
@@ -112,17 +112,16 @@ def build(
     # cleanup errors: a scanner may still hold a file; the system cleans up later
     with tempfile.TemporaryDirectory(prefix="xpsb-build-", ignore_cleanup_errors=True) as tmp:
         work = Path(tmp)
-        (work / "tasks").mkdir()
         _dump(
             {
                 "items": items,
-                "tasks": {stem: it.id for it, stem in todo},
+                "shares": [
+                    [(it.id, stem) for it, stem in todo[n::n_workers]] for n in range(n_workers)
+                ],
                 "args": (detail, str(out_dir), preview, library, photo_dir, blender_exe),
             },
             work / "context.pkl",
         )
-        for _, stem in todo:
-            (work / "tasks" / f"{stem}.task").touch()
         procs: list[tuple[subprocess.Popen, Path]] = []
         try:
             for n in range(n_workers):
@@ -131,7 +130,7 @@ def build(
                     procs.append(
                         (
                             subprocess.Popen(
-                                [*worker_command(), "--build-worker", str(work)],
+                                [*worker_command(), "--build-worker", str(work), str(n)],
                                 stdin=subprocess.DEVNULL,
                                 stdout=subprocess.DEVNULL,
                                 stderr=err_file,
@@ -172,32 +171,17 @@ def build(
     return results
 
 
-def worker(work: Path) -> None:
-    """Main of a worker process: takes tasks until none is left."""
+def worker(work: Path, n: int) -> None:
+    """Main of worker process n: builds its share of the objects."""
     from xpsb.build.assemble import generate_one
 
     ctx = _load(work / "context.pkl")
     items = ctx["items"]
     by_id = {it.id: it for it in items}
     detail, out_dir, preview, library, photo_dir, blender_exe = ctx["args"]
-    mine = work / f"claimed-{os.getpid()}"
-    mine.mkdir()
-    while True:
-        task = None
-        for candidate in sorted((work / "tasks").glob("*.task")):
-            try:
-                task = candidate.replace(mine / candidate.name)  # atomic: only one wins
-                break
-            except OSError:
-                continue  # another worker was faster (or holds it right now)
-        if task is None:
-            if any((work / "tasks").glob("*.task")):
-                time.sleep(0.05)  # only held for a moment by someone: look again
-                continue
-            return
-        stem = task.stem
+    for item_id, stem in ctx["shares"][n]:
         result = generate_one(
-            by_id[ctx["tasks"][stem]],
+            by_id[item_id],
             items,
             detail,
             Path(out_dir),

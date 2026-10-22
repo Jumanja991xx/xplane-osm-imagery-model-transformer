@@ -78,11 +78,11 @@ def _watch_stdin(server: uvicorn.Server) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     raw = sys.argv[1:] if argv is None else argv
-    if raw[:1] == ["--build-worker"] and len(raw) == 2:
+    if raw[:1] == ["--build-worker"] and len(raw) == 3:
         # A build process of build/parallel.py (this program started again).
         from xpsb.build import parallel
 
-        parallel.worker(Path(raw[1]))
+        parallel.worker(Path(raw[1]), int(raw[2]))
         return
     args = _parse_args(argv)
     stacks = os.environ.get("XPSB_DUMP_STACKS_S", "")
