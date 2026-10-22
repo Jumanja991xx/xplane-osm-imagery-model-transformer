@@ -47,6 +47,67 @@ export function formatUsd(usd: number): string {
   return usd < 0.01 ? usd.toFixed(4) : usd.toFixed(2);
 }
 
+/** Deletes an item from the list; it can be brought back for a while (UndoDelete). */
+async function deleteWithUndo(t: Translate, jobId: string, item: SceneItem): Promise<JobView> {
+  const view = await api.deleteItem(jobId, item.id);
+  useApp.getState().setLastDeleted({ jobId, itemId: item.id, name: itemTitle(t, item) });
+  return view;
+}
+
+const UNDO_MS = 10000;
+
+/** "Deleted – Undo" for the item deleted last (also Ctrl+Z). */
+function UndoDelete({ jobId }: { jobId: string }) {
+  const { t } = useT();
+  const last = useApp((s) => s.lastDeleted);
+  const setLast = useApp((s) => s.setLastDeleted);
+  const setJob = useApp((s) => s.setJob);
+  const mine = last && last.jobId === jobId ? last : null;
+  const [error, setError] = useState<string | null>(null);
+  const restore = async () => {
+    if (!mine) return;
+    setLast(null);
+    try {
+      setJob(await api.restoreItem(jobId, mine.itemId));
+    } catch (e) {
+      setError(e instanceof ApiError ? t(e.key, e.params) : String(e));
+    }
+  };
+  useEffect(() => {
+    if (!mine) return;
+    const timer = window.setTimeout(() => setLast(null), UNDO_MS);
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement | null)?.closest("input, textarea, select")) return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        void restore();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("keydown", onKey);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mine]);
+  if (error) return <Alert kind="error">{error}</Alert>;
+  if (!mine) return null;
+  return (
+    <div
+      className="sticky bottom-12 z-20 flex items-center justify-between gap-3 rounded-md bg-zinc-900/90 px-3 py-2 text-sm text-white shadow-lg"
+      data-testid="undo-note"
+    >
+      <span className="truncate">{t("place.deleted", { name: mine.name })}</span>
+      <span className="flex shrink-0 items-center gap-2">
+        <button type="button" className="font-semibold underline" onClick={restore} data-testid="undo-delete">
+          {t("place.undo")}
+        </button>
+        <span className="text-xs text-zinc-400">Ctrl+Z</span>
+      </span>
+    </div>
+  );
+}
+
 function itemTitle(t: Translate, item: SceneItem): string {
   return item.name || t(categoryLabelKey(item));
 }
@@ -157,6 +218,7 @@ export function AnalysisStep({
       <ItemList job={job} editable={editable} run={run} />
 
       {error && <Alert kind="error">{error}</Alert>}
+      {editable && <UndoDelete jobId={job.id} />}
       {editable && (
         <StepBar back={{ label: t("steps.brief"), onClick: onBack }}>
           <Button
@@ -416,7 +478,7 @@ function ItemList({
                       <Button
                         variant="ghost"
                         title={t("analysis.reject")}
-                        onClick={() => run(() => api.deleteItem(jobId, item.id))}
+                        onClick={() => run(() => deleteWithUndo(t, jobId, item))}
                         data-testid={`reject-${item.id}`}
                       >
                         ✗
@@ -431,7 +493,7 @@ function ItemList({
                     target={false}
                     editable={editable}
                     patch={(p) => run(() => api.updateItem(jobId, item.id, p))}
-                    remove={() => run(() => api.deleteItem(jobId, item.id))}
+                    remove={() => run(() => deleteWithUndo(t, jobId, item))}
                   />
                 )}
               </li>
@@ -692,7 +754,7 @@ function ItemRow({
           target={target}
           editable={editable}
           patch={patch}
-          remove={() => run(() => api.deleteItem(jobId, item.id))}
+          remove={() => run(() => deleteWithUndo(t, jobId, item))}
         />
       )}
     </li>

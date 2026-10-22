@@ -176,6 +176,7 @@ What you can do with an object:
   [Photos and facades](#11-photos-and-facades)).
 - **Split into single houses** – for a row of houses the app has joined (see below).
 - **Delete** an object from the list (the map stays as it is; only your scenery leaves it out).
+  Changed your mind? **Undo** in the note that appears, or `Ctrl+Z`.
 
 **AI suggestions** (dashed on the map) are things the AI found in the aerial image but the
 map does not know. Accept ✓ or discard ✗ each one, or **Accept all**.
@@ -228,14 +229,14 @@ object in the scene or the list to jump to it. **Night** switches to the night v
 | **Move** / **Turn** | Drag the object across the ground, or drag around it to turn it. Releasing saves. |
 | ← ↑ ↓ → | Move by 1 m. |
 | ⟲ 15° / ⟳ 15° / ⟳ 90° | Turn in steps. |
-| **Delete object** | Removes it from the scenery (asks once). |
+| **Delete object** | Removes it from the scenery (asks once). **Undo** (or `Ctrl+Z`) brings it back; all deleted objects stay listed under *Deleted objects* with **Restore** – also after the build. |
 | Height, levels, roof, facade, colours | Changing a value rebuilds only this object, within seconds. |
 | Turn ridge direction / Turn front around | Fix a roof ridge or a front that points the wrong way. |
 | Paint the real object out of the aerial image below | Hides the real object in the ground photo, so it does not show twice. |
 | **Change with AI** | Describe a change in your own words; the app shows the maximum cost before sending. *Back to default* undoes the AI design. |
 
 **Keyboard:** `R` / `Shift+R` turn by 15° · `Delete` removes the object (`Enter`
-confirms, `Esc` cancels) · `Ctrl+A` selects all · `Ctrl+click` adds/removes from the
+confirms, `Esc` cancels) · `Ctrl+Z` brings the last deleted object back · `Ctrl+A` selects all · `Ctrl+click` adds/removes from the
 selection · `Shift+click` selects a range · `Esc` ends a multi-selection.
 
 **Several objects** (Ctrl+click): change them together or ask the AI to change all of
@@ -273,7 +274,7 @@ Start X-Plane (or reload the scenery) and fly to the area.
 
 You do not have to start over for small changes:
 
-- **Move, turn or delete** objects in **3D preview of the result**. Only the placement file
+- **Move, turn, delete or restore** objects in **3D preview of the result**. Only the placement file
   (DSF) is rewritten – in the package and, if installed, in X-Plane. Reload the scenery
   in X-Plane to see it.
 - **← Preview & build** in step 5 goes back to the plan: preview, adjustments and AI
@@ -368,8 +369,14 @@ limited time and triangles. Blender only ever runs the fixed script shipped with
 
 **Costs and limits**
 
-- Each job has a limit (default 5 USD) and there is a monthly limit (default 20 USD) – both
-  in **Settings → AI**, the job limit also in step 2.
+- **Cost limit per job** (default 5 USD): the most a single job may spend – analysis,
+  designs and corrections together. Set the default in **Settings → AI**, change it per job
+  in step 2.
+- **Monthly limit, all jobs together** (default 20 USD): a brake for the whole calendar
+  month. Once it is reached no AI step starts, however much a job could still spend.
+  The settings show what was spent this month.
+- Whichever limit is reached first applies. If the monthly limit is lower than the job limit,
+  the settings warn you.
 - Every AI step shows its **maximum** cost before it starts. The app stops when a limit is
   reached and keeps what was done.
 - After the build, step 5 lists every call with exact tokens and cost, counted from what

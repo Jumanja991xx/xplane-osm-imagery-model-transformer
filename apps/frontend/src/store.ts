@@ -29,6 +29,8 @@ interface AppState {
   system: SystemStatus | null;
   settingsOpen: boolean;
   jobsOpen: boolean;
+  // The item deleted last from the list, for "undo" (a few seconds, Ctrl+Z).
+  lastDeleted: { jobId: string; itemId: string; name: string } | null;
   selectedItem: string | null;
   imageryVisible: boolean;
   view3d: boolean;
@@ -44,6 +46,7 @@ interface AppState {
   setSystem: (system: SystemStatus) => void;
   setSettingsOpen: (open: boolean) => void;
   setJobsOpen: (open: boolean) => void;
+  setLastDeleted: (d: { jobId: string; itemId: string; name: string } | null) => void;
   selectItem: (id: string | null) => void;
   setImageryVisible: (visible: boolean) => void;
   setView3d: (on: boolean) => void;
@@ -62,6 +65,7 @@ export const useApp = create<AppState>((set) => ({
   system: null,
   settingsOpen: false,
   jobsOpen: false,
+  lastDeleted: null,
   selectedItem: null,
   imageryVisible: true,
   view3d: false,
@@ -79,6 +83,7 @@ export const useApp = create<AppState>((set) => ({
   setSystem: (system) => set({ system }),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setJobsOpen: (jobsOpen) => set({ jobsOpen }),
+  setLastDeleted: (lastDeleted) => set({ lastDeleted }),
   selectItem: (selectedItem) => set({ selectedItem }),
   setImageryVisible: (imageryVisible) => set({ imageryVisible }),
   setView3d: (view3d) => set({ view3d }),

@@ -215,6 +215,8 @@ export const api = {
     request<JobView>("PUT", `/api/jobs/${id}/textures?item=${encodeURIComponent(itemId)}`, { textures }),
   removeObject: (id: string, itemId: string) =>
     request<JobView>("DELETE", `/api/jobs/${id}/objects/${itemId}`),
+  restoreItem: (id: string, itemId: string) => request<JobView>("POST", `/api/jobs/${id}/items-restore/${itemId}`),
+  restoreObject: (id: string, itemId: string) => request<JobView>("POST", `/api/jobs/${id}/restore/${itemId}`),
   placeBuilt: (id: string, itemId: string, attrs: Partial<ItemAttrs>) =>
     request<JobView>("PATCH", `/api/jobs/${id}/placement/${itemId}`, { attrs }),
   adjustObject: (id: string, itemId: string, attrs: Partial<ItemAttrs>) =>

@@ -205,6 +205,8 @@ def classify_tags(tags: dict[str, str], geom) -> tuple[str, ObjectCategory | Sur
     """(kind, category) or None if the element is not something we build."""
     is_area = geom.geom_type in ("Polygon", "MultiPolygon")
     b = tags.get("building") or tags.get("building:part")
+    if b == "bridge":
+        return None  # a bridge's outline (bridges.find builds the bridge)
     if b and b != "no" and is_area:
         if b == "grandstand" or tags.get("leisure") == "grandstand":
             return "object", ObjectCategory.GRANDSTANDS

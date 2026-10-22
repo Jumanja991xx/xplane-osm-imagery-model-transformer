@@ -196,6 +196,8 @@ class AnalysisResult(BaseModel):
     imagery: ImageryInfo | None = None
     ai: AiRunInfo | None = None
     next_user_id: int = 1
+    # Items deleted from the list (with their research and photos), for "undo".
+    deleted: list[SceneItem] = Field(default_factory=list)
 
 
 class PlanItem(BaseModel):
@@ -251,6 +253,8 @@ class BuildPlan(BaseModel):
     center: tuple[float, float]  # lon, lat
     detail: str = "medium"
     objects: list[PlanObject] = Field(default_factory=list)
+    # Objects deleted in the 3D view, kept so the deletion can be undone.
+    removed: list[PlanObject] = Field(default_factory=list)
     surfaces: int = 0
     surface_mode: str = "material"
     exclusions: list[str] = Field(default_factory=list)  # kinds, e.g. "objects"

@@ -422,6 +422,15 @@ def test_adjust_one_object_in_the_plan(client, app_ctx):
     item = next(i for i in job["analysis"]["items"] if i["id"] == stand["item_id"])
     assert item["included"] is False and item["edited"]
     assert job["pending_gate"]["hash"] != old_hash
+    assert [o["item_id"] for o in job["plan"]["removed"]] == [stand["item_id"]]
+    # Undo before the build: back in the plan with its preview, and on the list.
+    r = client.post(f"/api/jobs/{job['id']}/restore/{stand['item_id']}", headers=AUTH)
+    assert r.status_code == 200, r.text
+    job = r.json()
+    back = next(o for o in job["plan"]["objects"] if o["item_id"] == stand["item_id"])
+    assert back["stem"] == stand["stem"] and job["plan"]["removed"] == []
+    assert next(i for i in job["analysis"]["items"] if i["id"] == stand["item_id"])["included"]
+    assert (app_ctx.jobs.job_dir(job["id"]) / "preview" / f"{stand['stem']}.json").is_file()
 
     client.post(f"/api/jobs/{job['id']}/reopen", json={"to": "analyzed"}, headers=AUTH)
     late = client.patch(
@@ -550,6 +559,14 @@ def test_objects_can_be_moved_after_the_build_and_install(
     assert item["included"] is False
     r = client.delete(f"/api/jobs/{job['id']}/objects/way/103", headers=AUTH)
     assert r.status_code == 409  # already gone
+    # Undo: placed again, the model never left the package.
+    r = client.post(f"/api/jobs/{job['id']}/restore/way/103", headers=AUTH)
+    assert r.status_code == 200, r.text
+    job = r.json()
+    assert placed()[2] == pytest.approx(90)  # where it stood, as it was turned
+    assert any(o["item_id"] == "way/103" for o in job["plan"]["objects"])
+    assert job["plan"]["removed"] == []
+    assert next(i for i in job["analysis"]["items"] if i["id"] == "way/103")["included"]
 
 
 def test_back_from_the_built_scenery_to_its_plan(client, app_ctx):

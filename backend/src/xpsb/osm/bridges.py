@@ -10,6 +10,7 @@ bridge: its axis (the deck's centre line), width, deck height, how it is carried
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable
 
 from shapely.geometry import LineString, Point, Polygon, mapping
@@ -22,6 +23,11 @@ from xpsb.scene import ItemAttrs, SceneItem
 MIN_LENGTH_M = 8.0  # shorter "bridges" are culverts and small crossings
 APPROACH_M = 160.0  # how much of each road leading onto a bridge is kept
 END_SNAP_M = 1.5
+# Ways side by side on the same bridge (carriageways, tram tracks, footways): one
+# bridge, not one per way.
+PARALLEL_M = 30.0  # at most this far apart
+PARALLEL_DEG = 20.0  # at most this far from parallel
+PARALLEL_OVERLAP = 0.5  # share of the shorter way that runs alongside the other
 ROAD_WIDTH_M = {
     "motorway": 12.0,
     "trunk": 11.0,
@@ -185,7 +191,9 @@ def find(elements: Iterable[dict], aoi: Polygon) -> list[SceneItem]:
     roads = []
     for el in elements:
         tags = el.get("tags") or {}
-        if el["type"] in ("way", "relation") and tags.get("man_made") == "bridge":
+        if el["type"] in ("way", "relation") and (
+            tags.get("man_made") == "bridge" or tags.get("building") == "bridge"
+        ):
             poly = _polygon(el)
             if poly is not None:
                 outlines.append((f"{el['type']}/{el['id']}", tags, poly))
@@ -233,7 +241,9 @@ def find(elements: Iterable[dict], aoi: Polygon) -> list[SceneItem]:
             if ti.get("layer", "1") != tj.get("layer", "1"):
                 continue
             ends_j = [Point(fwd(*lj.coords[0])), Point(fwd(*lj.coords[-1]))]
-            if any(a.distance(b) < END_SNAP_M for a in ends_i for b in ends_j):
+            if any(a.distance(b) < END_SNAP_M for a in ends_i for b in ends_j) or _alongside(
+                transform(fwd, li), transform(fwd, lj)
+            ):
                 parent[find_root(j)] = find_root(i)
     clusters: dict[int, list] = {}
     for i, w in enumerate(rest):
@@ -256,15 +266,74 @@ def find(elements: Iterable[dict], aoi: Polygon) -> list[SceneItem]:
     return items
 
 
+def _alongside(a: LineString, b: LineString) -> bool:
+    """Two ways (local metres) side by side: about parallel, close, overlapping."""
+    if a.length < 1.0 or b.length < 1.0:
+        return False
+    short, long_ = (a, b) if a.length <= b.length else (b, a)
+    da = _direction(short)
+    db = _direction(long_)
+    angle = abs(
+        math.degrees(math.atan2(da[0] * db[1] - da[1] * db[0], da[0] * db[0] + da[1] * db[1]))
+    )
+    if min(angle, 180.0 - angle) > PARALLEL_DEG:
+        return False
+    if short.interpolate(0.5, normalized=True).distance(long_) > PARALLEL_M:
+        return False
+    s0 = long_.project(Point(short.coords[0]))
+    s1 = long_.project(Point(short.coords[-1]))
+    overlap = max(0.0, min(max(s0, s1), long_.length) - max(min(s0, s1), 0.0))
+    return overlap >= PARALLEL_OVERLAP * short.length
+
+
+def _direction(line: LineString) -> tuple[float, float]:
+    (x0, y0), (x1, y1) = line.coords[0], line.coords[-1]
+    n = math.hypot(x1 - x0, y1 - y0) or 1.0
+    return (x1 - x0) / n, (y1 - y0) / n
+
+
+def _offset(axis: LineString, p: Point) -> float:
+    """Signed distance of p from the axis (left of its direction positive)."""
+    d = axis.project(p)
+    a = axis.interpolate(max(0.0, d - 0.5))
+    b = axis.interpolate(min(axis.length, d + 0.5))
+    q = axis.interpolate(d)
+    side = (b.x - a.x) * (p.y - q.y) - (b.y - a.y) * (p.x - q.x)
+    return math.copysign(p.distance(q), side)
+
+
+def _centred(axis: LineString, members) -> tuple[LineString, float]:
+    """The axis moved to the middle of all ways on the bridge, and how far apart the
+    outermost ways are (metres)."""
+    offsets = [0.0]
+    for m in members:
+        line = m[3]
+        for t in (0.25, 0.5, 0.75):
+            offsets.append(_offset(axis, line.interpolate(t, normalized=True)))
+    lo, hi = min(offsets), max(offsets)
+    mid = (lo + hi) / 2
+    if abs(mid) > 0.5:
+        moved = axis.offset_curve(mid)
+        if moved.geom_type == "LineString" and not moved.is_empty:
+            axis = moved
+    return axis, hi - lo
+
+
 def _bridge(ref, tags, poly, members, roads, fwd, back) -> SceneItem | None:
-    way_tags = members[0][1] if members else {}
+    # The way with the bridge's name speaks for it (not the footway alongside).
+    named = [m for m in members if m[1].get("bridge:name") or m[1].get("name")]
+    way_tags = (named or members)[0][1] if members else {}
     all_tags = {**way_tags, **tags}  # the outline's tags win
+    spread = 0.0
     if members:
         union = unary_union([m[2] for m in members])
         merged = linemerge(union) if union.geom_type == "MultiLineString" else union
         if merged.geom_type == "MultiLineString":
             merged = max(merged.geoms, key=lambda g: g.length)
         axis = transform(fwd, merged)
+        if len(members) > 1:
+            local = [(m[0], m[1], m[2], transform(fwd, m[2])) for m in members]
+            axis, spread = _centred(axis, local)
     else:
         axis = None
     if poly is not None:
@@ -281,7 +350,9 @@ def _bridge(ref, tags, poly, members, roads, fwd, back) -> SceneItem | None:
         width = max(2.0, min(80.0, local_poly.area / max(axis.length, 1.0)))
     else:
         width = max(_width(m[1]) for m in members)
-        if len(members) > 1 and len({m[1].get("highway") for m in members}) > 1:
+        if spread > 1.0:  # ways side by side: from the outer edge to the outer edge
+            width = spread + width
+        elif len(members) > 1 and len({m[1].get("highway") for m in members}) > 1:
             width += 2.0  # a road with a footway alongside on the same bridge
     if axis.length < MIN_LENGTH_M:
         return None

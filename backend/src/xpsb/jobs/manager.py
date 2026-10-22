@@ -560,11 +560,26 @@ class JobManager:
 
     def delete_item(self, job_id: str, item_id: str) -> Job:
         job = self._analyzed(job_id)
-        self._item(job, item_id)
+        item = self._item(job, item_id)
         assert job.analysis is not None
+        # kept (newest last) so the deletion can be undone
+        job.analysis.deleted = [d for d in job.analysis.deleted if d.id != item_id][-49:] + [item]
         job.analysis.items = [it for it in job.analysis.items if it.id != item_id]
         job.analysis.questions = [q for q in job.analysis.questions if q.item_id != item_id]
         job.answers = {k: v for k, v in job.answers.items() if not k.startswith(f"ai:{item_id}:")}
+        self._save(job)
+        return job
+
+    def restore_item(self, job_id: str, item_id: str) -> Job:
+        """Undoes deleting an item from the list: back as it was (research, photos)."""
+        job = self._analyzed(job_id)
+        assert job.analysis is not None
+        item = next((d for d in job.analysis.deleted if d.id == item_id), None)
+        if item is None:
+            raise JobConflict("error.item_not_found", item=item_id)
+        job.analysis.deleted = [d for d in job.analysis.deleted if d.id != item_id]
+        if all(it.id != item_id for it in job.analysis.items):
+            job.analysis.items.append(item)
         self._save(job)
         return job
 
@@ -849,22 +864,58 @@ class JobManager:
         if not gone:
             raise JobConflict("error.item_not_found", item=item_id)
         before = list(job.plan.objects)
+        removed_before = list(job.plan.removed)
         job.plan.objects = [o for o in job.plan.objects if o.item_id != item_id]
+        # kept for "undo": placement, design and files of the object stay
+        job.plan.removed = [o for o in job.plan.removed if o.item_id != item_id] + gone
         item = next(
             (it for it in (job.analysis.items if job.analysis else []) if it.id == item_id), None
         )
         if built:
             exe = dsftool.locate(self._settings.load().dsftool_path, self._resources_dir)
             if exe is None:
-                job.plan.objects = before
+                job.plan.objects, job.plan.removed = before, removed_before
                 raise JobConflict("error.dsftool_missing")
             try:
                 await asyncio.to_thread(pipeline.replace_placements, job, self.job_dir(job_id), exe)
             except (OSError, dsftool.DsfToolError) as exc:
-                job.plan.objects = before
+                job.plan.objects, job.plan.removed = before, removed_before
                 raise JobConflict("error.place_failed", detail=str(exc)[:300]) from exc
         if item is not None:  # city blocks have no item: only their placement goes
             item.included, item.edited = False, True
+        self._refresh_plan_lists(job)
+        self._save(job)
+        return job
+
+    async def restore_object(self, job_id: str, item_id: str) -> Job:
+        """Undoes a deletion in the 3D view: the object is back in the plan (and the
+        list) as it was - placement, design, preview. After the build only the DSF is
+        written again; the object's files never left the package."""
+        job = self.get(job_id)
+        built = job.state in (JobState.BUILT, JobState.INSTALLED)
+        if job.plan is None or not (job.state is JobState.PLANNED or built):
+            raise JobConflict("error.wrong_state", state=job.state.value)
+        back = [o for o in job.plan.removed if o.item_id == item_id]
+        if not back:
+            raise JobConflict("error.item_not_found", item=item_id)
+        before, removed_before = list(job.plan.objects), list(job.plan.removed)
+        job.plan.objects = job.plan.objects + back
+        job.plan.removed = [o for o in job.plan.removed if o.item_id != item_id]
+        if built:
+            exe = dsftool.locate(self._settings.load().dsftool_path, self._resources_dir)
+            if exe is None:
+                job.plan.objects, job.plan.removed = before, removed_before
+                raise JobConflict("error.dsftool_missing")
+            try:
+                await asyncio.to_thread(pipeline.replace_placements, job, self.job_dir(job_id), exe)
+            except (OSError, dsftool.DsfToolError) as exc:
+                job.plan.objects, job.plan.removed = before, removed_before
+                raise JobConflict("error.place_failed", detail=str(exc)[:300]) from exc
+        item = next(
+            (it for it in (job.analysis.items if job.analysis else []) if it.id == item_id), None
+        )
+        if item is not None:
+            item.included = True
         self._refresh_plan_lists(job)
         self._save(job)
         return job

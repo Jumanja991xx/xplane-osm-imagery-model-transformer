@@ -784,3 +784,20 @@ def test_several_objects_at_once_quick_controls_and_ai(client, fake_ai, app_ctx)
     assert all(after[i]["script"] and "Läden" in after[i]["script_request"] for i in buildings)
     corrections = [c for c in out["job"]["costs"] if c["stage"] == "correction"]
     assert {c["item"] for c in corrections} == {after[i]["name"] or i for i in buildings}
+
+
+def test_a_deleted_item_can_be_brought_back(client):
+    """Deleting from the list can be undone: the item comes back as it was."""
+    job = analyze(client, setup(client))
+    jid = job["id"]
+    before = next(i for i in job["analysis"]["items"] if i["id"] == "way/103")
+    r = client.delete(f"/api/jobs/{jid}/items/way/103", headers=AUTH)
+    assert r.status_code == 200
+    assert all(i["id"] != "way/103" for i in r.json()["analysis"]["items"])
+    assert [d["id"] for d in r.json()["analysis"]["deleted"]] == ["way/103"]
+    r = client.post(f"/api/jobs/{jid}/items-restore/way/103", headers=AUTH)
+    assert r.status_code == 200, r.text
+    back = next(i for i in r.json()["analysis"]["items"] if i["id"] == "way/103")
+    assert back == before and r.json()["analysis"]["deleted"] == []
+    r = client.post(f"/api/jobs/{jid}/items-restore/way/103", headers=AUTH)
+    assert r.status_code == 409  # nothing left to bring back

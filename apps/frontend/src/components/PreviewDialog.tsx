@@ -12,12 +12,16 @@ import {
   type PreviewLight,
   type PreviewObject,
 } from "../api/client";
+import { hasKeyFor } from "../ai";
 import { useT } from "../i18n";
 import { CATEGORY_COLORS, categoryLabelKey } from "../scene";
 import { useApp } from "../store";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { PhotoPanel } from "./PhotoPanel";
 import { Alert, Button, Checkbox, Spinner } from "./ui";
+
+const UNDO_MS = 10000;
+const NO_REMOVED: NonNullable<NonNullable<JobView["plan"]>["removed"]> = [];
 
 // Local metres (x east, y north, z up) → three.js (y up, -z north).
 const toThree = (x: number, y: number, z: number) => new THREE.Vector3(x, z, -y);
@@ -554,6 +558,45 @@ function PreviewDialogInner({
 
   /** Deletes the object (asked first): out of the plan, or out of the built DSF. */
   const [askDelete, setAskDelete] = useState<string | null>(null);
+  // Undo: the last deletion for a few seconds (and Ctrl+Z), all of them in the list.
+  const removed = useApp((s) => s.job?.plan?.removed) ?? NO_REMOVED;
+  const items = useApp((s) => s.job?.analysis?.items);
+  const [undoNote, setUndoNote] = useState<{ itemId: string; name: string } | null>(null);
+  useEffect(() => {
+    if (!undoNote) return;
+    const timer = window.setTimeout(() => setUndoNote(null), UNDO_MS);
+    return () => window.clearTimeout(timer);
+  }, [undoNote]);
+  const nameOf = (itemId: string, category?: string) =>
+    items?.find((i) => i.id === itemId)?.name ?? (category ? t(categoryLabelKey({ kind: "object", category: category as never })) : itemId);
+  const restoreObject = async (itemId: string) => {
+    setPlaceError(null);
+    setUndoNote(null);
+    try {
+      const view = await api.restoreObject(jobId, itemId);
+      useApp.getState().setJob(view);
+      const scene = await preview.scene(jobId);
+      const back = scene.objects.filter((x) => x.item_id === itemId);
+      for (const o of back) await reloadRef.current(o);
+      setData((d) => d && { ...d, objects: [...d.objects.filter((x) => x.item_id !== itemId), ...back] });
+      if (!editable) setPlacedNote(true);
+    } catch (e) {
+      setPlaceError(e instanceof ApiError ? t(e.key, e.params) : String(e));
+    }
+  };
+  useEffect(() => {
+    if (!(editable || placeable)) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement | null)?.closest("input, textarea, select")) return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && removed.length) {
+        e.preventDefault();
+        void restoreObject(undoNote?.itemId ?? removed[removed.length - 1].item_id);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editable, placeable, removed, undoNote]);
   const removeObject = async (stem: string) => {
     const o = data?.objects.find((x) => x.stem === stem);
     setAskDelete(null);
@@ -569,6 +612,7 @@ function PreviewDialogInner({
       setSelected(null);
       setMulti([]);
       if (!editable) setPlacedNote(true);
+      setUndoNote({ itemId: o.item_id, name: label(o) });
     } catch (e) {
       setPlaceError(e instanceof ApiError ? t(e.key, e.params) : String(e));
     }
@@ -711,6 +755,23 @@ function PreviewDialogInner({
                 ))}
               </ul>
             )}
+            {(editable || placeable) && removed.length > 0 && (
+              <div className="space-y-1" data-testid="preview-removed">
+                <h3 className="text-xs font-semibold text-zinc-500 uppercase">
+                  {t("place.removed", { count: removed.length })}
+                </h3>
+                <ul className="space-y-0.5 text-sm">
+                  {removed.map((o) => (
+                    <li key={o.stem} className="flex items-center justify-between gap-2">
+                      <span className="truncate text-zinc-500 line-through">{nameOf(o.item_id, o.category)}</span>
+                      <Button variant="ghost" onClick={() => restoreObject(o.item_id)} data-testid={`restore-${o.item_id}`}>
+                        ↺ {t("place.restore")}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {problems.length > 0 && (
               <div className="space-y-1">
                 <h3 className="text-xs font-semibold text-zinc-500 uppercase">{t("preview.not_built")}</h3>
@@ -726,7 +787,26 @@ function PreviewDialogInner({
             )}
           </div>
         </aside>
-        <div ref={mount} className="relative min-w-0 flex-1" data-testid="preview-canvas" />
+        <div className="relative min-w-0 flex-1">
+          <div ref={mount} className="absolute inset-0" data-testid="preview-canvas" />
+          {undoNote && (
+            <div
+              className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-3 rounded-md bg-zinc-900/90 px-4 py-2 text-sm text-white shadow-lg"
+              data-testid="undo-note"
+            >
+              <span>{t("place.deleted", { name: undoNote.name })}</span>
+              <button
+                type="button"
+                className="font-semibold text-accent-100 underline"
+                onClick={() => restoreObject(undoNote.itemId)}
+                data-testid="undo-delete"
+              >
+                {t("place.undo")}
+              </button>
+              <span className="text-xs text-zinc-400">Ctrl+Z</span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -752,7 +832,7 @@ function MultiControls({
   const [estimate, setEstimate] = useState<{ estimate_usd: number; max_usd: number; budget_usd: number; model: string } | null>(null);
   const [results, setResults] = useState<{ item_id: string; ok: boolean; summary: string; error: string | null }[] | null>(null);
   const [cost, setCost] = useState<number | null>(null);
-  const aiReady = useApp((s) => Boolean(s.job?.brief?.use_ai && s.system?.has_api_key));
+  const aiReady = useApp((s) => Boolean(s.job?.brief?.use_ai && hasKeyFor(s.job?.brief?.ai_model, s.system)));
   const ids = objects.map((o) => o.item_id);
   const names = new Map(objects.map((o) => [o.item_id, o.name || o.stem]));
 
