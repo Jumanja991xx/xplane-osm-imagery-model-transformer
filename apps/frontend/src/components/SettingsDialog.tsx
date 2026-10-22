@@ -351,33 +351,31 @@ export function SettingsDialog() {
                 )}
               </div>
             )}
-            <div className="grid grid-cols-2 gap-2">
-              <label className="block text-sm">
-                <span className="mb-1 block text-zinc-600 dark:text-zinc-300">{t("brief.ai_limit")}</span>
-                <input
-                  type="number"
-                  min={0}
-                  step={0.5}
-                  className={inputClass}
-                  value={draft.ai?.job_limit_usd}
-                  onChange={(e) => setDraft({ ...draft, ai: { ...draft.ai!, job_limit_usd: Number(e.target.value) } })}
-                />
-              </label>
-              <label className="block text-sm">
-                <span className="mb-1 block text-zinc-600 dark:text-zinc-300">{t("settings.monthly_limit")}</span>
-                <input
-                  type="number"
-                  min={0}
-                  step={1}
-                  className={inputClass}
-                  value={draft.ai?.monthly_limit_usd}
-                  onChange={(e) =>
-                    setDraft({ ...draft, ai: { ...draft.ai!, monthly_limit_usd: Number(e.target.value) } })
-                  }
-                  data-testid="monthly-limit"
-                />
-              </label>
-            </div>
+            <LimitField
+              label={t("settings.job_limit")}
+              hint={t("settings.job_limit_hint")}
+              value={draft.ai?.job_limit_usd ?? 0}
+              step={0.5}
+              onChange={(v) => setDraft({ ...draft, ai: { ...draft.ai!, job_limit_usd: v } })}
+              testId="job-limit"
+            />
+            <LimitField
+              label={t("settings.monthly_limit")}
+              hint={t("settings.monthly_limit_hint", { spent: (system?.ai_month_spent ?? 0).toFixed(2) })}
+              value={draft.ai?.monthly_limit_usd ?? 0}
+              step={1}
+              onChange={(v) => setDraft({ ...draft, ai: { ...draft.ai!, monthly_limit_usd: v } })}
+              testId="monthly-limit"
+            />
+            {(draft.ai?.monthly_limit_usd ?? 0) < (draft.ai?.job_limit_usd ?? 0) && (
+              <Alert kind="warning">
+                {t("settings.limit_conflict", {
+                  monthly: draft.ai?.monthly_limit_usd,
+                  job: draft.ai?.job_limit_usd,
+                  left: Math.max(0, (draft.ai?.monthly_limit_usd ?? 0) - (system?.ai_month_spent ?? 0)).toFixed(2),
+                })}
+              </Alert>
+            )}
           </Section>
             </>
           )}
@@ -772,5 +770,41 @@ function KeyField({
       </div>
       <p className="text-xs text-zinc-500">{hint}</p>
     </div>
+  );
+}
+
+function LimitField({
+  label,
+  hint,
+  value,
+  step,
+  onChange,
+  testId,
+}: {
+  label: string;
+  hint: string;
+  value: number;
+  step: number;
+  onChange: (v: number) => void;
+  testId: string;
+}) {
+  return (
+    <label className="block text-sm">
+      <span className="mb-1 block font-medium text-zinc-700 dark:text-zinc-200">{label}</span>
+      <span className="flex items-start gap-3">
+        <span className="block w-28 shrink-0">
+          <input
+            type="number"
+            min={0}
+            step={step}
+            className={inputClass}
+            value={value}
+            onChange={(e) => onChange(Number(e.target.value))}
+            data-testid={testId}
+          />
+        </span>
+        <span className="min-w-0 flex-1 text-xs text-zinc-500">{hint}</span>
+      </span>
+    </label>
   );
 }

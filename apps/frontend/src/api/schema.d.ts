@@ -493,6 +493,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/jobs/{job_id}/items-restore/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Item
+         * @description Undoes deleting an item from the list.
+         */
+        post: operations["restore_item_api_jobs__job_id__items_restore__item_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/basemap/{z}/{x}/{y}": {
         parameters: {
             query?: never;
@@ -580,6 +600,26 @@ export interface paths {
         head?: never;
         /** Adjust Object */
         patch: operations["adjust_object_api_jobs__job_id__objects__item_id__patch"];
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/restore/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Object
+         * @description Undoes deleting an object in the 3D view.
+         */
+        post: operations["restore_object_api_jobs__job_id__restore__item_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/jobs/{job_id}/placement/{item_id}": {
@@ -975,6 +1015,8 @@ export interface components {
              * @default 1
              */
             next_user_id: number;
+            /** Deleted */
+            deleted?: components["schemas"]["SceneItem"][];
         };
         /** ApiKeyBody */
         ApiKeyBody: {
@@ -1144,6 +1186,8 @@ export interface components {
             detail: string;
             /** Objects */
             objects?: components["schemas"]["PlanObject"][];
+            /** Removed */
+            removed?: components["schemas"]["PlanObject"][];
             /**
              * Surfaces
              * @default 0
@@ -2256,6 +2300,11 @@ export interface components {
              */
             has_gemini_key: boolean;
             /**
+             * Ai Month Spent
+             * @default 0
+             */
+            ai_month_spent: number;
+            /**
              * Has Mapillary Token
              * @default false
              */
@@ -3331,6 +3380,38 @@ export interface operations {
             };
         };
     };
+    restore_item_api_jobs__job_id__items_restore__item_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     basemap_tile_api_basemap__z___x___y__get: {
         parameters: {
             query?: never;
@@ -3508,6 +3589,38 @@ export interface operations {
                 "application/json": components["schemas"]["AdjustBody"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_object_api_jobs__job_id__restore__item_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

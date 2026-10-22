@@ -1291,6 +1291,55 @@
         }
       }
     },
+    "/api/jobs/{job_id}/items-restore/{item_id}": {
+      "post": {
+        "summary": "Restore Item",
+        "description": "Undoes deleting an item from the list.",
+        "operationId": "restore_item_api_jobs__job_id__items_restore__item_id__post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/basemap/{z}/{x}/{y}": {
       "get": {
         "summary": "Basemap Tile",
@@ -1553,6 +1602,55 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/restore/{item_id}": {
+      "post": {
+        "summary": "Restore Object",
+        "description": "Undoes deleting an object in the 3D view.",
+        "operationId": "restore_object_api_jobs__job_id__restore__item_id__post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -2764,6 +2862,13 @@
             "type": "integer",
             "title": "Next User Id",
             "default": 1
+          },
+          "deleted": {
+            "items": {
+              "$ref": "#/components/schemas/SceneItem"
+            },
+            "type": "array",
+            "title": "Deleted"
           }
         },
         "type": "object",
@@ -3120,6 +3225,13 @@
             },
             "type": "array",
             "title": "Objects"
+          },
+          "removed": {
+            "items": {
+              "$ref": "#/components/schemas/PlanObject"
+            },
+            "type": "array",
+            "title": "Removed"
           },
           "surfaces": {
             "type": "integer",
@@ -6077,6 +6189,11 @@
             "type": "boolean",
             "title": "Has Gemini Key",
             "default": false
+          },
+          "ai_month_spent": {
+            "type": "number",
+            "title": "Ai Month Spent",
+            "default": 0.0
           },
           "has_mapillary_token": {
             "type": "boolean",

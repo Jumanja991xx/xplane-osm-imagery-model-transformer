@@ -135,6 +135,14 @@ with sync_playwright() as p:
     page.screenshot(path=OUT / "06-selected-mast.png")
     page.get_by_test_id("delete-item").click()
     expect(page.get_by_test_id("item-node/201")).to_have_count(0)
+    # Undo brings it back as it was; deleting again keeps it deleted.
+    expect(page.get_by_test_id("undo-note")).to_be_visible()
+    page.get_by_test_id("undo-delete").click()
+    expect(page.get_by_test_id("item-node/201")).to_have_count(1, timeout=5000)
+    if not page.get_by_test_id("item-node/201").get_by_test_id("delete-item").is_visible():
+        page.get_by_test_id("item-node/201").get_by_role("button").first.click()
+    page.get_by_test_id("item-node/201").get_by_test_id("delete-item").click()
+    expect(page.get_by_test_id("item-node/201")).to_have_count(0)
     # Exclude the fence.
     page.get_by_test_id("include-way/107").uncheck()
     # Draw a new scaffolding next to the grandstand.
@@ -402,7 +410,12 @@ with sync_playwright() as p:
     page.get_by_test_id("gemini-key-save").click()
     expect(page.get_by_test_id("gemini-key-status")).to_contain_text("hinterlegt")
     expect(page.get_by_test_id("settings-model").locator("optgroup")).to_have_count(2)
+    expect(page.get_by_test_id("job-limit")).to_be_visible()
+    page.get_by_test_id("job-limit").fill("60")
+    expect(page.get_by_role("dialog")).to_contain_text("Das Monatslimit (20 USD) ist kleiner")
+    page.get_by_test_id("monthly-limit").scroll_into_view_if_needed()
     page.screenshot(path=OUT / "19-settings-ai.png")
+    page.get_by_test_id("job-limit").fill("5")
     page.get_by_role("button", name="Schließen", exact=True).click()
     browser.close()
 

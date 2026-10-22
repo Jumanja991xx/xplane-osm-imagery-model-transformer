@@ -252,8 +252,8 @@ export function BriefStep({
       <Section title={t("brief.ai")}>
         <Checkbox label={t("brief.use_ai")} checked={brief.use_ai ?? false} onChange={(on) => update({ use_ai: on })} />
         {brief.use_ai && (
-          <div className="grid grid-cols-[1fr_8rem] gap-2">
-            <label className="text-sm">
+          <div className="grid grid-cols-2 gap-2">
+            <label className="col-span-2 text-sm">
               <span className="mb-1 block text-zinc-600 dark:text-zinc-300">{t("brief.ai_model")}</span>
               <select
                 className={inputClass}
@@ -273,16 +273,27 @@ export function BriefStep({
                 ))}
               </select>
             </label>
-            <label className="text-sm">
+            <label className="col-span-2 text-sm">
               <span className="mb-1 block text-zinc-600 dark:text-zinc-300">{t("brief.ai_limit")}</span>
-              <input
-                type="number"
-                min={0}
-                step={0.5}
-                className={inputClass}
-                value={brief.ai_cost_limit_usd}
-                onChange={(e) => update({ ai_cost_limit_usd: Number(e.target.value) })}
-              />
+              <span className="flex items-start gap-3">
+                <span className="block w-28 shrink-0">
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.5}
+                    className={inputClass}
+                    value={brief.ai_cost_limit_usd}
+                    onChange={(e) => update({ ai_cost_limit_usd: Number(e.target.value) })}
+                    data-testid="brief-limit"
+                  />
+                </span>
+                <span className="min-w-0 flex-1 text-xs text-zinc-500">
+                  {t("brief.ai_limit_month", {
+                    left: Math.max(0, (settings?.ai?.monthly_limit_usd ?? 0) - (system?.ai_month_spent ?? 0)).toFixed(2),
+                    monthly: settings?.ai?.monthly_limit_usd ?? 0,
+                  })}
+                </span>
+              </span>
             </label>
             {!keyOk && (
               <div className="col-span-2">

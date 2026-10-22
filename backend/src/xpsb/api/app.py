@@ -88,6 +88,7 @@ class SystemStatus(BaseModel):
     keyring_available: bool
     has_api_key: bool  # Claude (Anthropic)
     has_gemini_key: bool = False
+    ai_month_spent: float = 0.0  # USD spent on AI this calendar month (all jobs)
     has_mapillary_token: bool = False
     has_esri_key: bool = False
     blender: str | None = None  # version of the Blender the app would use
@@ -289,6 +290,7 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
             keyring_available=ctx.secrets.available(),
             has_api_key=bool(ctx.secrets.get(ANTHROPIC_ACCOUNT)),
             has_gemini_key=bool(ctx.secrets.get(GEMINI_ACCOUNT)),
+            ai_month_spent=round(ctx.jobs.ledger.month_spent(), 2),
             has_mapillary_token=bool(ctx.secrets.get(MAPILLARY_ACCOUNT)),
             has_esri_key=bool(ctx.secrets.get(ESRI_ACCOUNT)),
             blender=getattr(await asyncio.to_thread(ctx.jobs.blender), "version", None),
@@ -533,6 +535,12 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
         ctx.jobs.delete_item(job_id, item_id)
         return ctx.jobs.view(job_id)
 
+    @app.post("/api/jobs/{job_id}/items-restore/{item_id:path}", dependencies=auth)
+    async def restore_item(job_id: str, item_id: str) -> JobView:
+        """Undoes deleting an item from the list."""
+        ctx.jobs.restore_item(job_id, item_id)
+        return ctx.jobs.view(job_id)
+
     @app.get(
         "/api/basemap/{z}/{x}/{y}",
         dependencies=auth,
@@ -581,6 +589,12 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
     @app.delete("/api/jobs/{job_id}/objects/{item_id:path}", dependencies=auth)
     async def remove_object(job_id: str, item_id: str) -> JobView:
         await ctx.jobs.remove_object(job_id, item_id)
+        return ctx.jobs.view(job_id)
+
+    @app.post("/api/jobs/{job_id}/restore/{item_id:path}", dependencies=auth)
+    async def restore_object(job_id: str, item_id: str) -> JobView:
+        """Undoes deleting an object in the 3D view."""
+        await ctx.jobs.restore_object(job_id, item_id)
         return ctx.jobs.view(job_id)
 
     @app.patch("/api/jobs/{job_id}/placement/{item_id:path}", dependencies=auth)
