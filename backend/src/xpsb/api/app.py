@@ -42,7 +42,7 @@ from xpsb.jobs.manager import (
 from xpsb.jobs.models import Brief, GateId, JobState, JobView
 from xpsb.paths import AppPaths
 from xpsb.photos import MAPILLARY_ACCOUNT, SearchResult
-from xpsb.scene import ItemPatch, NewItem, PhotoTexture
+from xpsb.scene import ItemPatch, NewItem, PartOp, PhotoTexture
 from xpsb.secrets import ANTHROPIC_ACCOUNT, GEMINI_ACCOUNT, SecretStore, normalize_api_key
 from xpsb.settings import AiModel, ImagerySettings, Settings, SettingsStore
 from xpsb.xplane import dsftool, neighbors
@@ -133,6 +133,8 @@ class DesignBody(BaseModel):
     max_usd: float = Field(gt=0, le=1000)
     # Another model than the job's for this request (e.g. a stronger one).
     model: AiModel | None = None
+    # Only these building parts are to change (ids from the 3D preview).
+    parts: list[str] | None = Field(default=None, max_length=50)
 
 
 class DesignOutcome(BaseModel):
@@ -624,6 +626,16 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
         )
         return ctx.jobs.view(job.id)
 
+    @app.post("/api/jobs/{job_id}/parts/{item_id:path}", dependencies=auth)
+    async def change_parts(job_id: str, item_id: str, body: PartOp) -> JobView:
+        await asyncio.to_thread(ctx.jobs.change_parts, job_id, item_id, body)
+        return ctx.jobs.view(job_id)
+
+    @app.delete("/api/jobs/{job_id}/parts/{item_id:path}", dependencies=auth)
+    async def undo_parts(job_id: str, item_id: str, all: bool = False) -> JobView:
+        await asyncio.to_thread(ctx.jobs.undo_parts, job_id, item_id, all)
+        return ctx.jobs.view(job_id)
+
     @app.post("/api/jobs/{job_id}/design-many/estimate", dependencies=auth)
     async def design_many_estimate(job_id: str, body: DesignManyEstimateBody) -> DesignEstimate:
         return ctx.jobs.design_many_estimate(job_id, body.item_ids, body.model)
@@ -647,7 +659,7 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
     @app.post("/api/jobs/{job_id}/design/{item_id:path}", dependencies=auth)
     async def redesign(job_id: str, item_id: str, body: DesignBody) -> DesignOutcome:
         job, summary, cost = await ctx.jobs.redesign(
-            job_id, item_id, body.request, body.max_usd, body.model
+            job_id, item_id, body.request, body.max_usd, body.model, body.parts
         )
         model = body.model or (job.brief.ai_model if job.brief else "")
         return DesignOutcome(

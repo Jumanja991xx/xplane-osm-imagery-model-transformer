@@ -21,7 +21,7 @@ from shapely.geometry import LineString, Polygon, shape
 from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
 
-from xpsb.build import phototex
+from xpsb.build import parts, phototex
 from xpsb.build.bake import bake
 from xpsb.build.objexport import to_obj8, to_preview
 from xpsb.build.sandbox import ScriptError, ScriptInputs, run_script
@@ -498,6 +498,10 @@ def generate(
     name = f"{item.id}.star" if item.script else f"{item.category}.star"
     lib = frozenset(library.objects) if library else None
     mesh = run_script(script, inputs, budget, name=name, library=lib)
+    if item.part_ops:
+        parts.apply_ops(mesh, item.part_ops)
+        if not mesh.patches and not mesh.placements:
+            raise ScriptError("all parts are hidden")
     photos = phototex.load(item.textures, item.photos, photo_dir) if item.textures else {}
     used = {p.material[6:] for p in mesh.patches if p.material.startswith("photo:")}
     photo_ids = sorted({t.photo_id for t in item.textures if t.name in used and t.name in photos})
@@ -569,6 +573,7 @@ def generate_one(
                 "size": list(library.objects[p.path].size or ()) if library else [],
                 "pack": library.objects[p.path].pack if library else "",
                 "default": library.objects[p.path].default if library else True,
+                "part": p.part,
             }
             for p in mesh.placements
         ]

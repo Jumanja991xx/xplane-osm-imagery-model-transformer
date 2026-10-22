@@ -1782,6 +1782,120 @@
         }
       }
     },
+    "/api/jobs/{job_id}/parts/{item_id}": {
+      "post": {
+        "summary": "Change Parts",
+        "operationId": "change_parts_api_jobs__job_id__parts__item_id__post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PartOp"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Undo Parts",
+        "operationId": "undo_parts_api_jobs__job_id__parts__item_id__delete",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "all",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "All"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobs/{job_id}/design-many/estimate": {
       "post": {
         "summary": "Design Many Estimate",
@@ -3586,6 +3700,21 @@
               }
             ],
             "title": "Model"
+          },
+          "parts": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parts"
           }
         },
         "type": "object",
@@ -4910,6 +5039,81 @@
         ],
         "title": "OtherScenery"
       },
+      "PartOp": {
+        "properties": {
+          "parts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Parts"
+          },
+          "hide": {
+            "type": "boolean",
+            "title": "Hide",
+            "default": false
+          },
+          "move": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Move",
+            "default": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          },
+          "turn_deg": {
+            "type": "number",
+            "maximum": 360.0,
+            "minimum": -360.0,
+            "title": "Turn Deg",
+            "default": 0.0
+          },
+          "scale": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Scale",
+            "default": [
+              1.0,
+              1.0,
+              1.0
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "parts"
+        ],
+        "title": "PartOp",
+        "description": "A change the user made to building parts of a built object in the 3D preview\n(build/parts.py): hide them, or resize, turn and move them together around the\nmiddle of their footprint. Applied in order after the build script ran."
+      },
       "PathBody": {
         "properties": {
           "path": {
@@ -5938,6 +6142,13 @@
             },
             "type": "array",
             "title": "Textures"
+          },
+          "part_ops": {
+            "items": {
+              "$ref": "#/components/schemas/PartOp"
+            },
+            "type": "array",
+            "title": "Part Ops"
           },
           "research": {
             "anyOf": [

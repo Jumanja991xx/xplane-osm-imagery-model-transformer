@@ -53,7 +53,7 @@ happens without your OK.
 | 🚀 **Performance** | Three levels of detail per object (close, far, very far), city blocks instead of thousands of single objects, X-Plane library objects for lamps, trees and cars. |
 | 🎨 **Blender** *(optional)* | Bakes soft shading and weathering into the textures at build time. |
 | 🧩 **Plays nicely with other sceneries** | Hides the objects of other packs exactly where your new ones stand, keeps your ortho ground if you want. |
-| ✋ **Hands-on 3D preview** | See every object before it is built, day and night. Move, turn, delete, change height or roof – also after the build. |
+| ✋ **Hands-on 3D preview** | See every object before it is built, day and night. Move, turn, delete, change height or roof – also after the build. Pick single parts (a tower, the roof, a wing) – alone or as a group – and move, turn, resize or hide them, or let the AI change just those. |
 | 🛡️ **Safe** | AI-written build scripts run in a sandbox that can only describe geometry. Your keys never leave the Windows Credential Manager. |
 
 ![Bridges built by the app (3D preview): stone arch, steel truss, cable-stayed](docs/images/example-bridges.jpg)

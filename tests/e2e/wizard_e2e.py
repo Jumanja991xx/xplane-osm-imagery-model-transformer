@@ -364,6 +364,28 @@ with sync_playwright() as p:
     page.screenshot(path=OUT / "09f-design-done.png")
     # Library objects the architect placed are named (stand-ins in the 3D view).
     expect(page.get_by_test_id("library-list")).to_contain_text("Lampe/Mast")
+    # Single parts: the tower 25 % higher and turned, then undone once; the AI only for it.
+    page.get_by_test_id("parts-toggle").click()
+    page.get_by_test_id("part-Turm").click()
+    page.wait_for_function(
+        "window.__xpsbPreview.scene.getObjectByName('part-highlight') !== undefined", timeout=5000
+    )
+    expect(page.get_by_test_id("parts-controls")).to_contain_text("1 Teil")
+    page.get_by_test_id("part-height-25").click()
+    expect(page.get_by_test_id("parts-panel")).to_contain_text("1 Änderung", timeout=20000)
+    page.get_by_test_id("part-turn-15").click()
+    expect(page.get_by_test_id("parts-panel")).to_contain_text("2 Änderung", timeout=20000)
+    page.wait_for_function(  # still marked on the rebuilt object
+        "window.__xpsbPreview.scene.getObjectByName('part-highlight') !== undefined", timeout=5000
+    )
+    page.wait_for_timeout(1500)
+    page.screenshot(path=OUT / "09f2-parts.png")
+    page.get_by_test_id("parts-undo").click()
+    expect(page.get_by_test_id("parts-panel")).to_contain_text("1 Änderung", timeout=20000)
+    expect(page.get_by_test_id("design-parts")).to_contain_text("Nur für: Turm")
+    page.get_by_test_id("part-Halle").click(modifiers=["Control"])
+    expect(page.get_by_test_id("parts-controls")).to_contain_text("2 Teil")
+    page.get_by_test_id("parts-toggle").click()
     page.get_by_test_id("preview-close").click()
     # One step back to the list and forward again: nothing is lost, no new analysis.
     page.get_by_test_id("back-to-list").click()

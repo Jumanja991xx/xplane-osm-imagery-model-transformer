@@ -8,12 +8,14 @@ import {
   preview,
   type ItemAttrs,
   type JobView,
+  type PartChange,
   type PreviewData,
+  type PreviewPart,
   type PreviewLight,
   type PreviewObject,
 } from "../api/client";
 import { hasKeyFor, modelGroups, modelLabel, modelName, useAiModels } from "../ai";
-import { useT } from "../i18n";
+import { type Translate, useT } from "../i18n";
 import { CATEGORY_COLORS, categoryLabelKey } from "../scene";
 import { useApp } from "../store";
 import { ErrorBoundary } from "./ErrorBoundary";
@@ -116,13 +118,28 @@ function PreviewDialogInner({
   const placeRef = useRef<(stem: string, dx: number, dy: number, heading: number) => void>(() => {});
   toolRef.current = editable || placeable ? tool : "none";
   selectedRef.current = selected;
+  // Single building parts of the selected object (tower, roof ...), picked by click.
+  const [partMode, setPartMode] = useState(false);
+  const [partSel, setPartSel] = useState<string[]>([]);
+  const [partLists, setPartLists] = useState<Record<string, PreviewPart[]>>({});
+  const partModeRef = useRef(false);
+  partModeRef.current = partMode && editable;
+  const partPickRef = useRef<(id: string | null, add: boolean) => void>(() => {});
+  const partHighlightRef = useRef<(stem: string | null, ids: string[]) => void>(() => {});
+  const [gpu, setGpu] = useState<{ name: string; software: boolean } | null>(null);
 
   useEffect(() => {
     const el = mount.current;
     if (!el) return;
     let disposed = false;
     const urls: string[] = [];
-    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    // high-performance: the dedicated graphics card on laptops with two
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      preserveDrawingBuffer: true,
+      powerPreference: "high-performance",
+    });
+    setGpu(graphicsCard(renderer));
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(el.clientWidth, el.clientHeight);
     renderer.shadowMap.enabled = true;
@@ -182,6 +199,45 @@ function PreviewDialogInner({
       hemi.intensity = on ? 0.12 : 1.4;
       sun.intensity = on ? 0 : 2.2;
       applyNight(objects, on);
+    };
+
+    /** The chosen parts of one object, drawn over it in orange. */
+    partHighlightRef.current = (stem, ids) => {
+      for (const group of objects.children) {
+        const old = group.getObjectByName(PART_HIGHLIGHT) as THREE.Mesh | undefined;
+        if (old) {
+          group.remove(old);
+          disposeMesh(old);
+        }
+      }
+      const group = stem ? objects.getObjectByName(stem) : undefined;
+      const mesh = group?.children.find((c) => c instanceof THREE.Mesh && c.userData.parts) as THREE.Mesh | undefined;
+      const src = mesh?.geometry.getIndex();
+      if (!group || !mesh || !src || !ids.length) return;
+      const index: number[] = [];
+      for (const p of mesh.userData.parts as PreviewPart[]) {
+        if (!ids.includes(p.id)) continue;
+        for (let i = p.start; i < p.start + p.count; i++) index.push(src.getX(i));
+      }
+      if (!index.length) return;
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", mesh.geometry.getAttribute("position").clone());
+      geo.setIndex(index);
+      const overlay = new THREE.Mesh(
+        geo,
+        new THREE.MeshBasicMaterial({
+          color: 0xff8c00,
+          transparent: true,
+          opacity: 0.6,
+          depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -2,
+          polygonOffsetUnits: -2,
+        }),
+      );
+      overlay.name = PART_HIGHLIGHT;
+      overlay.userData.library = true; // left alone by night and selection colours
+      group.add(overlay);
     };
 
     highlightRef.current = (stems) => {
@@ -250,6 +306,7 @@ function PreviewDialogInner({
         );
         mesh.castShadow = true;
         mesh.receiveShadow = true;
+        mesh.userData.parts = m.parts ?? [];
         if (litUrl) {
           urls.push(litUrl);
           const lit = await loader.loadAsync(litUrl).catch(() => null);
@@ -266,10 +323,14 @@ function PreviewDialogInner({
         const standIn = libraryStandIn(p);
         standIn.position.copy(toThree(p.x, p.y, 0));
         standIn.rotation.y = -(p.heading * Math.PI) / 180;
+        standIn.userData.part = p.part ?? "";
         group.add(standIn);
       }
       applyNight(group, nightOn.current);
       objects.add(group);
+      // after adding: the chosen parts are drawn again on the new version
+      const parts = (group.children.find((c) => c.userData.parts)?.userData.parts ?? []) as PreviewPart[];
+      setPartLists((prev) => ({ ...prev, [o.stem]: parts }));
       return group;
     };
     reloadRef.current = async (o) => {
@@ -340,9 +401,22 @@ function PreviewDialogInner({
       }
       if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
       raycaster.setFromCamera(pointerAt(e), camera);
-      const hit = raycaster.intersectObjects(objects.children, true)[0];
+      const hit = raycaster.intersectObjects(objects.children, true).find((h) => h.object.name !== PART_HIGHLIGHT);
       let target: THREE.Object3D | null = hit ? hit.object : null;
       while (target && target.parent !== objects) target = target.parent;
+      const add = e.ctrlKey || e.metaKey || e.shiftKey;
+      if (partModeRef.current && target && target.name === selectedRef.current) {
+        // A part of the selected object: by the triangle hit, or the library stand-in.
+        let part: string | undefined;
+        for (let o: THREE.Object3D | null = hit?.object ?? null; o && o !== target; o = o.parent) {
+          if (typeof o.userData.part === "string") part = o.userData.part || undefined;
+        }
+        const ranges = hit?.object.userData.parts as PreviewPart[] | undefined;
+        const at = (hit?.faceIndex ?? -1) * 3;
+        part ??= ranges?.find((p) => at >= p.start && at < p.start + p.count)?.id;
+        partPickRef.current(part ?? null, add);
+        return;
+      }
       pickRef.current(target ? target.name : null, e.ctrlKey || e.metaKey);
     };
     renderer.domElement.addEventListener("pointerdown", onDown);
@@ -467,7 +541,24 @@ function PreviewDialogInner({
   }, [jobId]);
 
   const shown = multi.length ? multi : selected ? [selected] : [];
-  useEffect(() => highlightRef.current(shown), [selected, multi, data]); // eslint-disable-line react-hooks/exhaustive-deps
+  // While parts are edited the object itself is not tinted: the chosen parts stand out.
+  useEffect(() => highlightRef.current(partMode && editable ? [] : shown), [selected, multi, data, partMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Another object: no parts chosen, back to whole objects.
+  useEffect(() => {
+    setPartSel([]);
+    setPartMode(false);
+  }, [selected]);
+  useEffect(
+    () => partHighlightRef.current(partMode ? selected : null, partSel),
+    [partMode, partSel, selected, partLists],
+  );
+  partPickRef.current = (id, add) => {
+    if (!id) {
+      if (!add) setPartSel([]);
+      return;
+    }
+    setPartSel((cur) => (add ? (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]) : [id]));
+  };
 
   /** Click: only this one. Ctrl/Cmd+click: add or remove it. Shift+click in the list: a range. */
   const pick = (stem: string | null, add: boolean, range = false) => {
@@ -521,7 +612,7 @@ function PreviewDialogInner({
   const onAdjusted = async (o: PreviewObject) => {
     setData((d) => d && { ...d, objects: d.objects.map((x) => (x.stem === o.stem ? o : x)) });
     await reloadRef.current(o);
-    highlightRef.current(multiRef.current.length ? multiRef.current : [o.stem]);
+    if (!partModeRef.current) highlightRef.current(multiRef.current.length ? multiRef.current : [o.stem]);
   };
   const many = editable && multi.length > 1;
   const chosen = (data?.objects ?? []).filter((o) => multi.includes(o.stem));
@@ -674,6 +765,7 @@ function PreviewDialogInner({
               </div>
             )}
             {error && <Alert kind="error">{error}</Alert>}
+            {gpu?.software && <Alert kind="warning">{t("preview.gpu_software", { name: gpu.name })}</Alert>}
             {data?.imagery && data.surface_mode === "imagery" && (
               <p className="text-xs text-zinc-500">{t("preview.ortho_legend")}</p>
             )}
@@ -722,12 +814,29 @@ function PreviewDialogInner({
               </Alert>
             )}
             {current && editable && !many && (
+              <PartsPanel
+                key={`parts-${current.stem}`}
+                jobId={jobId}
+                object={current}
+                parts={partLists[current.stem] ?? []}
+                active={partMode}
+                setActive={setPartMode}
+                selection={partSel}
+                setSelection={setPartSel}
+                onAdjusted={onAdjusted}
+              />
+            )}
+            {current && editable && !many && (
               <ObjectControls
                 key={current.stem}
                 jobId={jobId}
                 object={current}
                 onAdjusted={onAdjusted}
                 onGround={() => groundRef.current()}
+                parts={partMode ? partSel : []}
+                partNames={(partLists[current.stem] ?? [])
+                  .filter((p) => partMode && partSel.includes(p.id))
+                  .map((p) => partName(t, p))}
               />
             )}
             {built.length > 0 && (
@@ -1259,11 +1368,15 @@ function ObjectControls({
   object,
   onAdjusted,
   onGround,
+  parts = [],
+  partNames = [],
 }: {
   jobId: string;
   object: PreviewObject;
   onAdjusted: (o: PreviewObject) => Promise<void>;
   onGround: () => Promise<void>;
+  parts?: string[];
+  partNames?: string[];
 }) {
   const { t } = useT();
   const job = useApp((s) => s.job);
@@ -1483,7 +1596,7 @@ function ObjectControls({
         onChange={(on) => void apply({ hide_below: on }).then(onGround)}
       />
       {error && <Alert kind="error">{error}</Alert>}
-      <DesignPanel jobId={jobId} object={object} onAdjusted={onAdjusted} />
+      <DesignPanel jobId={jobId} object={object} onAdjusted={onAdjusted} parts={parts} partNames={partNames} />
     </div>
   );
 }
@@ -1654,6 +1767,275 @@ function DesignProgress({ itemId, since, started }: { itemId: string; since: num
   );
 }
 
+const PART_HIGHLIGHT = "part-highlight";
+
+/** The graphics card WebGL draws with; software rendering (no driver, remote
+ * desktop, blocked GPU) is slow and gets a warning. */
+function graphicsCard(renderer: THREE.WebGLRenderer): { name: string; software: boolean } | null {
+  try {
+    const gl = renderer.getContext();
+    const ext = gl.getExtension("WEBGL_debug_renderer_info");
+    const name = String(gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER) ?? "");
+    return { name, software: /swiftshader|llvmpipe|softpipe|basic render|software/i.test(name) };
+  } catch {
+    return null;
+  }
+}
+
+/** "walls 2" -> "Wände 2"; unnamed parts after their tool ("Zylinder 2"). */
+function partName(t: Translate, p: PreviewPart): string {
+  const m = /^([a-z_]+)( \d+)?$/.exec(p.label);
+  if (m) {
+    const key = `part_name.${m[1]}`;
+    const known = t(key);
+    if (known !== key) return known + (m[2] ?? "");
+  }
+  if (p.label) return p.label;
+  const key = `part_tool.${p.tool}`;
+  const known = t(key);
+  return `${known !== key ? known : p.tool} ${Number(p.id.split("-").pop() ?? 0) + 1}`;
+}
+
+/** The kind of a part: its name without the number, or its tool. */
+const partKind = (p: PreviewPart) => (p.label ? p.label.replace(/ \d+$/, "") : `tool:${p.tool}`);
+
+const chipClass = (on: boolean) =>
+  `rounded border px-1.5 py-0.5 text-xs ${
+    on
+      ? "border-orange-500 bg-orange-500/20 font-medium"
+      : "border-zinc-300 hover:bg-zinc-100 dark:border-zinc-600 dark:hover:bg-zinc-800"
+  }`;
+const smallButton =
+  "rounded border border-zinc-300 px-1.5 py-0.5 text-xs hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-600 dark:hover:bg-zinc-800";
+
+/** Single parts of one object: pick in the picture or the list (Ctrl/Shift: several),
+ * then move, turn, resize or hide them; every change can be taken back. */
+function PartsPanel({
+  jobId,
+  object,
+  parts,
+  active,
+  setActive,
+  selection,
+  setSelection,
+  onAdjusted,
+}: {
+  jobId: string;
+  object: PreviewObject;
+  parts: PreviewPart[];
+  active: boolean;
+  setActive: (on: boolean) => void;
+  selection: string[];
+  setSelection: (ids: string[]) => void;
+  onAdjusted: (o: PreviewObject) => Promise<void>;
+}) {
+  const { t } = useT();
+  const job = useApp((s) => s.job);
+  const setJob = useApp((s) => s.setJob);
+  const item = job?.analysis?.items?.find((i) => i.id === object.item_id);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [step, setStep] = useState(1);
+  const ops = item?.part_ops?.length ?? 0;
+  if (!item || (parts.length < 2 && !ops)) return null;
+
+  const run = async (fn: () => Promise<JobView>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const view = await fn();
+      setJob(view);
+      const next = view.plan?.objects?.find((o) => o.item_id === object.item_id);
+      if (next) await onAdjusted({ ...object, ...next });
+    } catch (e) {
+      setError(e instanceof ApiError ? t(e.key, e.params) : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const change = (c: Omit<PartChange, "parts">) =>
+    void run(() => api.changeParts(jobId, object.item_id, { parts: selection, ...c }));
+  /** Directions on the map, turned into the object's own axes (it may be turned). */
+  const move = (east: number, north: number, up = 0) => {
+    const h = ((object.heading ?? 0) * Math.PI) / 180;
+    const r = (v: number) => Math.round(v * 1000) / 1000;
+    change({ move: [r(east * Math.cos(h) - north * Math.sin(h)), r(east * Math.sin(h) + north * Math.cos(h)), up] });
+  };
+  const toggle = (id: string, add: boolean) =>
+    setSelection(add ? (selection.includes(id) ? selection.filter((x) => x !== id) : [...selection, id]) : [id]);
+  const first = parts.find((p) => p.id === selection[0]);
+  const sameKind = first ? parts.filter((p) => partKind(p) === partKind(first)).map((p) => p.id) : [];
+
+  return (
+    <div className="space-y-2 rounded-md border border-orange-500/40 bg-orange-500/5 p-2" data-testid="parts-panel">
+      <div className="flex items-center justify-between">
+        <span className="font-medium">🧩 {t("parts.title")}</span>
+        <span className="flex items-center gap-2">
+          {busy && <Spinner />}
+          <Button
+            variant={active ? "primary" : "ghost"}
+            aria-pressed={active}
+            onClick={() => {
+              setActive(!active);
+              setSelection([]);
+            }}
+            data-testid="parts-toggle"
+          >
+            {t(active ? "parts.done" : "parts.edit")}
+          </Button>
+        </span>
+      </div>
+      {!active ? (
+        <p className="text-xs text-zinc-500">{t("parts.intro")}</p>
+      ) : (
+        <>
+          <p className="text-xs text-zinc-500">{t("parts.hint")}</p>
+          <div className="flex flex-wrap gap-1" data-testid="parts-list">
+            {parts.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className={chipClass(selection.includes(p.id))}
+                onClick={(e) => toggle(p.id, e.ctrlKey || e.metaKey || e.shiftKey)}
+                data-testid={`part-${p.id}`}
+              >
+                {partName(t, p)}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-3 text-xs">
+            <button type="button" className="underline" onClick={() => setSelection(parts.map((p) => p.id))}>
+              {t("parts.all")}
+            </button>
+            {sameKind.length > 1 && selection.length === 1 && (
+              <button type="button" className="underline" onClick={() => setSelection(sameKind)} data-testid="parts-same">
+                {t("parts.same_kind", { count: sameKind.length })}
+              </button>
+            )}
+          </div>
+          {selection.length > 0 && (
+            <div className="space-y-1.5 text-xs" data-testid="parts-controls">
+              <div className="font-medium">{t("parts.selected", { count: selection.length })}</div>
+              <div className="flex flex-wrap items-center gap-1">
+                <span className="w-20">{t("parts.move")}</span>
+                {(
+                  [
+                    ["↑", 0, 1, 0, "north"],
+                    ["↓", 0, -1, 0, "south"],
+                    ["←", -1, 0, 0, "west"],
+                    ["→", 1, 0, 0, "east"],
+                    ["⤒", 0, 0, 1, "up"],
+                    ["⤓", 0, 0, -1, "down"],
+                  ] as const
+                ).map(([icon, e, n, u, dir]) => (
+                  <button
+                    key={dir}
+                    type="button"
+                    className={smallButton}
+                    disabled={busy}
+                    title={t(`parts.dir.${dir}`)}
+                    onClick={() => move(e * step, n * step, u * step)}
+                    data-testid={`part-move-${dir}`}
+                  >
+                    {icon}
+                  </button>
+                ))}
+                <select
+                  className="rounded border border-zinc-300 bg-white px-1 py-0.5 dark:border-zinc-600 dark:bg-zinc-800"
+                  value={step}
+                  onChange={(e) => setStep(Number(e.target.value))}
+                  aria-label={t("parts.step")}
+                >
+                  {[0.2, 0.5, 1, 2, 5].map((v) => (
+                    <option key={v} value={v}>
+                      {v} m
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-wrap items-center gap-1">
+                <span className="w-20">{t("parts.turn")}</span>
+                {[-90, -15, 15, 90].map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    className={smallButton}
+                    disabled={busy}
+                    onClick={() => change({ turn_deg: d })}
+                    data-testid={`part-turn-${d}`}
+                  >
+                    {d < 0 ? "⟲" : "⟳"} {Math.abs(d)}°
+                  </button>
+                ))}
+              </div>
+              {(
+                [
+                  ["height", (f: number) => [1, 1, f]],
+                  ["width", (f: number) => [f, f, 1]],
+                  ["whole", (f: number) => [f, f, f]],
+                ] as const
+              ).map(([kind, scale]) => (
+                <div key={kind} className="flex flex-wrap items-center gap-1">
+                  <span className="w-20">{t(`parts.${kind}`)}</span>
+                  {[0.8, 0.9, 1.1, 1.25].map((f) => (
+                    <button
+                      key={f}
+                      type="button"
+                      className={smallButton}
+                      disabled={busy}
+                      onClick={() => change({ scale: scale(f) as [number, number, number] })}
+                      data-testid={`part-${kind}-${Math.round((f - 1) * 100)}`}
+                    >
+                      {f < 1 ? "−" : "+"}
+                      {Math.round(Math.abs(f - 1) * 100)} %
+                    </button>
+                  ))}
+                </div>
+              ))}
+              <Button
+                variant="ghost"
+                disabled={busy}
+                onClick={() => {
+                  change({ hide: true });
+                  setSelection([]);
+                }}
+                data-testid="part-hide"
+              >
+                🚫 {t("parts.hide")}
+              </Button>
+              <p className="text-zinc-500">{t("parts.ai_hint")}</p>
+            </div>
+          )}
+        </>
+      )}
+      {ops > 0 && (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-zinc-500">{t("parts.changed", { count: ops })}</span>
+          <button
+            type="button"
+            className="underline"
+            disabled={busy}
+            onClick={() => void run(() => api.undoParts(jobId, object.item_id))}
+            data-testid="parts-undo"
+          >
+            ↺ {t("parts.undo")}
+          </button>
+          <button
+            type="button"
+            className="underline"
+            disabled={busy}
+            onClick={() => void run(() => api.undoParts(jobId, object.item_id, true))}
+            data-testid="parts-reset"
+          >
+            {t("parts.reset")}
+          </button>
+        </div>
+      )}
+      {error && <Alert kind="error">{error}</Alert>}
+    </div>
+  );
+}
+
 /** Which AI answers this request – the job's model by default; another one (e.g. a
  * stronger) when the first did not manage. Models without a key cannot be chosen. */
 function ModelSelect({
@@ -1730,10 +2112,14 @@ function DesignPanel({
   jobId,
   object,
   onAdjusted,
+  parts = [],
+  partNames = [],
 }: {
   jobId: string;
   object: PreviewObject;
   onAdjusted: (o: PreviewObject) => Promise<void>;
+  parts?: string[]; // only these building parts are to change
+  partNames?: string[];
 }) {
   const { t } = useT();
   const job = useApp((s) => s.job);
@@ -1781,7 +2167,7 @@ function DesignPanel({
       setFailed(false);
       setDone(null);
       const out = await api
-        .redesign(jobId, object.item_id, text.trim(), estimate.max, estimate.model)
+        .redesign(jobId, object.item_id, text.trim(), estimate.max, estimate.model, parts)
         .catch((e) => {
           setFailed(true);
           throw e;
@@ -1832,6 +2218,11 @@ function DesignPanel({
             disabled={busy}
             data-testid="design-text"
           />
+          {parts.length > 0 && (
+            <p className="text-xs font-medium text-orange-600" data-testid="design-parts">
+              {t("parts.ai_only", { names: partNames.join(", ") })}
+            </p>
+          )}
           <ModelSelect value={model} onChange={pickModel} disabled={busy} testId="design-model" />
           {!estimate ? (
             <Button onClick={() => void check()} disabled={busy || text.trim().length < 3} data-testid="design-check">

@@ -166,17 +166,39 @@ def to_obj8(
     return obj
 
 
+def _preview_parts(mesh: Mesh, ranges: dict[str, list[int]]) -> list[dict]:
+    """The parts that can be seen: a range of the index and/or library objects."""
+    placed = {pl.part for pl in mesh.placements} | {li.part for li in mesh.lights}
+    out = []
+    for p in mesh.parts:
+        start, count = ranges.get(p.id, (0, 0))
+        if count or p.id in placed:
+            out.append(
+                {"id": p.id, "label": p.label, "tool": p.tool, "start": start, "count": count}
+            )
+    return out
+
+
 def to_preview(mesh: Mesh, baked: BakedMesh) -> dict:
     """Compact three.js-friendly arrays (local frame, z up)."""
     positions: list[float] = []
     normals: list[float] = []
     uvs: list[float] = []
     index: list[int] = []
-    for patch, puv in zip(mesh.patches, baked.uvs, strict=True):
+    # Patches part by part, so each building part is one range of the index
+    # (the preview picks and highlights parts by these ranges).
+    order = {p.id: i for i, p in enumerate(mesh.parts)}
+    pairs = sorted(
+        zip(mesh.patches, baked.uvs, strict=True), key=lambda pu: order.get(pu[0].part, -1)
+    )
+    ranges: dict[str, list[int]] = {}
+    for patch, puv in pairs:
         if patch.lod in ("far", "bake"):  # the preview shows the close-up version
             continue
         if patch.anim is not None and patch.anim[1] != 0:  # first frame of animations
             continue
+        if patch.part:
+            ranges.setdefault(patch.part, [len(index), 0])
         for back in (False, True) if patch.two_sided else (False,):
             base = len(positions) // 3
             for p, n, (s, t) in zip(patch.positions, patch.normals, puv, strict=True):
@@ -186,6 +208,8 @@ def to_preview(mesh: Mesh, baked: BakedMesh) -> dict:
                 uvs += [round(s, 5), round(t, 5)]
             for a, b, c in patch.tris:
                 index += [base + a, base + c, base + b] if back else [base + a, base + b, base + c]
+        if patch.part:
+            ranges[patch.part][1] = len(index) - ranges[patch.part][0]
     lights = []
     for li in mesh.lights:
         entry = {"x": round(li.x, 2), "y": round(li.y, 2), "z": round(li.z, 2), "kind": li.name}
@@ -208,6 +232,7 @@ def to_preview(mesh: Mesh, baked: BakedMesh) -> dict:
         "uvs": uvs,
         "index": index,
         "lights": lights,
+        "parts": _preview_parts(mesh, ranges),
         "lit": baked.lit is not None,
         "alpha": baked.image.mode == "RGBA",
     }

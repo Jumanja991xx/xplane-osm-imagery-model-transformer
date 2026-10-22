@@ -135,6 +135,32 @@ class PhotoTexture(BaseModel):
         return [[round(min(1.0, max(0.0, c)), 5) for c in p] for p in value]
 
 
+class PartOp(BaseModel):
+    """A change the user made to building parts of a built object in the 3D preview
+    (build/parts.py): hide them, or resize, turn and move them together around the
+    middle of their footprint. Applied in order after the build script ran."""
+
+    parts: list[str] = Field(min_length=1, max_length=200)
+    hide: bool = False
+    move: tuple[float, float, float] = (0.0, 0.0, 0.0)  # metres east, north, up
+    turn_deg: float = Field(default=0.0, ge=-360, le=360)  # clockwise
+    scale: tuple[float, float, float] = (1.0, 1.0, 1.0)
+
+    @field_validator("move")
+    @classmethod
+    def _near(cls, value):
+        if not all(abs(v) <= 500 for v in value):
+            raise ValueError("move: at most 500 m")
+        return value
+
+    @field_validator("scale")
+    @classmethod
+    def _sane(cls, value):
+        if not all(0.1 <= v <= 10 for v in value):
+            raise ValueError("scale: 0.1 to 10")
+        return value
+
+
 class SceneItem(BaseModel):
     id: str
     kind: ItemKind
@@ -162,6 +188,8 @@ class SceneItem(BaseModel):
     # Facades cut out of those photos, painted onto the model (only photos whose
     # licence allows sharing them go into the package).
     textures: list[PhotoTexture] = Field(default_factory=list)
+    # The user's changes to single parts of the built object (newest last).
+    part_ops: list[PartOp] = Field(default_factory=list)
     research: Research | None = None
     scan: Scan | None = None
     parts: list[BuildingPart] = Field(default_factory=list)

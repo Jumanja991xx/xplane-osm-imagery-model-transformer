@@ -43,7 +43,15 @@ from xpsb.jobs.models import (
     utcnow,
 )
 from xpsb.paths import AppPaths
-from xpsb.scene import ItemAttrs, ItemPatch, NewItem, PhotoTexture, SceneItem, validate_item
+from xpsb.scene import (
+    ItemAttrs,
+    ItemPatch,
+    NewItem,
+    PartOp,
+    PhotoTexture,
+    SceneItem,
+    validate_item,
+)
 from xpsb.secrets import SecretStore
 from xpsb.settings import SettingsStore
 from xpsb.xplane import dsftool, foreign, library
@@ -120,6 +128,7 @@ AUTO_DESIGN_REQUEST = (
 DESIGN_PARALLEL = 3
 MAX_AUTO_DESIGN = 40
 IMPORTANT_DESIGN = 12
+MAX_PART_OPS = 200  # changes to parts per object
 
 
 # On failure a job falls back to the last stable state so the user can fix the
@@ -835,6 +844,37 @@ class JobManager:
         self._save(job)
         return job
 
+    # ---- single parts of a built object (3D preview) -----------------------------
+
+    def change_parts(self, job_id: str, item_id: str, op: PartOp) -> Job:
+        """Hides, resizes, turns or moves building parts of one object (one or a
+        group) and rebuilds it. Free: no AI involved."""
+        job = self._planned(job_id)
+        item = self._item(job, item_id)
+        if item.kind != "object":
+            raise JobConflict("error.similar_objects_only")
+        if len(item.part_ops) >= MAX_PART_OPS:
+            raise JobConflict("error.part_ops_limit", max=MAX_PART_OPS)
+        item.part_ops.append(op)
+        item.edited = True
+        self.regenerate_object(job, item)
+        self._save(job)
+        return job
+
+    def undo_parts(self, job_id: str, item_id: str, everything: bool = False) -> Job:
+        """Takes back the last change to parts (or all of them)."""
+        job = self._planned(job_id)
+        item = self._item(job, item_id)
+        if not item.part_ops:
+            return job
+        if everything:
+            item.part_ops.clear()
+        else:
+            item.part_ops.pop()
+        self.regenerate_object(job, item)
+        self._save(job)
+        return job
+
     def _foreign_reader(self, job: Job):
         """Reads what other packs place around a box (for exact exclusion zones)."""
         settings = self._settings.load()
@@ -1126,9 +1166,11 @@ class JobManager:
         request: str,
         max_usd: float,
         model: str | None = None,
+        parts: list[str] | None = None,
     ) -> tuple[Job, str, float]:
         """Runs only after the user confirmed the estimate (max_usd is what they saw).
-        Returns the job, the architect's summary and what it cost."""
+        `parts`: only these building parts are to change. Returns the job, the
+        architect's summary and what it cost."""
         job, item = self._design_ready(job_id, item_id, model)
         if job_id in self._busy:
             raise JobConflict("error.job_running")
@@ -1143,6 +1185,9 @@ class JobManager:
                 type="progress", stage="design", key=key, params={**params, "item": item.id}
             )
 
+        asked = request
+        if parts:
+            request = await asyncio.to_thread(self._parts_request, job, item, parts, request)
         self._busy.add(job_id)
         try:
             result = await asyncio.to_thread(
@@ -1168,12 +1213,49 @@ class JobManager:
         item.script = result.script
         _take_textures(item, result.textures)
         item.script_request = (
-            f"{item.script_request} | {request}" if item.script_request else request
+            f"{item.script_request} | {asked}" if item.script_request else asked
         )[-2000:]
         item.edited = True
         self.regenerate_object(job, item)
         self._save(job)
         return job, result.summary, result.info.cost_usd
+
+    def _parts_request(self, job: Job, item: SceneItem, part_ids: list[str], request: str) -> str:
+        """The request, limited to the parts the user picked: which they are, made by
+        which call and where they are, so the architect changes only those."""
+        from xpsb.build import assemble
+        from xpsb.build.sandbox import ScriptError, run_script
+
+        assert job.analysis is not None and job.plan is not None
+        lines = []
+        try:
+            inputs = assemble._script_inputs(item, job.analysis.items, job.plan.detail)
+            mesh = run_script(
+                self._current_script(item),
+                inputs,
+                assemble.triangle_budget(inputs, job.plan.detail),
+                library=frozenset(self.library().objects),
+            )
+        except (ScriptError, ValueError, LookupError):
+            mesh = None
+        known = {p.id: p for p in mesh.parts} if mesh else {}
+        for pid in part_ids[:50]:
+            info = known.get(pid)
+            where = ""
+            if mesh is not None:
+                pts = [q for p in mesh.patches if p.part == pid for q in p.positions]
+                if pts:
+                    xs, ys, zs = zip(*pts, strict=True)
+                    where = (
+                        f", x {min(xs):.1f}..{max(xs):.1f}, y {min(ys):.1f}..{max(ys):.1f},"
+                        f" z {min(zs):.1f}..{max(zs):.1f} m"
+                    )
+            made = f" (made by {info.call}{where})" if info else ""
+            lines.append(f'- "{pid}"{made}')
+        return (
+            "Change ONLY these parts of the object; keep every other part exactly as it "
+            "is (same lines, same part names):\n" + "\n".join(lines) + f"\n\nRequest: {request}"
+        )
 
     def _design_call(
         self,
@@ -1404,6 +1486,7 @@ class JobManager:
         job = self._planned(job_id)
         item = self._item(job, item_id)
         item.script, item.script_request = None, None
+        item.part_ops.clear()  # they named the parts of the AI's script
         self.regenerate_object(job, item)
         self._save(job)
         return job

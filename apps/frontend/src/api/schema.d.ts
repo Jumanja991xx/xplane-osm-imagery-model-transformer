@@ -656,6 +656,24 @@ export interface paths {
         patch: operations["adjust_many_api_jobs__job_id__objects_patch"];
         trace?: never;
     };
+    "/api/jobs/{job_id}/parts/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Change Parts */
+        post: operations["change_parts_api_jobs__job_id__parts__item_id__post"];
+        /** Undo Parts */
+        delete: operations["undo_parts_api_jobs__job_id__parts__item_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs/{job_id}/design-many/estimate": {
         parameters: {
             query?: never;
@@ -1344,6 +1362,8 @@ export interface components {
             max_usd: number;
             /** Model */
             model?: string | null;
+            /** Parts */
+            parts?: string[] | null;
         };
         /**
          * DesignEstimate
@@ -1769,6 +1789,52 @@ export interface components {
             /** Order */
             order?: number | null;
         };
+        /**
+         * PartOp
+         * @description A change the user made to building parts of a built object in the 3D preview
+         *     (build/parts.py): hide them, or resize, turn and move them together around the
+         *     middle of their footprint. Applied in order after the build script ran.
+         */
+        PartOp: {
+            /** Parts */
+            parts: string[];
+            /**
+             * Hide
+             * @default false
+             */
+            hide: boolean;
+            /**
+             * Move
+             * @default [
+             *       0,
+             *       0,
+             *       0
+             *     ]
+             */
+            move: [
+                number,
+                number,
+                number
+            ];
+            /**
+             * Turn Deg
+             * @default 0
+             */
+            turn_deg: number;
+            /**
+             * Scale
+             * @default [
+             *       1,
+             *       1,
+             *       1
+             *     ]
+             */
+            scale: [
+                number,
+                number,
+                number
+            ];
+        };
         /** PathBody */
         PathBody: {
             /** Path */
@@ -2186,6 +2252,8 @@ export interface components {
             photos?: components["schemas"]["Photo"][];
             /** Textures */
             textures?: components["schemas"]["PhotoTexture"][];
+            /** Part Ops */
+            part_ops?: components["schemas"]["PartOp"][];
             research?: components["schemas"]["Research"] | null;
             scan?: components["schemas"]["Scan"] | null;
             /** Parts */
@@ -3707,6 +3775,76 @@ export interface operations {
                 "application/json": components["schemas"]["AdjustManyBody"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    change_parts_api_jobs__job_id__parts__item_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PartOp"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    undo_parts_api_jobs__job_id__parts__item_id__delete: {
+        parameters: {
+            query?: {
+                all?: boolean;
+            };
+            header?: never;
+            path: {
+                job_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

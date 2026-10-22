@@ -23,8 +23,10 @@ from xpsb.ai.detect import AiFind, AiFindings
 # What the fake architect "writes": the outline as a glass hall with a round tower.
 ARCHITECT_SCRIPT = """
 h = params.get("height") or 8
+part("Halle")
 extrude(footprint, 0, h, mat="glass", top="roof_flat")
 c = polygon_centroid(footprint)
+part("Turm")
 cylinder(c[0], c[1], h, 2.5, 6, mat="brick", segments=12)
 """
 
