@@ -119,7 +119,7 @@ class PathBody(BaseModel):
 
 
 class ReopenBody(BaseModel):
-    to: Literal["analyzed", "clarified"]
+    to: Literal["planned", "analyzed", "clarified"]
 
 
 class RenameBody(BaseModel):

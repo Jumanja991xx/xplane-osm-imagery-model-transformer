@@ -5502,6 +5502,7 @@
           "to": {
             "type": "string",
             "enum": [
+              "planned",
               "analyzed",
               "clarified"
             ],

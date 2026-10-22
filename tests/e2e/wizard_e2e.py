@@ -16,6 +16,14 @@ OUT.mkdir(exist_ok=True)
 XPLANE = sys.argv[1]
 errors: list[str] = []
 
+
+def open_settings(page, tab: str) -> None:
+    """Settings live in the menu, grouped in tabs."""
+    page.get_by_test_id("menu").click()
+    page.get_by_test_id("open-settings").click()
+    page.get_by_test_id(f"settings-tab-{tab}").click()
+
+
 with sync_playwright() as p:
     browser = p.chromium.launch(
         executable_path=os.environ.get("PW_CHROMIUM") or None,
@@ -32,16 +40,17 @@ with sync_playwright() as p:
     )
     page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
     page.goto("http://localhost:1420/")
-    expect(page.get_by_role("heading", name="Bereich")).to_be_visible(timeout=20000)
+    expect(page.get_by_role("heading", name="Gebiet wählen")).to_be_visible(timeout=20000)
 
     # Imagery from a custom source (the fixture backend serves it offline).
-    page.get_by_test_id("open-settings").click()
+    open_settings(page, "imagery")
     page.get_by_test_id("imagery-source").select_option("custom")
     page.get_by_test_id("imagery-url").fill("https://wms.example.test/dop")
     page.get_by_test_id("imagery-attribution").fill("Fixture-Luftbild")
     page.get_by_test_id("settings-save").click()
     page.wait_for_timeout(300)
     # Simulated Claude (XPSB_FAKE_AI): the key only lives in memory.
+    page.get_by_test_id("settings-tab-ai").click()
     page.get_by_test_id("api-key").fill("sk-ant-e2e-dummy")
     page.get_by_test_id("api-key-save").click()
     page.wait_for_timeout(300)
@@ -70,7 +79,7 @@ with sync_playwright() as p:
     page.screenshot(path=OUT / "02-area.png")
 
     page.get_by_test_id("area-next").click()
-    expect(page.get_by_role("heading", name="Auftrag klären")).to_be_visible()
+    expect(page.get_by_role("heading", name="Was soll gebaut werden?")).to_be_visible()
     # Accents are not allowed in folder names: the form says so and offers a fix.
     page.get_by_test_id("package-name").fill("Igazságügyi palota")
     expect(page.get_by_test_id("package-name-invalid")).to_be_visible()
@@ -88,12 +97,12 @@ with sync_playwright() as p:
     # A custom source needs the rights confirmation first.
     expect(page.get_by_test_id("gate-approve")).to_be_disabled()
     page.get_by_role("button", name="Abbrechen", exact=True).click()
-    page.get_by_test_id("open-settings").click()
+    open_settings(page, "imagery")
     page.get_by_test_id("imagery-rights").check()
     page.get_by_test_id("settings-save").click()
     page.wait_for_timeout(300)
     page.get_by_role("button", name="Schließen", exact=True).click()
-    page.get_by_test_id("open-gate-a").click()
+    page.get_by_test_id("brief-submit").click()
     expect(page.get_by_test_id("gate-approve")).to_be_enabled()
     expect(page.get_by_role("dialog")).to_contain_text("Dauer: meist etwa")
     page.screenshot(path=OUT / "04-gate-a.png")
@@ -215,7 +224,7 @@ with sync_playwright() as p:
     (lib / "library.txt").write_text(
         "A\n800\nLIBRARY\n\nEXPORT lib/street/lights/street_lamp.obj objects/lamp.obj\n"
     )
-    page.get_by_test_id("open-settings").click()
+    open_settings(page, "general")
     page.get_by_test_id("xplane-path").fill(XPLANE)
     page.get_by_test_id("settings-save").click()
     page.wait_for_timeout(500)
@@ -347,6 +356,7 @@ with sync_playwright() as p:
     page.get_by_test_id("gate-approve").click()
     expect(page.get_by_test_id("plan-build")).to_be_visible(timeout=20000)
     # Cancel needs a confirmation.
+    page.get_by_test_id("menu").click()
     page.get_by_test_id("cancel-job").click()
     expect(page.get_by_test_id("cancel-confirm")).to_be_visible()
     page.get_by_role("button", name="Nein", exact=True).click()
@@ -371,6 +381,29 @@ with sync_playwright() as p:
     page.get_by_test_id("result-preview").click()
     page.wait_for_timeout(4000)
     page.screenshot(path=OUT / "15-result-preview.png")
+    page.keyboard.press("Escape")
+    if page.get_by_test_id("preview-close").count():
+        page.get_by_test_id("preview-close").click()
+    # One step back from the installed result: the plan and its preview stay.
+    page.get_by_test_id("back-to-plan").click()
+    expect(page.get_by_test_id("plan-build")).to_be_visible(timeout=10000)
+    expect(page.get_by_test_id("plan-confirmed")).to_contain_text("3 × Tribünen")
+    page.screenshot(path=OUT / "16-back-to-plan.png")
+    # All jobs in the menu.
+    page.get_by_test_id("menu").click()
+    page.screenshot(path=OUT / "17-menu.png")
+    page.get_by_test_id("menu-jobs").click()
+    expect(page.get_by_test_id("jobs-list")).to_contain_text("E2E Umbenannt")
+    page.screenshot(path=OUT / "18-jobs.png")
+    page.get_by_role("button", name="Schließen", exact=True).click()
+    open_settings(page, "ai")
+    # A Gemini key next to the Claude key (simulated store: memory only).
+    page.get_by_test_id("gemini-key").fill("AIza-e2e-dummy")
+    page.get_by_test_id("gemini-key-save").click()
+    expect(page.get_by_test_id("gemini-key-status")).to_contain_text("hinterlegt")
+    expect(page.get_by_test_id("settings-model").locator("optgroup")).to_have_count(2)
+    page.screenshot(path=OUT / "19-settings-ai.png")
+    page.get_by_role("button", name="Schließen", exact=True).click()
     browser.close()
 
 print("CONSOLE ERRORS:" if errors else "no console errors")

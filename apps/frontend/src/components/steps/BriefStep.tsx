@@ -9,10 +9,11 @@ import {
   type OtherScenery,
   type SurfaceType,
 } from "../../api/client";
+import { hasKeyFor, modelGroups, modelLabel, providerOf, useAiModels } from "../../ai";
 import { useT } from "../../i18n";
 import { folderName, validPackageName } from "../../names";
 import { useApp } from "../../store";
-import { Alert, Button, Checkbox, inputClass, Section, Spinner } from "../ui";
+import { Alert, Button, Checkbox, inputClass, Section, Spinner, StepBar } from "../ui";
 
 const CATEGORIES: ObjectCategory[] = [
   "buildings",
@@ -26,7 +27,6 @@ const CATEGORIES: ObjectCategory[] = [
 ];
 const SURFACES: SurfaceType[] = SURFACE_TYPES;
 const EXCLUSIONS: ExclusionType[] = ["objects", "facades", "forests", "polygons", "roads"];
-const MODELS = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"] as const;
 
 function defaultPackageName(): string {
   const d = new Date();
@@ -38,9 +38,16 @@ function toggle<T>(list: T[], value: T, on: boolean): T[] {
   return on ? [...new Set([...list, value])] : list.filter((v) => v !== value);
 }
 
-export function BriefStep({ onSubmitted }: { onSubmitted: () => void }) {
+export function BriefStep({
+  onSubmitted,
+  back,
+}: {
+  onSubmitted: () => void;
+  back: { label: string; onClick: () => void; testId?: string };
+}) {
   const { t } = useT();
-  const { job, settings, system, setJob, setEditingBrief } = useApp();
+  const { job, settings, system, setJob, setEditingBrief, setSettingsOpen } = useApp();
+  const [models] = useAiModels();
   const [brief, setBrief] = useState<Brief>(
     () =>
       job?.brief ?? {
@@ -51,7 +58,7 @@ export function BriefStep({ onSubmitted }: { onSubmitted: () => void }) {
         // Houses of X-Plane/simHeaven would otherwise stand inside the new objects.
         exclusions: ["facades", "forests", "objects"],
         exclusion_scope: "objects",
-        use_ai: Boolean(system?.has_api_key && settings?.ai?.enabled),
+        use_ai: Boolean(hasKeyFor(settings?.ai?.model, system) && settings?.ai?.enabled),
         ai_model: settings?.ai?.model ?? "claude-opus-5-5",
         ai_cost_limit_usd: settings?.ai?.job_limit_usd ?? 5,
         ai_detect: true,
@@ -97,39 +104,59 @@ export function BriefStep({ onSubmitted }: { onSubmitted: () => void }) {
     }
   };
 
+  const keyOk = hasKeyFor(brief.ai_model, system);
+  const radio = (name: string, checked: boolean, onChange: () => void, label: string, hint?: string, testId?: string) => (
+    <label key={`${name}-${label}`} className="flex items-start gap-2 text-sm">
+      <input type="radio" name={name} className="mt-1" checked={checked} onChange={onChange} data-testid={testId} />
+      <span>
+        {label}
+        {hint && <span className="block text-xs text-zinc-500">{hint}</span>}
+      </span>
+    </label>
+  );
+
   return (
     <div className="space-y-5">
       <p className="text-sm text-zinc-600 dark:text-zinc-300">{t("brief.intro")}</p>
 
+      <Section title={t("brief.package_name")}>
+        <input
+          className={inputClass}
+          value={brief.package_name}
+          maxLength={60}
+          onChange={(e) => update({ package_name: e.target.value })}
+          data-testid="package-name"
+        />
+        {!nameOk && (
+          <div className="space-y-1 text-xs text-amber-600" data-testid="package-name-invalid">
+            <p>{t("brief.package_name_invalid")}</p>
+            {validPackageName(nameSuggestion) && (
+              <Button variant="ghost" onClick={() => update({ package_name: nameSuggestion })} data-testid="package-name-fix">
+                {t("brief.package_name_use", { name: nameSuggestion })}
+              </Button>
+            )}
+          </div>
+        )}
+      </Section>
+
       <Section title={t("brief.what")}>
-        <label className="flex items-start gap-2 text-sm">
-          <input
-            type="radio"
-            className="mt-1"
-            checked={!restrict}
-            onChange={() => {
-              setRestrict(false);
-              update({ object_categories: [...CATEGORIES], surface_types: [...SURFACES] });
-            }}
-            data-testid="find-everything"
-          />
-          <span>
-            <span className="font-medium">{t("brief.everything")}</span>
-            <span className="block text-xs text-zinc-500">{t("brief.everything_hint")}</span>
-          </span>
-        </label>
-        <label className="flex items-start gap-2 text-sm">
-          <input type="radio" className="mt-1" checked={restrict} onChange={() => setRestrict(true)} data-testid="restrict" />
-          <span>
-            <span className="font-medium">{t("brief.restrict")}</span>
-            <span className="block text-xs text-zinc-500">{t("brief.restrict_hint")}</span>
-          </span>
-        </label>
+        {radio(
+          "what",
+          !restrict,
+          () => {
+            setRestrict(false);
+            update({ object_categories: [...CATEGORIES], surface_types: [...SURFACES] });
+          },
+          t("brief.everything"),
+          t("brief.everything_hint"),
+          "find-everything",
+        )}
+        {radio("what", restrict, () => setRestrict(true), t("brief.restrict"), t("brief.restrict_hint"), "restrict")}
         {restrict && (
           <div className="space-y-3 rounded-md bg-white p-3 ring-1 ring-zinc-200 dark:bg-zinc-800 dark:ring-zinc-700">
             <div>
               <div className="mb-1 text-xs font-semibold text-zinc-500 uppercase">{t("brief.objects")}</div>
-              <div className="grid grid-cols-1 gap-1.5">
+              <div className="grid grid-cols-2 gap-1.5">
                 {CATEGORIES.map((c) => (
                   <Checkbox
                     key={c}
@@ -157,6 +184,47 @@ export function BriefStep({ onSubmitted }: { onSubmitted: () => void }) {
         )}
       </Section>
 
+      <Section title={t("brief.mode")}>
+        {(["objects", "city"] as const).map((mode) =>
+          radio(
+            "build_mode",
+            (brief.mode ?? "objects") === mode,
+            () => update({ mode }),
+            t(`brief.mode.${mode}`),
+            t(`brief.mode.${mode}_hint`),
+            `build-mode-${mode}`,
+          ),
+        )}
+        {brief.mode === "city" && (
+          <select
+            className={inputClass}
+            value={brief.city_preset ?? "central_europe"}
+            onChange={(e) => update({ city_preset: e.target.value as Brief["city_preset"] })}
+            data-testid="city-preset"
+            aria-label={t("brief.city_preset")}
+          >
+            {(["central_europe", "central_europe_city"] as const).map((p) => (
+              <option key={p} value={p}>
+                {t(`brief.city_preset.${p}`)}
+              </option>
+            ))}
+          </select>
+        )}
+      </Section>
+
+      <Section title={t("brief.surface_mode")}>
+        {(["material", "imagery", "none"] as const).map((mode) =>
+          radio(
+            "surface_mode",
+            (brief.surface_mode ?? "material") === mode,
+            () => update({ surface_mode: mode }),
+            t(`brief.surface_mode.${mode}`),
+            undefined,
+            `surface-mode-${mode}`,
+          ),
+        )}
+      </Section>
+
       {others.length > 0 && (
         <Alert kind={ortho ? "warning" : "info"}>
           <div data-testid="other-sceneries">
@@ -169,7 +237,6 @@ export function BriefStep({ onSubmitted }: { onSubmitted: () => void }) {
                 </li>
               ))}
             </ul>
-            <div className="text-xs">{t("brief.others_objects_hint")}</div>
             {ortho && brief.surface_mode !== "none" && (
               <div className="mt-1 flex items-center gap-2 text-xs">
                 <span>{t("brief.others_ortho_hint")}</span>
@@ -181,103 +248,28 @@ export function BriefStep({ onSubmitted }: { onSubmitted: () => void }) {
           </div>
         </Alert>
       )}
-      <Section title={t("brief.mode")}>
-        {(["objects", "city"] as const).map((mode) => (
-          <label key={mode} className="flex items-start gap-2 text-sm">
-            <input
-              type="radio"
-              name="build_mode"
-              className="mt-1"
-              checked={(brief.mode ?? "objects") === mode}
-              onChange={() => update({ mode })}
-              data-testid={`build-mode-${mode}`}
-            />
-            <span>
-              {t(`brief.mode.${mode}`)}
-              <span className="block text-xs text-zinc-500">{t(`brief.mode.${mode}_hint`)}</span>
-            </span>
-          </label>
-        ))}
-        {brief.mode === "city" && (
-          <label className="block text-sm">
-            <span className="mb-1 block text-zinc-600 dark:text-zinc-300">{t("brief.city_preset")}</span>
-            <select
-              className={inputClass}
-              value={brief.city_preset ?? "central_europe"}
-              onChange={(e) => update({ city_preset: e.target.value as Brief["city_preset"] })}
-              data-testid="city-preset"
-            >
-              {(["central_europe", "central_europe_city"] as const).map((p) => (
-                <option key={p} value={p}>
-                  {t(`brief.city_preset.${p}`)}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-      </Section>
-
-      <Section title={t("brief.surface_mode")}>
-        {(["material", "imagery", "none"] as const).map((mode) => (
-          <label key={mode} className="flex items-center gap-2 text-sm">
-            <input
-              type="radio"
-              name="surface_mode"
-              checked={(brief.surface_mode ?? "material") === mode}
-              onChange={() => update({ surface_mode: mode })}
-              data-testid={`surface-mode-${mode}`}
-            />
-            {t(`brief.surface_mode.${mode}`)}
-          </label>
-        ))}
-        {brief.surface_mode === "imagery" && <p className="text-xs text-zinc-500">{t("brief.surface_mode_hint")}</p>}
-      </Section>
-
-      <Section title={t("brief.exclusions")}>
-        <p className="text-xs text-zinc-500">{t("brief.exclusions_hint")}</p>
-        <div className="grid grid-cols-2 gap-1.5">
-          {EXCLUSIONS.map((x) => (
-            <Checkbox
-              key={x}
-              label={t(`exclusion.${x}`)}
-              checked={brief.exclusions?.includes(x) ?? false}
-              onChange={(on) => update({ exclusions: toggle(brief.exclusions ?? [], x, on) })}
-            />
-          ))}
-        </div>
-        {(brief.exclusions?.length ?? 0) > 0 && (
-          <div className="space-y-1">
-            <div className="text-xs font-semibold text-zinc-500 uppercase">{t("brief.exclusion_scope")}</div>
-            {(["objects", "area"] as const).map((scope) => (
-              <label key={scope} className="flex items-center gap-2 text-sm">
-                <input
-                  type="radio"
-                  name="exclusion_scope"
-                  checked={(brief.exclusion_scope ?? "objects") === scope}
-                  onChange={() => update({ exclusion_scope: scope })}
-                />
-                {t(`brief.exclusion_scope.${scope}`)}
-              </label>
-            ))}
-          </div>
-        )}
-      </Section>
 
       <Section title={t("brief.ai")}>
         <Checkbox label={t("brief.use_ai")} checked={brief.use_ai ?? false} onChange={(on) => update({ use_ai: on })} />
         {brief.use_ai && (
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-[1fr_8rem] gap-2">
             <label className="text-sm">
               <span className="mb-1 block text-zinc-600 dark:text-zinc-300">{t("brief.ai_model")}</span>
               <select
                 className={inputClass}
                 value={brief.ai_model}
-                onChange={(e) => update({ ai_model: e.target.value as Brief["ai_model"] })}
+                onChange={(e) => update({ ai_model: e.target.value })}
+                data-testid="brief-model"
               >
-                {MODELS.map((m) => (
-                  <option key={m} value={m}>
-                    {t(`model.${m}`)}
-                  </option>
+                {modelGroups(models, brief.ai_model).map((g) => (
+                  <optgroup key={g.provider} label={t(`provider.${g.provider}`)}>
+                    {g.models.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {modelLabel(t, m)}
+                        {!hasKeyFor(m.id, system) ? ` (${t("brief.no_key")})` : ""}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </label>
@@ -292,79 +284,15 @@ export function BriefStep({ onSubmitted }: { onSubmitted: () => void }) {
                 onChange={(e) => update({ ai_cost_limit_usd: Number(e.target.value) })}
               />
             </label>
-            <div className="col-span-2 space-y-0.5">
-              <Checkbox
-                label={t("brief.ai_detect")}
-                checked={brief.ai_detect ?? true}
-                onChange={(on) => update({ ai_detect: on })}
-              />
-              <p className="pl-6 text-xs text-zinc-500">{t("brief.ai_detect_hint")}</p>
-              <Checkbox
-                label={t("brief.ai_economy")}
-                checked={brief.ai_economy ?? true}
-                onChange={(on) => update({ ai_economy: on })}
-              />
-              <p className="pl-6 text-xs text-zinc-500">{t("brief.ai_economy_hint")}</p>
-            </div>
-            <div className="col-span-2 space-y-1">
-              <div className="text-xs font-semibold text-zinc-500 uppercase">{t("brief.ai_design")}</div>
-              {(["important", "all", "off"] as const).map((mode) => (
-                <label key={mode} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="radio"
-                    name="ai_design"
-                    checked={(brief.ai_design ?? "important") === mode}
-                    onChange={() => update({ ai_design: mode })}
-                    data-testid={`ai-design-${mode}`}
-                  />
-                  {t(`brief.ai_design.${mode}`)}
-                </label>
-              ))}
-              <p className="text-xs text-zinc-500">{t("brief.ai_design_hint")}</p>
-            </div>
-          </div>
-        )}
-      </Section>
-
-      <Section title={t("brief.research")}>
-        <Checkbox
-          label={t("brief.research_on")}
-          checked={brief.research ?? true}
-          onChange={(on) => update({ research: on })}
-        />
-        <p className="pl-6 text-xs text-zinc-500">{t("brief.research_hint")}</p>
-      </Section>
-
-      <Section title={t("brief.detail")}>
-        <select
-          className={inputClass}
-          value={brief.detail}
-          onChange={(e) => update({ detail: e.target.value as Brief["detail"] })}
-        >
-          {(["low", "medium", "high"] as const).map((d) => (
-            <option key={d} value={d}>
-              {t(`detail.${d}`)}
-            </option>
-          ))}
-        </select>
-        <p className="text-xs text-zinc-500">{t("brief.detail_hint")}</p>
-      </Section>
-
-      <Section title={t("brief.package_name")}>
-        <input
-          className={inputClass}
-          value={brief.package_name}
-          maxLength={60}
-          onChange={(e) => update({ package_name: e.target.value })}
-          data-testid="package-name"
-        />
-        {!nameOk && (
-          <div className="space-y-1 text-xs text-amber-600" data-testid="package-name-invalid">
-            <p>{t("brief.package_name_invalid")}</p>
-            {validPackageName(nameSuggestion) && (
-              <Button variant="ghost" onClick={() => update({ package_name: nameSuggestion })} data-testid="package-name-fix">
-                {t("brief.package_name_use", { name: nameSuggestion })}
-              </Button>
+            {!keyOk && (
+              <div className="col-span-2">
+                <Alert kind="warning">
+                  {t("brief.key_missing", { provider: t(`provider.${providerOf(brief.ai_model ?? "")}`) })}{" "}
+                  <button className="underline" onClick={() => setSettingsOpen(true)}>
+                    {t("app.settings")}
+                  </button>
+                </Alert>
+              </div>
             )}
           </div>
         )}
@@ -372,7 +300,7 @@ export function BriefStep({ onSubmitted }: { onSubmitted: () => void }) {
 
       <Section title={t("brief.notes")}>
         <textarea
-          className={`${inputClass} min-h-20`}
+          className={`${inputClass} min-h-16`}
           maxLength={2000}
           placeholder={t("brief.notes_placeholder")}
           value={brief.notes}
@@ -380,18 +308,77 @@ export function BriefStep({ onSubmitted }: { onSubmitted: () => void }) {
         />
       </Section>
 
+      <details className="group rounded-md ring-1 ring-zinc-200 dark:ring-zinc-700" data-testid="brief-more">
+        <summary className="cursor-pointer px-3 py-2 text-sm font-medium select-none">{t("brief.more")}</summary>
+        <div className="space-y-5 border-t border-zinc-200 px-3 py-3 dark:border-zinc-700">
+          {brief.use_ai && (
+            <Section title={t("brief.ai_more")}>
+              <Checkbox label={t("brief.ai_detect")} checked={brief.ai_detect ?? true} onChange={(on) => update({ ai_detect: on })} />
+              <p className="pl-6 text-xs text-zinc-500">{t("brief.ai_detect_hint")}</p>
+              <Checkbox label={t("brief.ai_economy")} checked={brief.ai_economy ?? true} onChange={(on) => update({ ai_economy: on })} />
+              <p className="pl-6 text-xs text-zinc-500">{t("brief.ai_economy_hint")}</p>
+              <div className="pt-1 text-sm font-medium">{t("brief.ai_design")}</div>
+              {(["important", "all", "off"] as const).map((mode) =>
+                radio(
+                  "ai_design",
+                  (brief.ai_design ?? "important") === mode,
+                  () => update({ ai_design: mode }),
+                  t(`brief.ai_design.${mode}`),
+                  undefined,
+                  `ai-design-${mode}`,
+                ),
+              )}
+            </Section>
+          )}
+          <Section title={t("brief.research")}>
+            <Checkbox label={t("brief.research_on")} checked={brief.research ?? true} onChange={(on) => update({ research: on })} />
+            <p className="pl-6 text-xs text-zinc-500">{t("brief.research_hint")}</p>
+          </Section>
+          <Section title={t("brief.detail")}>
+            <select
+              className={inputClass}
+              value={brief.detail}
+              onChange={(e) => update({ detail: e.target.value as Brief["detail"] })}
+            >
+              {(["low", "medium", "high"] as const).map((d) => (
+                <option key={d} value={d}>
+                  {t(`detail.${d}`)}
+                </option>
+              ))}
+            </select>
+          </Section>
+          <Section title={t("brief.exclusions")}>
+            <p className="text-xs text-zinc-500">{t("brief.exclusions_hint")}</p>
+            <div className="grid grid-cols-2 gap-1.5">
+              {EXCLUSIONS.map((x) => (
+                <Checkbox
+                  key={x}
+                  label={t(`exclusion.${x}`)}
+                  checked={brief.exclusions?.includes(x) ?? false}
+                  onChange={(on) => update({ exclusions: toggle(brief.exclusions ?? [], x, on) })}
+                />
+              ))}
+            </div>
+            {(brief.exclusions?.length ?? 0) > 0 &&
+              (["objects", "area"] as const).map((scope) =>
+                radio(
+                  "exclusion_scope",
+                  (brief.exclusion_scope ?? "objects") === scope,
+                  () => update({ exclusion_scope: scope }),
+                  t(`brief.exclusion_scope.${scope}`),
+                ),
+              )}
+          </Section>
+        </div>
+      </details>
+
       {error && <Alert kind="error">{error}</Alert>}
-      <div className="flex justify-end gap-2">
-        {job?.brief && (
-          <Button variant="ghost" onClick={() => setEditingBrief(false)}>
-            {t("common.cancel")}
-          </Button>
-        )}
+      <StepBar back={back}>
         <Button variant="primary" onClick={submit} disabled={busy || nothingSelected} data-testid="brief-submit">
           {busy && <Spinner />}
           {t("brief.submit")}
         </Button>
-      </div>
+      </StepBar>
     </div>
   );
 }

@@ -314,10 +314,13 @@ class JobManager:
         return job
 
     def reopen(self, job_id: str, to: JobState) -> Job:
-        """Step back without losing work: to the list (analyzed) or the brief."""
+        """Step back without losing work: to the plan (its preview and designs stay,
+        only the build is made again), the list (analyzed) or the brief."""
         job = self.get(job_id)
         self._require_not_running(job)
-        if to is JobState.ANALYZED and job.analysis is not None:
+        if to is JobState.PLANNED and job.plan is not None:
+            job.build, job.install = None, None
+        elif to is JobState.ANALYZED and job.analysis is not None:
             job.plan, job.build, job.install = None, None, None
         elif to is JobState.CLARIFIED and job.brief is not None:
             pass  # the brief form opens with the current values; analysis kept until changed

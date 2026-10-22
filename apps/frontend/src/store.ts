@@ -28,6 +28,7 @@ interface AppState {
   settings: Settings | null;
   system: SystemStatus | null;
   settingsOpen: boolean;
+  jobsOpen: boolean;
   selectedItem: string | null;
   imageryVisible: boolean;
   view3d: boolean;
@@ -42,6 +43,7 @@ interface AppState {
   setSettings: (settings: Settings) => void;
   setSystem: (system: SystemStatus) => void;
   setSettingsOpen: (open: boolean) => void;
+  setJobsOpen: (open: boolean) => void;
   selectItem: (id: string | null) => void;
   setImageryVisible: (visible: boolean) => void;
   setView3d: (on: boolean) => void;
@@ -59,6 +61,7 @@ export const useApp = create<AppState>((set) => ({
   settings: null,
   system: null,
   settingsOpen: false,
+  jobsOpen: false,
   selectedItem: null,
   imageryVisible: true,
   view3d: false,
@@ -75,6 +78,7 @@ export const useApp = create<AppState>((set) => ({
   setSettings: (settings) => set({ settings }),
   setSystem: (system) => set({ system }),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
+  setJobsOpen: (jobsOpen) => set({ jobsOpen }),
   selectItem: (selectedItem) => set({ selectedItem }),
   setImageryVisible: (imageryVisible) => set({ imageryVisible }),
   setView3d: (view3d) => set({ view3d }),

@@ -2020,7 +2020,7 @@ export interface components {
              * To
              * @enum {string}
              */
-            to: "analyzed" | "clarified";
+            to: "planned" | "analyzed" | "clarified";
         };
         /**
          * Research

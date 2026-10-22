@@ -29,6 +29,7 @@ export type ImageryInfo = S["ImageryInfo"];
 export type ImagerySettings = S["ImagerySettings"];
 export type SimilarEstimate = S["SimilarEstimate"];
 export type PhotoTexture = S["PhotoTexture"];
+export type AiModelEntry = S["AiModelEntry"];
 
 export interface JobSummary {
   id: string;
@@ -150,6 +151,11 @@ export const api = {
   setMapillaryToken: (token: string) => request<unknown>("PUT", "/api/secrets/mapillary", { token }),
   deleteMapillaryToken: () => request<unknown>("DELETE", "/api/secrets/mapillary"),
   deleteApiKey: () => request<{ has_api_key: boolean }>("DELETE", "/api/secrets/anthropic"),
+  setGeminiKey: (apiKey: string) =>
+    request<{ has_api_key: boolean }>("PUT", "/api/secrets/gemini", { api_key: apiKey }),
+  deleteGeminiKey: () => request<{ has_api_key: boolean }>("DELETE", "/api/secrets/gemini"),
+  aiModels: () => request<AiModelEntry[]>("GET", "/api/ai/models"),
+  geminiModels: () => request<AiModelEntry[]>("POST", "/api/ai/gemini-models"),
 
   createJob: (aoi: GeoJsonPolygon) => request<JobView>("POST", "/api/jobs", { aoi }),
   getJob: (id: string) => request<JobView>("GET", `/api/jobs/${id}`),
@@ -170,7 +176,7 @@ export const api = {
   approve: (id: string, gate: GateId, hash: string) =>
     request<JobView>("POST", `/api/jobs/${id}/gates/${gate}/approve`, { hash }),
   cancel: (id: string) => request<JobView>("POST", `/api/jobs/${id}/cancel`),
-  reopen: (id: string, to: "analyzed" | "clarified") =>
+  reopen: (id: string, to: "planned" | "analyzed" | "clarified") =>
     request<JobView>("POST", `/api/jobs/${id}/reopen`, { to }),
   renamePackage: (id: string, name: string) =>
     request<JobView>("POST", `/api/jobs/${id}/package-name`, { name }),

@@ -550,3 +550,20 @@ def test_objects_can_be_moved_after_the_build_and_install(
     assert item["included"] is False
     r = client.delete(f"/api/jobs/{job['id']}/objects/way/103", headers=AUTH)
     assert r.status_code == 409  # already gone
+
+
+def test_back_from_the_built_scenery_to_its_plan(client, app_ctx):
+    """From the build result one step back: the plan and its preview stay, only the
+    build is made again (gate C)."""
+    job = to_analyzed(client)
+    job = approve(client, job, "B").json()
+    approve(client, job, "C")
+    job = wait_for_state(client, job["id"], {"built", "planned"})
+    assert job["state"] == "built", job["error"]
+    stems = [o["stem"] for o in job["plan"]["objects"]]
+    r = client.post(f"/api/jobs/{job['id']}/reopen", json={"to": "planned"}, headers=AUTH)
+    assert r.status_code == 200, r.text
+    back = r.json()
+    assert back["state"] == "planned" and back["build"] is None
+    assert [o["stem"] for o in back["plan"]["objects"]] == stems
+    assert back["pending_gate"]["gate"] == "C"

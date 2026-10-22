@@ -9,7 +9,7 @@ import { AreaStep } from "./steps/AreaStep";
 import { BriefStep } from "./steps/BriefStep";
 import { InstallStep } from "./steps/InstallStep";
 import { PlanStep } from "./steps/PlanStep";
-import { Alert, Button } from "./ui";
+import { Alert } from "./ui";
 
 const STEP_KEYS = ["steps.area", "steps.brief", "steps.analysis", "steps.plan", "steps.install"];
 
@@ -32,22 +32,27 @@ const RUNNING: JobState[] = ["analyzing", "planning", "building", "installing"];
 
 export function Wizard() {
   const { t } = useT();
-  const { job, editingBrief, setEditingBrief, setJob } = useApp();
+  const { job, editingBrief, setEditingBrief, setJob, reset, setAoi } = useApp();
   const [gateOpen, setGateOpen] = useState(false);
   useJobEvents(job?.id);
 
-  const step = !job ? 0 : editingBrief || job.state === "draft" ? 1 : STEP_FOR_STATE[job.state];
+  const step = !job ? 0 : editingBrief || job.state === "draft" || job.state === "clarified" ? 1 : STEP_FOR_STATE[job.state];
   const gate = job?.pending_gate ?? null;
   const running = job ? RUNNING.includes(job.state) : false;
-  const canEditBrief = job && !running && !editingBrief && !["draft", "installed", "cancelled"].includes(job.state);
-  const [confirmCancel, setConfirmCancel] = useState(false);
-  // Earlier steps can be revisited without losing the analysis and the edited list.
+  // Every earlier step can be revisited; nothing is lost on the way back (the list
+  // stays, the plan and its designs stay when only the build is redone).
   const canGoBack = (i: number) =>
-    Boolean(job && !running && i < step && (i === 1 ? job.brief : i === 2 ? job.analysis : false));
+    Boolean(
+      job &&
+        !running &&
+        i < step &&
+        (i === 1 ? job.brief : i === 2 ? job.analysis : i === 3 ? job.plan && job.state !== "planned" : false),
+    );
   const goBack = async (i: number) => {
     if (!job || !canGoBack(i)) return;
     if (i === 1) setEditingBrief(true);
     if (i === 2) setJob(await api.reopen(job.id, "analyzed"));
+    if (i === 3) setJob(await api.reopen(job.id, "planned"));
   };
   // Always show the current summary: settings may have changed since the job was loaded.
   const openGate = async () => {
@@ -59,6 +64,12 @@ export function Wizard() {
       }
     }
     setGateOpen(true);
+  };
+  // From the wishes of a new job back to the map: draw the area again.
+  const backToArea = () => {
+    const area = job?.aoi ?? null;
+    reset();
+    if (area) setAoi(area);
   };
 
   return (
@@ -84,7 +95,7 @@ export function Wizard() {
               >
                 <span
                   className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold ${
-                    i === step ? "bg-accent-600 text-white" : "bg-zinc-200 dark:bg-zinc-800"
+                    i === step ? "bg-accent-600 text-white" : i < step ? "bg-accent-100 text-accent-700 dark:bg-accent-700/40 dark:text-accent-100" : "bg-zinc-200 dark:bg-zinc-800"
                   }`}
                 >
                   {i < step ? "✓" : i + 1}
@@ -97,7 +108,7 @@ export function Wizard() {
       </ol>
 
       <div className="flex-1 space-y-4 overflow-y-auto p-4">
-        <h2 className="text-lg font-semibold">{t(STEP_KEYS[step])}</h2>
+        <h2 className="text-lg font-semibold">{t(`${STEP_KEYS[step]}_title`)}</h2>
 
         {job?.error && (
           <Alert kind="error">
@@ -107,22 +118,28 @@ export function Wizard() {
         )}
 
         {step === 0 && <AreaStep />}
-        {step === 1 && (editingBrief || job?.state === "draft" || !job?.brief) && (
-          <BriefStep onSubmitted={openGate} />
-        )}
-        {step === 1 && !editingBrief && job?.state === "clarified" && (
-          <div className="space-y-3">
-            <p className="text-sm text-zinc-600 dark:text-zinc-300">{t("brief.intro")}</p>
-            <div className="flex justify-end">
-              <Button variant="primary" onClick={openGate} disabled={!gate} data-testid="open-gate-a">
-                {t("brief.submit")}
-              </Button>
-            </div>
-          </div>
+        {step === 1 && (
+          <BriefStep
+            onSubmitted={openGate}
+            back={
+              job?.analysis
+                ? {
+                    // Changed nothing: back to where the job was (the list after "analyse again").
+                    label: job.state === "clarified" ? t("steps.analysis") : t("common.cancel"),
+                    onClick: async () => {
+                      setEditingBrief(false);
+                      if (job.state === "clarified") setJob(await api.reopen(job.id, "analyzed"));
+                    },
+                    testId: "brief-cancel",
+                  }
+                : { label: t("steps.area"), onClick: backToArea, testId: "back-to-area" }
+            }
+          />
         )}
         {step === 2 && (
           <AnalysisStep
             onConfirm={openGate}
+            onBack={() => setEditingBrief(true)}
             onReanalyze={async () => {
               if (!job) return;
               setJob(await api.reopen(job.id, "clarified"));
@@ -133,50 +150,6 @@ export function Wizard() {
         {step === 3 && <PlanStep onBuild={openGate} />}
         {step === 4 && <InstallStep onInstall={openGate} />}
       </div>
-
-      {job && (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-zinc-200 px-4 py-2 dark:border-zinc-800">
-          {canEditBrief ? (
-            <Button variant="ghost" onClick={() => setEditingBrief(true)}>
-              {t("common.edit_brief")}
-            </Button>
-          ) : job.state === "cancelled" && job.analysis ? (
-            <Button variant="ghost" onClick={async () => setJob(await api.reopen(job.id, "analyzed"))} data-testid="resume-job">
-              ↩ {t("common.resume_job")}
-            </Button>
-          ) : (
-            <span />
-          )}
-          {!["installed", "cancelled"].includes(job.state) &&
-            (confirmCancel ? (
-              <span className="flex items-center gap-2 text-xs">
-                {t("common.cancel_confirm")}
-                <Button
-                  variant="danger"
-                  onClick={async () => {
-                    setConfirmCancel(false);
-                    setJob(await api.cancel(job.id));
-                  }}
-                  data-testid="cancel-confirm"
-                >
-                  {t("common.yes")}
-                </Button>
-                <Button variant="ghost" onClick={() => setConfirmCancel(false)}>
-                  {t("common.no")}
-                </Button>
-              </span>
-            ) : (
-              <button
-                type="button"
-                className="text-xs text-zinc-500 underline hover:text-red-600"
-                onClick={() => setConfirmCancel(true)}
-                data-testid="cancel-job"
-              >
-                {t("common.cancel_job")}
-              </button>
-            ))}
-        </div>
-      )}
 
       {gateOpen && job && gate && <GateDialog jobId={job.id} gate={gate} onClose={() => setGateOpen(false)} />}
     </div>

@@ -1,3 +1,4 @@
+import { modelName } from "../../ai";
 import { useEffect, useRef, useState } from "react";
 import {
   api,
@@ -13,7 +14,7 @@ import { CATEGORY_COLORS, categoryLabelKey, draftFor, OBJECT_CATEGORIES, SURFACE
 import { useApp } from "../../store";
 import { PhotoPanel } from "../PhotoPanel";
 import { ProgressList } from "../ProgressList";
-import { Alert, Button, Checkbox, inputClass, Section, Spinner } from "../ui";
+import { Alert, Button, Checkbox, Section, Spinner, StepBar, inputClass } from "../ui";
 
 const WARNING_NOTES = new Set([
   "analysis.dropped_category",
@@ -56,9 +57,11 @@ function questionText(t: Translate, q: Question): string {
 
 export function AnalysisStep({
   onConfirm,
+  onBack,
   onReanalyze,
 }: {
   onConfirm: () => void;
+  onBack: () => void;
   onReanalyze: () => Promise<void>;
 }) {
   const { t } = useT();
@@ -155,7 +158,7 @@ export function AnalysisStep({
 
       {error && <Alert kind="error">{error}</Alert>}
       {editable && (
-        <div className="sticky -bottom-4 z-10 -mx-4 flex justify-end gap-2 border-t border-zinc-200 bg-zinc-50/95 px-4 py-2 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95">
+        <StepBar back={{ label: t("steps.brief"), onClick: onBack }}>
           <Button
             variant="ghost"
             onClick={() => onReanalyze().catch((e) => setError(e instanceof ApiError ? t(e.key, e.params) : String(e)))}
@@ -167,7 +170,7 @@ export function AnalysisStep({
           <Button variant="primary" onClick={onConfirm} data-testid="analysis-confirm">
             {t("analysis.confirm")}
           </Button>
-        </div>
+        </StepBar>
       )}
     </div>
   );
@@ -198,7 +201,7 @@ function SourcesSummary({ job }: { job: JobView }) {
       {ai && (
         <div data-testid="ai-summary">
           {t("analysis.ai_summary", {
-            model: t(`model.${ai.model}`),
+            model: modelName(t, ai.model),
             analyzed: ai.analyzed ?? 0,
             cost: formatUsd(ai.cost_usd ?? 0),
           })}
@@ -912,7 +915,7 @@ function FindSimilar({ item }: { item: SceneItem }) {
           <p>
             {t("analysis.similar_question", {
               tiles: estimate.tiles,
-              model: t(`model.${estimate.model}`),
+              model: modelName(t, estimate.model),
               cost: formatUsd(Math.min(estimate.estimate_usd, estimate.budget_usd)),
             })}
           </p>

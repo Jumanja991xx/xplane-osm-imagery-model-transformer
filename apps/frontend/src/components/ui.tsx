@@ -89,3 +89,26 @@ export function Spinner() {
 
 export const inputClass =
   "w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-accent-500 focus:ring-2 focus:ring-accent-100 dark:border-zinc-600 dark:bg-zinc-900 dark:focus:ring-accent-700/40";
+
+/** The bar at the bottom of every step: back on the left, the step's actions on the
+ * right. Stays visible while the step scrolls. */
+export function StepBar({
+  back,
+  children,
+}: {
+  back?: { label: ReactNode; onClick: () => void; testId?: string } | null;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="sticky -bottom-4 z-10 -mx-4 flex items-center justify-between gap-2 border-t border-zinc-200 bg-zinc-50/95 px-4 py-2.5 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95">
+      {back ? (
+        <Button variant="ghost" onClick={back.onClick} data-testid={back.testId ?? "step-back"}>
+          ← {back.label}
+        </Button>
+      ) : (
+        <span />
+      )}
+      <div className="flex flex-wrap justify-end gap-2">{children}</div>
+    </div>
+  );
+}

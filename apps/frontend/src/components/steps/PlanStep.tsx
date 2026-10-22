@@ -5,7 +5,7 @@ import { useApp } from "../../store";
 import { DesignProgress } from "../DesignProgress";
 import { PreviewDialog } from "../PreviewDialog";
 import { ProgressList } from "../ProgressList";
-import { Alert, Button, Section } from "../ui";
+import { Alert, Button, Section, StepBar } from "../ui";
 
 export function PlanStep({ onBuild }: { onBuild: () => void }) {
   const { t } = useT();
@@ -67,26 +67,26 @@ export function PlanStep({ onBuild }: { onBuild: () => void }) {
           ))}
         </ul>
       </Section>
-      <Section title={t("plan.tile")}>
-        <code className="text-xs">{plan.tile}</code>
-      </Section>
-      <Section title={t("plan.files")}>
-        <ul className="space-y-0.5 text-xs text-zinc-600 dark:text-zinc-300">
-          {plan.files.map((f) => (
-            <li key={f}>
-              <code>{f}</code>
-            </li>
-          ))}
-        </ul>
-      </Section>
-      <div className="sticky -bottom-4 z-10 -mx-4 flex justify-end gap-2 border-t border-zinc-200 bg-zinc-50/95 px-4 py-2 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95">
-        <Button variant="ghost" onClick={backToList} data-testid="back-to-list">
-          ← {t("common.back_to_list")}
-        </Button>
+      <details className="text-sm" data-testid="plan-technical">
+        <summary className="cursor-pointer text-xs text-zinc-500 select-none">{t("plan.technical")}</summary>
+        <div className="mt-2 space-y-2 text-xs text-zinc-600 dark:text-zinc-300">
+          <div>
+            {t("plan.tile")}: <code>{plan.tile}</code>
+          </div>
+          <ul className="space-y-0.5">
+            {plan.files.map((f) => (
+              <li key={f}>
+                <code>{f}</code>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </details>
+      <StepBar back={{ label: t("steps.analysis"), onClick: backToList, testId: "back-to-list" }}>
         <Button variant="primary" onClick={onBuild} data-testid="plan-build">
           {t("plan.build")}
         </Button>
-      </div>
+      </StepBar>
     </div>
   );
 }

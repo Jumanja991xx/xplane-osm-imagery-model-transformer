@@ -6,7 +6,7 @@ import { useApp } from "../../store";
 import { CostSummary } from "../CostSummary";
 import { PreviewDialog } from "../PreviewDialog";
 import { ProgressList } from "../ProgressList";
-import { Alert, Button, inputClass, Section } from "../ui";
+import { Alert, Button, inputClass, Section, StepBar } from "../ui";
 
 export function InstallStep({ onInstall }: { onInstall: () => void }) {
   const { t } = useT();
@@ -19,6 +19,10 @@ export function InstallStep({ onInstall }: { onInstall: () => void }) {
       ← {t("common.back_to_list")}
     </Button>
   );
+  // One step back: the plan and its preview stay, only the build is made again.
+  const backToPlan = job.plan
+    ? { label: t("steps.plan"), onClick: async () => setJob(await api.reopen(job.id, "planned")), testId: "back-to-plan" }
+    : null;
 
   if (job.state === "cancelled") {
     return (
@@ -63,10 +67,11 @@ export function InstallStep({ onInstall }: { onInstall: () => void }) {
         {job.plan && <Alert>{t(job.plan.test_scenery ? "install.test_hint" : "install.scene_hint")}</Alert>}
         <CostSummary job={job} />
         <p className="text-xs text-zinc-500">{t("install.change_hint")}</p>
-        <div className="flex gap-2">
-          {back}
-          <Button onClick={reset}>{t("common.new_job")}</Button>
-        </div>
+        <StepBar back={backToPlan}>
+          <Button variant="primary" onClick={reset} data-testid="new-job">
+            {t("common.new_job")}
+          </Button>
+        </StepBar>
       </div>
     );
   }
@@ -100,12 +105,11 @@ export function InstallStep({ onInstall }: { onInstall: () => void }) {
         </p>
       )}
       <CostSummary job={job} />
-      <div className="flex justify-end gap-2">
-        {back}
+      <StepBar back={backToPlan}>
         <Button variant="primary" onClick={onInstall} data-testid="install-button">
           {t("install.button")}
         </Button>
-      </div>
+      </StepBar>
     </div>
   );
 }

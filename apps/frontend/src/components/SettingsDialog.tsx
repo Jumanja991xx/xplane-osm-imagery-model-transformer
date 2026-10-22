@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { api, ApiError, type BlenderTest, type ImagerySettings, type Settings, type XPlaneCheck } from "../api/client";
+import { modelGroups, modelLabel, useAiModels } from "../ai";
 import { useT } from "../i18n";
 import { useApp } from "../store";
 import { IMAGERY_PRESETS } from "../imagery/presets";
 import { Alert, Button, Checkbox, inputClass, Section, Spinner } from "./ui";
 
-const MODELS = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"] as const;
+const TABS = ["general", "ai", "imagery", "tools"] as const;
 const IMAGERY_CHOICES: ImagerySettings["source"][] = [
   "auto",
   "de_states",
@@ -40,7 +41,11 @@ export function SettingsDialog() {
   const [draft, setDraft] = useState<Settings>(() => structuredClone(settings!));
   const [candidates, setCandidates] = useState<XPlaneCheck[] | null>(null);
   const [xplaneCheck, setXplaneCheck] = useState<XPlaneCheck | null>(system?.xplane ?? null);
+  const [tab, setTab] = useState<(typeof TABS)[number]>("general");
   const [apiKey, setApiKey] = useState("");
+  const [geminiKey, setGeminiKey] = useState("");
+  const [geminiLoaded, setGeminiLoaded] = useState<number | null>(null);
+  const [models, addModels] = useAiModels();
   const [mapillary, setMapillary] = useState("");
   const [esriKey, setEsriKey] = useState("");
   const imagery: ImagerySettings = {
@@ -163,6 +168,24 @@ export function SettingsDialog() {
       await api.deleteMapillaryToken();
       setSystem(await api.system());
     });
+  const saveGemini = () =>
+    run(async () => {
+      await api.setGeminiKey(geminiKey);
+      setGeminiKey("");
+      setSystem(await api.system());
+      setMessage({ kind: "success", text: t("settings.saved") });
+    });
+  const removeGemini = () =>
+    run(async () => {
+      await api.deleteGeminiKey();
+      setSystem(await api.system());
+    });
+  const loadGemini = () =>
+    run(async () => {
+      const found = await api.geminiModels();
+      addModels(found);
+      setGeminiLoaded(found.length);
+    });
   const removeKey = () =>
     run(async () => {
       await api.deleteApiKey();
@@ -171,7 +194,7 @@ export function SettingsDialog() {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
-      <div className="flex max-h-[90vh] w-full max-w-xl flex-col rounded-lg bg-white shadow-xl dark:bg-zinc-900">
+      <div className="flex h-[85vh] w-full max-w-3xl flex-col rounded-lg bg-white shadow-xl dark:bg-zinc-900">
         <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-3 dark:border-zinc-700">
           <h2 className="text-base font-semibold">
             {t("settings.title")}{" "}
@@ -184,7 +207,29 @@ export function SettingsDialog() {
           </Button>
         </div>
 
-        <div className="flex-1 space-y-6 overflow-y-auto px-5 py-4">
+        <div className="flex min-h-0 flex-1">
+          <nav className="w-40 shrink-0 space-y-0.5 border-r border-zinc-200 p-2 dark:border-zinc-700" role="tablist">
+            {TABS.map((id) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={tab === id}
+                onClick={() => setTab(id)}
+                className={`block w-full rounded-md px-3 py-2 text-left text-sm ${
+                  tab === id
+                    ? "bg-accent-50 font-medium text-accent-700 dark:bg-accent-700/30 dark:text-accent-100"
+                    : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                }`}
+                data-testid={`settings-tab-${id}`}
+              >
+                {t(`settings.tab.${id}`)}
+              </button>
+            ))}
+          </nav>
+          <div className="min-w-0 flex-1 space-y-6 overflow-y-auto px-5 py-4">
+          {tab === "general" && (
+            <>
           <Section title={t("settings.xplane")}>
             <div className="flex gap-2">
               <input
@@ -231,192 +276,113 @@ export function SettingsDialog() {
             ))}
           </Section>
 
-          <Section title={t("settings.dsftool")}>
-            <p className="text-sm">
-              {system?.dsftool.found ? (
-                <span className="text-emerald-600">{t("settings.dsftool_found", { version: system.dsftool.version })}</span>
-              ) : (
-                <span className="text-red-600">{t("settings.dsftool_missing")}</span>
-              )}
-            </p>
-            {system?.dsftool.path && <code className="block text-xs break-all">{system.dsftool.path}</code>}
-            <label className="block text-sm">
-              <span className="mb-1 block text-zinc-600 dark:text-zinc-300">{t("settings.dsftool_custom")}</span>
-              <div className="flex gap-2">
-                <input
-                  className={inputClass}
-                  value={draft.dsftool_path ?? ""}
-                  onChange={(e) => setDraft({ ...draft, dsftool_path: e.target.value || null })}
-                />
-                <Button onClick={checkDsfTool} disabled={busy}>
-                  {t("common.check")}
-                </Button>
-              </div>
-            </label>
+          <Section title={t("app.language")}>
+            <select
+              className={inputClass}
+              value={draft.language}
+              onChange={(e) => setDraft({ ...draft, language: e.target.value as Settings["language"] })}
+            >
+              <option value="de">Deutsch</option>
+              <option value="en">English</option>
+            </select>
           </Section>
 
-          <Section title={t("settings.osm")}>
-            <p className="text-xs text-zinc-600 dark:text-zinc-300">{t("settings.osm_intro")}</p>
-            <label className="block text-sm">
-              <span className="mb-1 block text-zinc-600 dark:text-zinc-300">{t("settings.overpass_url")}</span>
-              <input
-                className={inputClass}
-                placeholder="https://…/api/interpreter"
-                value={draft.overpass_url ?? ""}
-                onChange={(e) => setDraft({ ...draft, overpass_url: e.target.value.trim() || null })}
-              />
-            </label>
-          </Section>
-
-          <Section title={t("settings.blender")}>
-            <p className="text-xs text-zinc-600 dark:text-zinc-300">{t("settings.blender_intro")}</p>
-            <p className="text-sm" data-testid="blender-status">
-              {system?.blender ? (
-                <span className="text-emerald-600">{t("settings.blender_found", { version: system.blender })}</span>
-              ) : draft.use_blender === false ? (
-                <span className="text-zinc-500">{t("settings.blender_off")}</span>
-              ) : (
-                <span className="text-zinc-500">{t("settings.blender_missing")}</span>
-              )}
-            </p>
-            <Checkbox
-              label={<span className="text-sm">{t("settings.blender_use")}</span>}
-              checked={draft.use_blender !== false}
-              onChange={(v) => setDraft({ ...draft, use_blender: v })}
-            />
-            <label className="block text-sm">
-              <span className="mb-1 block text-zinc-600 dark:text-zinc-300">{t("settings.blender_custom")}</span>
-              <div className="flex gap-2">
-                <input
-                  className={inputClass}
-                  value={draft.blender_path ?? ""}
-                  placeholder="C:\Program Files\Blender Foundation\Blender 4.2\blender.exe"
-                  onChange={(e) => setDraft({ ...draft, blender_path: e.target.value || null })}
-                />
-                <Button onClick={checkBlender} disabled={busy}>
-                  {t("common.check")}
-                </Button>
-              </div>
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block text-zinc-600 dark:text-zinc-300">{t("settings.blender_device")}</span>
-              <select
-                className={inputClass}
-                value={draft.blender_device ?? "auto"}
-                onChange={(e) => setDraft({ ...draft, blender_device: e.target.value as "auto" | "cpu" })}
-              >
-                <option value="auto">{t("settings.blender_device_auto")}</option>
-                <option value="cpu">{t("settings.blender_device_cpu")}</option>
-              </select>
-            </label>
-            <div className="space-y-1">
-              <Button onClick={testBlender} disabled={busy} data-testid="blender-test">
-                {t("settings.blender_test")}
-              </Button>
-              <BlenderTestResult result={blenderTest} />
-            </div>
-          </Section>
-
-          <Section title={t("settings.api_key")}>
-            {!system?.keyring_available ? (
-              <Alert kind="warning">{t("settings.keyring_unavailable")}</Alert>
-            ) : (
-              <>
-                <p className="text-sm">
-                  {system.has_api_key ? t("settings.api_key_set") : t("settings.api_key_missing")}
-                </p>
-                <div className="flex gap-2">
-                  <input
-                    type="password"
-                    autoComplete="off"
-                    className={inputClass}
-                    placeholder={t("settings.api_key_placeholder")}
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    data-testid="api-key"
-                  />
-                  <Button onClick={saveKey} disabled={busy || !apiKey.trim()} data-testid="api-key-save">
-                    {t("common.save")}
-                  </Button>
-                  {system.has_api_key && (
-                    <Button variant="ghost" onClick={removeKey} disabled={busy}>
-                      {t("common.remove")}
-                    </Button>
-                  )}
-                </div>
-                <p className="text-xs text-zinc-500">{t("settings.api_key_hint")}</p>
-              </>
-            )}
-          </Section>
-
-          {system?.keyring_available && (
-            <Section title={t("settings.mapillary")}>
-              <p className="text-sm">
-                {system.has_mapillary_token ? t("settings.mapillary_set") : t("settings.mapillary_missing")}
-              </p>
-              <div className="flex gap-2">
-                <input
-                  type="password"
-                  autoComplete="off"
-                  className={inputClass}
-                  placeholder="MLY|…"
-                  value={mapillary}
-                  onChange={(e) => setMapillary(e.target.value)}
-                />
-                <Button onClick={saveMapillary} disabled={busy || mapillary.trim().length < 10}>
-                  {t("common.save")}
-                </Button>
-                {system.has_mapillary_token && (
-                  <Button variant="ghost" onClick={removeMapillary} disabled={busy}>
-                    {t("common.remove")}
-                  </Button>
-                )}
-              </div>
-              <p className="text-xs text-zinc-500">{t("settings.mapillary_hint")}</p>
-            </Section>
+            </>
           )}
-
+          {tab === "ai" && (
+            <>
+          {!system?.keyring_available && <Alert kind="warning">{t("settings.keyring_unavailable")}</Alert>}
+          <p className="text-sm text-zinc-600 dark:text-zinc-300">{t("settings.ai_intro")}</p>
+          {system?.keyring_available && (
+            <>
+              <KeyField
+                title={t("provider.anthropic")}
+                hint={t("settings.api_key_hint")}
+                has={system.has_api_key}
+                placeholder={t("settings.api_key_placeholder")}
+                value={apiKey}
+                onChange={setApiKey}
+                onSave={saveKey}
+                onRemove={removeKey}
+                busy={busy}
+                testId="api-key"
+              />
+              <KeyField
+                title={t("provider.google")}
+                hint={t("settings.gemini_key_hint")}
+                has={Boolean(system.has_gemini_key)}
+                placeholder={t("settings.gemini_key_placeholder")}
+                value={geminiKey}
+                onChange={setGeminiKey}
+                onSave={saveGemini}
+                onRemove={removeGemini}
+                busy={busy}
+                testId="gemini-key"
+              />
+            </>
+          )}
           <Section title={t("settings.ai_defaults")}>
-            <div className="grid grid-cols-2 gap-2">
+            <label className="block text-sm">
+              <span className="mb-1 block text-zinc-600 dark:text-zinc-300">{t("brief.ai_model")}</span>
               <select
                 className={inputClass}
                 value={draft.ai?.model}
-                onChange={(e) =>
-                  setDraft({ ...draft, ai: { ...draft.ai!, model: e.target.value as (typeof MODELS)[number] } })
-                }
+                onChange={(e) => setDraft({ ...draft, ai: { ...draft.ai!, model: e.target.value } })}
+                data-testid="settings-model"
               >
-                {MODELS.map((m) => (
-                  <option key={m} value={m}>
-                    {t(`model.${m}`)}
-                  </option>
+                {modelGroups(models, draft.ai?.model).map((g) => (
+                  <optgroup key={g.provider} label={t(`provider.${g.provider}`)}>
+                    {g.models.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {modelLabel(t, m)} · {t("settings.model_price", { input: m.price_in, output: m.price_out })}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
-              <input
-                type="number"
-                min={0}
-                step={0.5}
-                className={inputClass}
-                title={t("brief.ai_limit")}
-                value={draft.ai?.job_limit_usd}
-                onChange={(e) => setDraft({ ...draft, ai: { ...draft.ai!, job_limit_usd: Number(e.target.value) } })}
-              />
-            </div>
-            <label className="block text-sm">
-              <span className="mb-1 block text-zinc-600 dark:text-zinc-300">{t("settings.monthly_limit")}</span>
-              <input
-                type="number"
-                min={0}
-                step={1}
-                className={inputClass}
-                value={draft.ai?.monthly_limit_usd}
-                onChange={(e) =>
-                  setDraft({ ...draft, ai: { ...draft.ai!, monthly_limit_usd: Number(e.target.value) } })
-                }
-                data-testid="monthly-limit"
-              />
             </label>
+            {system?.has_gemini_key && (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="ghost" onClick={loadGemini} disabled={busy} data-testid="gemini-load">
+                  {t("settings.gemini_load")}
+                </Button>
+                {geminiLoaded !== null && (
+                  <span className="text-xs text-zinc-500">{t("settings.gemini_loaded", { count: geminiLoaded })}</span>
+                )}
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              <label className="block text-sm">
+                <span className="mb-1 block text-zinc-600 dark:text-zinc-300">{t("brief.ai_limit")}</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.5}
+                  className={inputClass}
+                  value={draft.ai?.job_limit_usd}
+                  onChange={(e) => setDraft({ ...draft, ai: { ...draft.ai!, job_limit_usd: Number(e.target.value) } })}
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block text-zinc-600 dark:text-zinc-300">{t("settings.monthly_limit")}</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  className={inputClass}
+                  value={draft.ai?.monthly_limit_usd}
+                  onChange={(e) =>
+                    setDraft({ ...draft, ai: { ...draft.ai!, monthly_limit_usd: Number(e.target.value) } })
+                  }
+                  data-testid="monthly-limit"
+                />
+              </label>
+            </div>
           </Section>
-
+            </>
+          )}
+          {tab === "imagery" && (
+            <>
           <Section title={t("settings.imagery")}>
             <select
               className={inputClass}
@@ -592,18 +558,127 @@ export function SettingsDialog() {
             )}
           </Section>
 
-          <Section title={t("app.language")}>
-            <select
-              className={inputClass}
-              value={draft.language}
-              onChange={(e) => setDraft({ ...draft, language: e.target.value as Settings["language"] })}
-            >
-              <option value="de">Deutsch</option>
-              <option value="en">English</option>
-            </select>
+          {system?.keyring_available && (
+            <Section title={t("settings.mapillary")}>
+              <p className="text-sm">
+                {system.has_mapillary_token ? t("settings.mapillary_set") : t("settings.mapillary_missing")}
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  autoComplete="off"
+                  className={inputClass}
+                  placeholder="MLY|…"
+                  value={mapillary}
+                  onChange={(e) => setMapillary(e.target.value)}
+                />
+                <Button onClick={saveMapillary} disabled={busy || mapillary.trim().length < 10}>
+                  {t("common.save")}
+                </Button>
+                {system.has_mapillary_token && (
+                  <Button variant="ghost" onClick={removeMapillary} disabled={busy}>
+                    {t("common.remove")}
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-zinc-500">{t("settings.mapillary_hint")}</p>
+            </Section>
+          )}
+
+            </>
+          )}
+          {tab === "tools" && (
+            <>
+          <Section title={t("settings.dsftool")}>
+            <p className="text-sm">
+              {system?.dsftool.found ? (
+                <span className="text-emerald-600">{t("settings.dsftool_found", { version: system.dsftool.version })}</span>
+              ) : (
+                <span className="text-red-600">{t("settings.dsftool_missing")}</span>
+              )}
+            </p>
+            {system?.dsftool.path && <code className="block text-xs break-all">{system.dsftool.path}</code>}
+            <label className="block text-sm">
+              <span className="mb-1 block text-zinc-600 dark:text-zinc-300">{t("settings.dsftool_custom")}</span>
+              <div className="flex gap-2">
+                <input
+                  className={inputClass}
+                  value={draft.dsftool_path ?? ""}
+                  onChange={(e) => setDraft({ ...draft, dsftool_path: e.target.value || null })}
+                />
+                <Button onClick={checkDsfTool} disabled={busy}>
+                  {t("common.check")}
+                </Button>
+              </div>
+            </label>
           </Section>
 
+          <Section title={t("settings.blender")}>
+            <p className="text-xs text-zinc-600 dark:text-zinc-300">{t("settings.blender_intro")}</p>
+            <p className="text-sm" data-testid="blender-status">
+              {system?.blender ? (
+                <span className="text-emerald-600">{t("settings.blender_found", { version: system.blender })}</span>
+              ) : draft.use_blender === false ? (
+                <span className="text-zinc-500">{t("settings.blender_off")}</span>
+              ) : (
+                <span className="text-zinc-500">{t("settings.blender_missing")}</span>
+              )}
+            </p>
+            <Checkbox
+              label={<span className="text-sm">{t("settings.blender_use")}</span>}
+              checked={draft.use_blender !== false}
+              onChange={(v) => setDraft({ ...draft, use_blender: v })}
+            />
+            <label className="block text-sm">
+              <span className="mb-1 block text-zinc-600 dark:text-zinc-300">{t("settings.blender_custom")}</span>
+              <div className="flex gap-2">
+                <input
+                  className={inputClass}
+                  value={draft.blender_path ?? ""}
+                  placeholder="C:\Program Files\Blender Foundation\Blender 4.2\blender.exe"
+                  onChange={(e) => setDraft({ ...draft, blender_path: e.target.value || null })}
+                />
+                <Button onClick={checkBlender} disabled={busy}>
+                  {t("common.check")}
+                </Button>
+              </div>
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-zinc-600 dark:text-zinc-300">{t("settings.blender_device")}</span>
+              <select
+                className={inputClass}
+                value={draft.blender_device ?? "auto"}
+                onChange={(e) => setDraft({ ...draft, blender_device: e.target.value as "auto" | "cpu" })}
+              >
+                <option value="auto">{t("settings.blender_device_auto")}</option>
+                <option value="cpu">{t("settings.blender_device_cpu")}</option>
+              </select>
+            </label>
+            <div className="space-y-1">
+              <Button onClick={testBlender} disabled={busy} data-testid="blender-test">
+                {t("settings.blender_test")}
+              </Button>
+              <BlenderTestResult result={blenderTest} />
+            </div>
+          </Section>
+
+          <Section title={t("settings.osm")}>
+            <p className="text-xs text-zinc-600 dark:text-zinc-300">{t("settings.osm_intro")}</p>
+            <label className="block text-sm">
+              <span className="mb-1 block text-zinc-600 dark:text-zinc-300">{t("settings.overpass_url")}</span>
+              <input
+                className={inputClass}
+                placeholder="https://…/api/interpreter"
+                value={draft.overpass_url ?? ""}
+                onChange={(e) => setDraft({ ...draft, overpass_url: e.target.value.trim() || null })}
+              />
+            </label>
+          </Section>
+
+            </>
+          )}
           {message && <Alert kind={message.kind}>{message.text}</Alert>}
+          </div>
         </div>
 
         <div className="flex justify-end gap-2 border-t border-zinc-200 px-5 py-3 dark:border-zinc-700">
@@ -640,6 +715,62 @@ function BlenderTestResult({ result }: { result: BlenderTest | "running" | null 
       </p>
       {result.gpu_search_hung && <p className="text-amber-600">{t("settings.blender_test_hung")}</p>}
       {result.log && <p className="break-all text-zinc-500">{t("settings.blender_test_log", { path: result.log })}</p>}
+    </div>
+  );
+}
+
+function KeyField({
+  title,
+  hint,
+  has,
+  placeholder,
+  value,
+  onChange,
+  onSave,
+  onRemove,
+  busy,
+  testId,
+}: {
+  title: string;
+  hint: string;
+  has: boolean;
+  placeholder: string;
+  value: string;
+  onChange: (v: string) => void;
+  onSave: () => void;
+  onRemove: () => void;
+  busy: boolean;
+  testId: string;
+}) {
+  const { t } = useT();
+  return (
+    <div className="space-y-1.5 rounded-md p-3 ring-1 ring-zinc-200 dark:ring-zinc-700">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium">{title}</span>
+        <span className={`text-xs ${has ? "text-emerald-600" : "text-zinc-500"}`} data-testid={`${testId}-status`}>
+          {has ? `✓ ${t("settings.key_set")}` : t("settings.key_missing")}
+        </span>
+      </div>
+      <div className="flex gap-2">
+        <input
+          type="password"
+          autoComplete="off"
+          className={inputClass}
+          placeholder={placeholder}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          data-testid={testId}
+        />
+        <Button onClick={onSave} disabled={busy || !value.trim()} data-testid={`${testId}-save`}>
+          {t("common.save")}
+        </Button>
+        {has && (
+          <Button variant="ghost" onClick={onRemove} disabled={busy}>
+            {t("common.remove")}
+          </Button>
+        )}
+      </div>
+      <p className="text-xs text-zinc-500">{hint}</p>
     </div>
   );
 }
