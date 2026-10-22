@@ -82,6 +82,13 @@ def main(argv: list[str] | None = None) -> None:
     # executable: they must run the worker, not a second backend.
     multiprocessing.freeze_support()
     args = _parse_args(argv)
+    stacks = os.environ.get("XPSB_DUMP_STACKS_S", "")
+    if stacks.isdigit():  # diagnostics (smoke test): where does it hang?
+        import faulthandler
+
+        out = (args.data_dir or Path(".")) / "stacks.log"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        faulthandler.dump_traceback_later(int(stacks), repeat=True, file=open(out, "w"))  # noqa: SIM115
     if args.host not in LOOPBACK:
         raise SystemExit("refusing to listen on a non-loopback address")
 

@@ -88,6 +88,7 @@ def build(
     What could not be built in the processes is left out (the caller builds it)."""
     results: dict[str, ItemResult] = {}
     pool = None
+    log.info("building %d objects in %d processes", len(todo), n_workers)
     try:
         pool = ProcessPoolExecutor(
             max_workers=n_workers,
@@ -105,6 +106,7 @@ def build(
             except Exception:  # noqa: BLE001 - built again here, where errors show
                 log.exception("building %s in a worker failed", it.id)
                 continue
+            log.info("built %s (%d of %d)", stem, len(results), len(todo))
             on_done(len(results), it)
     except (BrokenProcessPool, OSError, RuntimeError) as exc:
         if os.environ.get("XPSB_BUILD_STRICT"):  # smoke test of the packaged app

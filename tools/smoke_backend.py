@@ -43,8 +43,11 @@ def call(base: str, method: str, path: str, body: object | None = None) -> dict:
             "Content-Type": "application/json",
         },
     )
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        return json.loads(resp.read())
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            return json.loads(resp.read())
+    except TimeoutError as exc:
+        raise TimeoutError(f"{method} {path}: no answer within 60 s") from exc
 
 
 def wait(base: str, job_id: str, state: str) -> dict:
@@ -117,9 +120,9 @@ def _annotate(exc: Exception, data: Path) -> None:
     not always at hand; annotations are)."""
     text = f"{type(exc).__name__}: {exc}"
     for log in sorted(data.rglob("*.log")):
-        lines = log.read_text(encoding="utf-8", errors="replace").splitlines()[-40:]
+        lines = log.read_text(encoding="utf-8", errors="replace").splitlines()[-60:]
         text += f"\n--- {log.name} ---\n" + "\n".join(line[:300] for line in lines)
-    body = text[-6000:].replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+    body = text[-12000:].replace("%", "%25").replace("\r", "").replace("\n", "%0A")
     print(f"::error title=smoke test::{body}", flush=True)
 
 
@@ -135,6 +138,7 @@ def main() -> None:
             # the packaged exe must start its build processes itself (no fallback)
             "XPSB_BUILD_WORKERS": "2",
             "XPSB_BUILD_STRICT": "1",
+            "XPSB_DUMP_STACKS_S": "45",  # thread stacks into stacks.log if it hangs
         }
         proc = subprocess.Popen(
             [
@@ -145,7 +149,7 @@ def main() -> None:
                 "--data-dir",
                 data,
                 "--log-level",
-                "warning",
+                "info",
                 *extra,
             ],
             stdin=subprocess.PIPE,
