@@ -6,11 +6,14 @@ import json
 import os
 import threading
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import AfterValidator, BaseModel, Field, ValidationError
 
-AiModel = Literal["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"]
+from xpsb.ai.providers import check_model
+
+# Claude or Gemini (see ai/providers.py: known models and Gemini ids from Google).
+AiModel = Annotated[str, AfterValidator(check_model)]
 
 
 class AiSettings(BaseModel):

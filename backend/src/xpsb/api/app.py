@@ -26,6 +26,8 @@ from pydantic import BaseModel, Field
 
 from xpsb import __version__, places
 from xpsb import blender as blender_mod
+from xpsb.ai import analyze as ai
+from xpsb.ai import providers, usage
 from xpsb.geo import GeoJsonPolygon
 from xpsb.imagery import basemap, xyz
 from xpsb.imagery.sources import ESRI_ACCOUNT, custom_from_settings, esri_source, map_source
@@ -41,7 +43,7 @@ from xpsb.jobs.models import Brief, GateId, JobState, JobView
 from xpsb.paths import AppPaths
 from xpsb.photos import MAPILLARY_ACCOUNT, SearchResult
 from xpsb.scene import ItemPatch, NewItem, PhotoTexture
-from xpsb.secrets import ANTHROPIC_ACCOUNT, SecretStore, normalize_api_key
+from xpsb.secrets import ANTHROPIC_ACCOUNT, GEMINI_ACCOUNT, SecretStore, normalize_api_key
 from xpsb.settings import ImagerySettings, Settings, SettingsStore
 from xpsb.xplane import dsftool, neighbors
 from xpsb.xplane.dsf_text import Tile
@@ -84,7 +86,8 @@ class SystemStatus(BaseModel):
     dsftool: DsfToolStatus
     xplane: XPlaneCheck | None
     keyring_available: bool
-    has_api_key: bool
+    has_api_key: bool  # Claude (Anthropic)
+    has_gemini_key: bool = False
     has_mapillary_token: bool = False
     has_esri_key: bool = False
     blender: str | None = None  # version of the Blender the app would use
@@ -92,6 +95,15 @@ class SystemStatus(BaseModel):
 
 class ApiKeyStatus(BaseModel):
     has_api_key: bool
+
+
+class AiModelEntry(BaseModel):
+    id: str
+    provider: Literal["anthropic", "google"]
+    tier: Literal["top", "mid", "low"] | None = None  # None: loaded from Google
+    note: str = ""
+    price_in: float  # USD per million tokens
+    price_out: float
 
 
 class CreateJob(BaseModel):
@@ -276,6 +288,7 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
             xplane=check_xplane_path(s.xplane_path) if s.xplane_path else None,
             keyring_available=ctx.secrets.available(),
             has_api_key=bool(ctx.secrets.get(ANTHROPIC_ACCOUNT)),
+            has_gemini_key=bool(ctx.secrets.get(GEMINI_ACCOUNT)),
             has_mapillary_token=bool(ctx.secrets.get(MAPILLARY_ACCOUNT)),
             has_esri_key=bool(ctx.secrets.get(ESRI_ACCOUNT)),
             blender=getattr(await asyncio.to_thread(ctx.jobs.blender), "version", None),
@@ -316,6 +329,58 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
     async def delete_api_key() -> ApiKeyStatus:
         ctx.secrets.delete(ANTHROPIC_ACCOUNT)
         return ApiKeyStatus(has_api_key=False)
+
+    @app.put("/api/secrets/gemini", dependencies=auth)
+    async def set_gemini_key(body: ApiKeyBody) -> ApiKeyStatus:
+        if not ctx.secrets.available():
+            raise HTTPException(409, detail={"key": "error.keyring_unavailable"})
+        try:
+            key = normalize_api_key(body.api_key)
+        except ValueError:
+            raise HTTPException(422, detail={"key": "error.invalid_api_key"}) from None
+        ctx.secrets.set(GEMINI_ACCOUNT, key)
+        return ApiKeyStatus(has_api_key=True)
+
+    @app.delete("/api/secrets/gemini", dependencies=auth)
+    async def delete_gemini_key() -> ApiKeyStatus:
+        ctx.secrets.delete(GEMINI_ACCOUNT)
+        return ApiKeyStatus(has_api_key=False)
+
+    def _model_entry(model_id: str) -> AiModelEntry:
+        info = providers.KNOWN.get(model_id)
+        p_in, p_out = usage.price(model_id)
+        return AiModelEntry(
+            id=model_id,
+            provider=providers.provider_of(model_id),
+            tier=info.tier if info else None,
+            note=info.note if info else "",
+            price_in=p_in,
+            price_out=p_out,
+        )
+
+    @app.get("/api/ai/models", dependencies=auth)
+    async def ai_models() -> list[AiModelEntry]:
+        """The models the app knows (Claude and Gemini), best first per provider."""
+        return [_model_entry(m.id) for m in providers.MODELS]
+
+    @app.post("/api/ai/gemini-models", dependencies=auth)
+    async def gemini_models() -> list[AiModelEntry]:
+        """The Gemini models the user's key may use, as Google reports them now
+        (Google renames and retires models often). Asks Google: no costs."""
+        key = ctx.secrets.get(GEMINI_ACCOUNT)
+        if not key:
+            raise HTTPException(409, detail={"key": "error.ai_no_key"})
+        from xpsb.ai import gemini
+
+        try:
+            names = await asyncio.to_thread(gemini.list_models, key)
+        except ai.AiAuthError:
+            raise HTTPException(409, detail={"key": "error.ai_auth_failed"}) from None
+        except ai.AiCallError as exc:
+            raise HTTPException(
+                502, detail={"key": "error.ai_call_failed", "detail": str(exc)}
+            ) from None
+        return [_model_entry(n) for n in names if providers.valid_model(n)]
 
     @app.put("/api/secrets/mapillary", dependencies=auth)
     async def set_mapillary_token(body: TokenBody) -> dict:

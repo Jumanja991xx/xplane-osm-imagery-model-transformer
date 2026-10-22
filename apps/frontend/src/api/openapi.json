@@ -247,6 +247,106 @@
         }
       }
     },
+    "/api/secrets/gemini": {
+      "put": {
+        "summary": "Set Gemini Key",
+        "operationId": "set_gemini_key_api_secrets_gemini_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiKeyBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Gemini Key",
+        "operationId": "delete_gemini_key_api_secrets_gemini_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ai/models": {
+      "get": {
+        "summary": "Ai Models",
+        "description": "The models the app knows (Claude and Gemini), best first per provider.",
+        "operationId": "ai_models_api_ai_models_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AiModelEntry"
+                  },
+                  "type": "array",
+                  "title": "Response Ai Models Api Ai Models Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ai/gemini-models": {
+      "post": {
+        "summary": "Gemini Models",
+        "description": "The Gemini models the user's key may use, as Google reports them now\n(Google renames and retires models often). Asks Google: no costs.",
+        "operationId": "gemini_models_api_ai_gemini_models_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AiModelEntry"
+                  },
+                  "type": "array",
+                  "title": "Response Gemini Models Api Ai Gemini Models Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/secrets/mapillary": {
       "put": {
         "summary": "Set Mapillary Token",
@@ -2455,6 +2555,59 @@
         ],
         "title": "AiAssessment"
       },
+      "AiModelEntry": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "provider": {
+            "type": "string",
+            "enum": [
+              "anthropic",
+              "google"
+            ],
+            "title": "Provider"
+          },
+          "tier": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "top",
+                  "mid",
+                  "low"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tier"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note",
+            "default": ""
+          },
+          "price_in": {
+            "type": "number",
+            "title": "Price In"
+          },
+          "price_out": {
+            "type": "number",
+            "title": "Price Out"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "provider",
+          "price_in",
+          "price_out"
+        ],
+        "title": "AiModelEntry"
+      },
       "AiRunInfo": {
         "properties": {
           "model": {
@@ -2543,11 +2696,6 @@
           },
           "model": {
             "type": "string",
-            "enum": [
-              "claude-opus-5-5",
-              "claude-sonnet-5-5",
-              "claude-haiku-5-5"
-            ],
             "title": "Model",
             "default": "claude-opus-5-5"
           },
@@ -2847,11 +2995,6 @@
           },
           "ai_model": {
             "type": "string",
-            "enum": [
-              "claude-opus-5-5",
-              "claude-sonnet-5-5",
-              "claude-haiku-5-5"
-            ],
             "title": "Ai Model",
             "default": "claude-opus-5-5"
           },
@@ -5928,6 +6071,11 @@
           "has_api_key": {
             "type": "boolean",
             "title": "Has Api Key"
+          },
+          "has_gemini_key": {
+            "type": "boolean",
+            "title": "Has Gemini Key",
+            "default": false
           },
           "has_mapillary_token": {
             "type": "boolean",

@@ -45,11 +45,13 @@ class FakeAi:
         self.tokens = (3000, 1500)
         self.cut_off = 0  # next n architect answers end at the output limit
         self.refuse = False  # the architect's answers are declined
+        self.transport_models: list[str] = []  # the model each transport was made for
         # Browser tests: the architect takes a moment, like the real one (seconds).
         self.architect_delay = float(os.environ.get("XPSB_FAKE_AI_DELAY", "0"))
 
-    def factory(self, api_key: str) -> FakeAi:
+    def factory(self, api_key: str, model: str = "") -> FakeAi:
         self.keys.append(api_key)
+        self.transport_models.append(model)
         return self
 
     def __call__(

@@ -18,7 +18,7 @@ from shapely.geometry import Polygon
 from xpsb import blender as blender_mod
 from xpsb import photos, research
 from xpsb.ai import analyze as ai
-from xpsb.ai import detect
+from xpsb.ai import detect, providers
 from xpsb.ai.usage import UsageLedger
 from xpsb.build import phototex
 from xpsb.catalog import category_label
@@ -44,7 +44,7 @@ from xpsb.jobs.models import (
 )
 from xpsb.paths import AppPaths
 from xpsb.scene import ItemAttrs, ItemPatch, NewItem, PhotoTexture, SceneItem, validate_item
-from xpsb.secrets import ANTHROPIC_ACCOUNT, SecretStore
+from xpsb.secrets import SecretStore
 from xpsb.settings import SettingsStore
 from xpsb.xplane import dsftool, foreign, library
 from xpsb.xplane.dsf_text import Tile
@@ -145,7 +145,8 @@ class JobManager:
         secrets: SecretStore,
         resources_dir: Path | None,
         xplane_running: Callable[[], bool | None] = is_xplane_running,
-        ai_transport_factory: Callable[[str], ai.AiTransport] = ai.AnthropicTransport,
+        # (api key, model) -> transport: Claude or Gemini by the model's provider.
+        ai_transport_factory: Callable[..., ai.AiTransport] = providers.make_transport,
     ):
         self._paths = paths
         self._settings = settings
@@ -224,11 +225,20 @@ class JobManager:
             self._logs[job_id] = event_log
         return self._logs[job_id]
 
+    def _ai_key(self, model: str) -> str | None:
+        """The user's key for the model's provider (Claude or Gemini)."""
+        return self._secrets.get(providers.key_account(model))
+
+    def _transport(self, model: str) -> ai.AiTransport:
+        key = self._ai_key(model)
+        assert key is not None
+        return self._ai_transport_factory(key, model)
+
     def _gate_context(self, job: Job) -> GateContext:
         settings = self._settings.load()
         return GateContext(
             settings=settings,
-            has_api_key=bool(self._secrets.get(ANTHROPIC_ACCOUNT)),
+            has_api_key=bool(self._ai_key(job.brief.ai_model if job.brief else "")),
             ai_month_spent=self.ledger.month_spent(),
             dsftool=dsftool.locate(settings.dsftool_path, self._resources_dir),
             xplane_running=self._xplane_running() if job.state is JobState.BUILT else None,
@@ -491,7 +501,7 @@ class JobManager:
             and job.analysis
             and job.analysis.imagery
             and self.imagery_file(job.id)
-            and self._secrets.get(ANTHROPIC_ACCOUNT)
+            and self._ai_key(scan_model(job.brief))
             and self._similar_budget(job) > 0
         )
 
@@ -513,7 +523,7 @@ class JobManager:
                 language=self._settings.load().language,
                 notes=job.brief.notes,
                 budget_usd=self._similar_budget(job),
-                transport=self._ai_transport_factory(self._secrets.get(ANTHROPIC_ACCOUNT)),
+                transport=self._transport(scan_model(job.brief)),
                 on_cost=pipeline.cost_book(job, self.ledger, "rating", item.name),
                 questions=questions,
                 context=detect.area_context(job.analysis.items),
@@ -599,7 +609,7 @@ class JobManager:
         assert job.brief is not None and job.analysis is not None
         if not job.brief.use_ai:
             raise JobConflict("error.ai_off")
-        if not self._secrets.get(ANTHROPIC_ACCOUNT):
+        if not self._ai_key(scan_model(job.brief)):
             raise JobConflict("error.ai_no_key")
         image = self.imagery_file(job_id)
         if image is None or job.analysis.imagery is None:
@@ -649,7 +659,7 @@ class JobManager:
                 language=self._settings.load().language,
                 notes=job.brief.notes,
                 budget_usd=budget,
-                transport=self._ai_transport_factory(self._secrets.get(ANTHROPIC_ACCOUNT)),
+                transport=self._transport(scan_model(job.brief)),
                 on_cost=pipeline.cost_book(job, self.ledger, "similar"),
             )
             snapshot = [it.model_copy(deep=True) for it in job.analysis.items]
@@ -1010,7 +1020,7 @@ class JobManager:
         assert job.brief is not None
         if not job.brief.use_ai:
             raise JobConflict("error.ai_off")
-        if not self._secrets.get(ANTHROPIC_ACCOUNT):
+        if not self._ai_key(job.brief.ai_model):
             raise JobConflict("error.ai_no_key")
         if item.kind != "object":
             raise JobConflict("error.similar_objects_only")
@@ -1117,7 +1127,7 @@ class JobManager:
             language=self._settings.load().language,
             notes=job.brief.notes,
             budget_usd=budget,
-            transport=self._ai_transport_factory(self._secrets.get(ANTHROPIC_ACCOUNT)),
+            transport=self._transport(job.brief.ai_model),
             on_cost=pipeline.cost_book(job, self.ledger, stage, item.name or item.id),
         )
         inputs = assemble._script_inputs(item, job.analysis.items, detail)
@@ -1149,7 +1159,7 @@ class JobManager:
             or b is None
             or not b.use_ai
             or b.ai_design == "off"
-            or not self._secrets.get(ANTHROPIC_ACCOUNT)
+            or not self._ai_key(b.ai_model)
         ):
             return {}
         items = job.analysis.items
@@ -1544,9 +1554,7 @@ class JobManager:
             job_dir=self.job_dir(job.id),
             cache_dir=self._paths.cache,
             settings=self._settings.load(),
-            api_key=self._secrets.get(ANTHROPIC_ACCOUNT)
-            if job.brief and job.brief.use_ai
-            else None,
+            api_key=self._ai_key(scan_model(job.brief)) if job.brief and job.brief.use_ai else None,
             transport_factory=self._ai_transport_factory,
             ledger=self.ledger,
             memory_items=memory_items,

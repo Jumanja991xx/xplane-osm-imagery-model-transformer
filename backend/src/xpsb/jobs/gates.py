@@ -201,7 +201,11 @@ def _gate_a(job: Job, ctx: GateContext):
 
 def _speed(model: str) -> float:
     """Rough answer time of a model relative to Sonnet."""
-    return 1.4 if "opus" in model else 0.5 if "haiku" in model else 1.0
+    if "lite" in model or "haiku" in model:
+        return 0.5
+    if "flash" in model:
+        return 0.7
+    return 1.4 if "opus" in model or "-pro" in model else 1.0
 
 
 def _minutes(lo: float, hi: float) -> tuple[int, int]:

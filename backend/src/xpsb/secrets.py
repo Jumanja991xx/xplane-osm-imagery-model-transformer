@@ -14,6 +14,7 @@ log = logging.getLogger(__name__)
 
 SERVICE = "XPlaneAISceneryBuilder"
 ANTHROPIC_ACCOUNT = "anthropic_api_key"
+GEMINI_ACCOUNT = "gemini_api_key"
 
 
 class SecretStore(Protocol):

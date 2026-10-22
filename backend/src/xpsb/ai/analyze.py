@@ -131,7 +131,8 @@ CACHE = {"type": "ephemeral"}
 
 
 class AnthropicTransport:
-    """Claude Messages API. The key lives only in this object, never in logs or files."""
+    """Claude Messages API (Gemini: ai/gemini.py, same interface). The key lives only
+    in this object, never in logs or files."""
 
     def __init__(self, api_key: str):
         import anthropic

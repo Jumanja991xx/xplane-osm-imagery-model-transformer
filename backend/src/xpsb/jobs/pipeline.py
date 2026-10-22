@@ -66,7 +66,7 @@ class AnalysisDeps:
     cache_dir: Path
     settings: Settings
     api_key: str | None
-    transport_factory: Callable[[str], ai.AiTransport]
+    transport_factory: Callable[..., ai.AiTransport]  # (api key, model)
     ledger: UsageLedger
     memory_items: list = field(default_factory=list)
     memory_edits: dict = field(default_factory=dict)
@@ -418,7 +418,7 @@ def analyze_sync(job: Job, deps: AnalysisDeps, log: EventLog) -> AnalysisResult:
             language=deps.settings.language,
             notes=job.brief.notes,
             budget_usd=budget,
-            transport=deps.transport_factory(deps.api_key),
+            transport=deps.transport_factory(deps.api_key, scan_model(job.brief)),
             on_cost=cost_book(job, deps.ledger, "analysis"),
             should_stop=lambda: job.state is JobState.CANCELLED,
             questions=questions,

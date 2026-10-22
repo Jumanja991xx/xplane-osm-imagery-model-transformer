@@ -125,6 +125,65 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/secrets/gemini": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Gemini Key */
+        put: operations["set_gemini_key_api_secrets_gemini_put"];
+        post?: never;
+        /** Delete Gemini Key */
+        delete: operations["delete_gemini_key_api_secrets_gemini_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ai Models
+         * @description The models the app knows (Claude and Gemini), best first per provider.
+         */
+        get: operations["ai_models_api_ai_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/gemini-models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Gemini Models
+         * @description The Gemini models the user's key may use, as Google reports them now
+         *     (Google renames and retires models often). Asks Google: no costs.
+         */
+        post: operations["gemini_models_api_ai_gemini_models_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/secrets/mapillary": {
         parameters: {
             query?: never;
@@ -812,6 +871,27 @@ export interface components {
             /** Confidence */
             confidence: number;
         };
+        /** AiModelEntry */
+        AiModelEntry: {
+            /** Id */
+            id: string;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "anthropic" | "google";
+            /** Tier */
+            tier?: ("top" | "mid" | "low") | null;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /** Price In */
+            price_in: number;
+            /** Price Out */
+            price_out: number;
+        };
         /** AiRunInfo */
         AiRunInfo: {
             /** Model */
@@ -867,9 +947,8 @@ export interface components {
             /**
              * Model
              * @default claude-opus-5-5
-             * @enum {string}
              */
-            model: "claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-5-5";
+            model: string;
             /**
              * Job Limit Usd
              * @default 5
@@ -993,9 +1072,8 @@ export interface components {
             /**
              * Ai Model
              * @default claude-opus-5-5
-             * @enum {string}
              */
-            ai_model: "claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-5-5";
+            ai_model: string;
             /**
              * Ai Economy
              * @default true
@@ -2173,6 +2251,11 @@ export interface components {
             /** Has Api Key */
             has_api_key: boolean;
             /**
+             * Has Gemini Key
+             * @default false
+             */
+            has_gemini_key: boolean;
+            /**
              * Has Mapillary Token
              * @default false
              */
@@ -2457,6 +2540,99 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiKeyStatus"];
+                };
+            };
+        };
+    };
+    set_gemini_key_api_secrets_gemini_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApiKeyBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_gemini_key_api_secrets_gemini_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyStatus"];
+                };
+            };
+        };
+    };
+    ai_models_api_ai_models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiModelEntry"][];
+                };
+            };
+        };
+    };
+    gemini_models_api_ai_gemini_models_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiModelEntry"][];
                 };
             };
         };

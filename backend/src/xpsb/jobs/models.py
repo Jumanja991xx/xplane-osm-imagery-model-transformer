@@ -8,6 +8,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from xpsb.ai.providers import economy_model
 from xpsb.catalog import ObjectCategory, SurfaceMode, SurfaceType
 from xpsb.geo import GeoJsonPolygon
 from xpsb.imagery.wms import ImageryInfo
@@ -67,13 +68,12 @@ class DetailLevel(StrEnum):
 PACKAGE_NAME_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9 _\-]{0,59}$"
 
 
-SCAN_MODEL = "claude-sonnet-5-5"
-
-
 def scan_model(brief) -> str:
-    """The model for looking at the aerial image (object search, rating)."""
-    if brief.ai_economy and "opus" in brief.ai_model:
-        return SCAN_MODEL
+    """The model for looking at the aerial image (object search, rating): with
+    economy on, the cheaper model of the same provider (Opus -> Sonnet, Gemini Pro
+    -> Flash)."""
+    if brief.ai_economy:
+        return economy_model(brief.ai_model) or brief.ai_model
     return brief.ai_model
 
 
@@ -88,7 +88,8 @@ class Brief(BaseModel):
     use_ai: bool = True
     ai_model: AiModel = "claude-opus-5-5"
     # Saves money: looking at the aerial image (search, rating, "find similar") runs
-    # on Sonnet when Opus is chosen; the AI architect keeps the chosen model.
+    # on Sonnet when Opus is chosen (Gemini: Flash for Pro); the AI architect keeps
+    # the chosen model.
     ai_economy: bool = True
     # "city": every ordinary building of the area is built in blocks (city mode,
     # few draw calls); landmarks stay single detailed objects. "objects": each one.
