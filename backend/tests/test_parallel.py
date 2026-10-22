@@ -83,3 +83,19 @@ def test_a_dying_worker_loses_no_object(tmp_path, monkeypatch):
     monkeypatch.setenv("XPSB_BUILD_STRICT", "1")
     with pytest.raises(RuntimeError, match="exit 3"):
         _build(tmp_path, monkeypatch, "2", _items(4))
+
+
+def test_files_held_for_a_moment_are_read_again(monkeypatch):
+    """Windows: a virus scanner may lock a fresh file for a moment."""
+    monkeypatch.setattr(parallel.time, "sleep", lambda s: None)
+    calls = []
+
+    def flaky():
+        calls.append(1)
+        if len(calls) < 3:
+            raise PermissionError("held by another process")
+        return b"ok"
+
+    assert parallel._retry(flaky) == b"ok" and len(calls) == 3
+    with pytest.raises(PermissionError):
+        parallel._retry(lambda: (_ for _ in ()).throw(PermissionError("always")), attempts=3)

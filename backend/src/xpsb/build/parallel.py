@@ -6,11 +6,13 @@ wait for each other on Python's global lock).
 
 The workers are this program started again with `--build-worker <dir>` - plain
 processes, no multiprocessing machinery (which hangs in the packaged Windows app).
-The directory holds what all objects share (context.pkl) and one task file per
-object; each worker takes the next free task by renaming its file (atomic, so no
-object is built twice) and leaves the result next to it. The workers end when no
-task is left, so none stay behind. Whatever was not built by them (a worker could
-not start or died) is built in this process as before.
+The directory holds what all objects share (context.pkl, with the object of each
+task) and one empty task file per object; each worker takes the next free task by
+renaming its file (atomic, so no object is built twice) and leaves the result next
+to it. The task file is never opened: on Windows a virus scanner or a second worker
+may hold a just-renamed file for a moment, so every file access retries a little.
+The workers end when no task is left, so none stay behind. Whatever was not built
+by them (a worker could not start or died) is built in this process as before.
 
 XPSB_BUILD_WORKERS sets the number of processes (1 = no extra processes);
 XPSB_BUILD_STRICT=1 turns a failing worker into an error instead of the fallback.
@@ -61,10 +63,28 @@ def worker_command() -> list[str]:
     return [sys.executable, "-m", "xpsb"]
 
 
+def _retry(fn, attempts: int = 40):
+    """Windows: a file can be locked for a moment (virus scanner, another process
+    renaming it); wait a little and try again."""
+    for n in range(attempts):
+        try:
+            return fn()
+        except PermissionError:
+            if n == attempts - 1:
+                raise
+            time.sleep(min(0.5, 0.02 * (n + 1)))
+    return None
+
+
 def _dump(obj, path: Path) -> None:
     tmp = path.with_suffix(".part")
-    tmp.write_bytes(pickle.dumps(obj, protocol=pickle.HIGHEST_PROTOCOL))
-    tmp.replace(path)  # readers never see half a file
+    data = pickle.dumps(obj, protocol=pickle.HIGHEST_PROTOCOL)
+    _retry(lambda: tmp.write_bytes(data))
+    _retry(lambda: tmp.replace(path))  # readers never see half a file
+
+
+def _load(path: Path):
+    return pickle.loads(_retry(path.read_bytes))
 
 
 def _strict() -> bool:
@@ -89,18 +109,20 @@ def build(
     results: dict[str, ItemResult] = {}
     by_stem = {stem: it for it, stem in todo}
     log.info("building %d objects in %d processes", len(todo), n_workers)
-    with tempfile.TemporaryDirectory(prefix="xpsb-build-") as tmp:
+    # cleanup errors: a scanner may still hold a file; the system cleans up later
+    with tempfile.TemporaryDirectory(prefix="xpsb-build-", ignore_cleanup_errors=True) as tmp:
         work = Path(tmp)
         (work / "tasks").mkdir()
         _dump(
             {
                 "items": items,
+                "tasks": {stem: it.id for it, stem in todo},
                 "args": (detail, str(out_dir), preview, library, photo_dir, blender_exe),
             },
             work / "context.pkl",
         )
-        for it, stem in todo:
-            _dump((it.id, stem), work / "tasks" / f"{stem}.task")
+        for _, stem in todo:
+            (work / "tasks" / f"{stem}.task").touch()
         procs: list[tuple[subprocess.Popen, Path]] = []
         try:
             for n in range(n_workers):
@@ -122,7 +144,7 @@ def build(
                 running = any(p.poll() is None for p, _ in procs)
                 for res in sorted(work.glob("*.result")):
                     if res.stem not in results:
-                        results[res.stem] = pickle.loads(res.read_bytes())
+                        results[res.stem] = _load(res)
                         log.info("built %s (%d of %d)", res.stem, len(results), len(todo))
                         on_done(len(results), by_stem[res.stem])
                 if not running:
@@ -154,7 +176,7 @@ def worker(work: Path) -> None:
     """Main of a worker process: takes tasks until none is left."""
     from xpsb.build.assemble import generate_one
 
-    ctx = pickle.loads((work / "context.pkl").read_bytes())
+    ctx = _load(work / "context.pkl")
     items = ctx["items"]
     by_id = {it.id: it for it in items}
     detail, out_dir, preview, library, photo_dir, blender_exe = ctx["args"]
@@ -167,12 +189,15 @@ def worker(work: Path) -> None:
                 task = candidate.replace(mine / candidate.name)  # atomic: only one wins
                 break
             except OSError:
-                continue  # another worker was faster
+                continue  # another worker was faster (or holds it right now)
         if task is None:
+            if any((work / "tasks").glob("*.task")):
+                time.sleep(0.05)  # only held for a moment by someone: look again
+                continue
             return
-        item_id, stem = pickle.loads(task.read_bytes())
+        stem = task.stem
         result = generate_one(
-            by_id[item_id],
+            by_id[ctx["tasks"][stem]],
             items,
             detail,
             Path(out_dir),
