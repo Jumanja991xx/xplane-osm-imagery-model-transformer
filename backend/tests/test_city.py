@@ -249,3 +249,15 @@ def test_the_aerial_image_gets_a_darker_rim_at_the_foot_of_the_houses():
     near = out.getpixel((100, 89))  # just north of the house
     far = out.getpixel((10, 10))
     assert sum(near) < sum(far) * 0.9 and far == (120, 140, 90)
+
+
+def test_walls_have_a_bounded_number_of_bands():
+    """A plinth that lies only below the ground used an eave height of 1e9 m: a list
+    of hundreds of millions of storeys, which ate all memory on a hillside
+    (Kloster Andechs). The bands stay few whatever the eave height."""
+    from xpsb.city import mesh
+    from xpsb.city.atlas import Cell
+
+    cell = Cell(0.0, 1.0, {}, bay_m=3.5, ground_m=3.5, storey_m=3.0)
+    assert len(mesh._bands(1e9, cell)) <= mesh.MAX_FLOORS + 32
+    assert len(mesh._bands(9.5, cell)) < 40

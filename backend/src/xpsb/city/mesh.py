@@ -109,6 +109,9 @@ def _newell(pts: list[Vec3]) -> Vec3:
     return (nx / length, ny / length, nz / length)
 
 
+MAX_FLOORS = 120
+
+
 def _bands(eave: float, cell: Cell) -> list[tuple[float, float, str]]:
     """Height bands of a wall (bottom, top, atlas row) from the ground to 60 m above
     the eaves: ground floor, upper floors fitted to the eave height, attic."""
@@ -117,7 +120,9 @@ def _bands(eave: float, cell: Cell) -> list[tuple[float, float, str]]:
     if eave <= g * 1.3:
         bands.append((0.0, max(eave, 0.5), "ground"))
     else:
-        k = max(1, round((eave - g) / f))
+        # at most MAX_FLOORS: a wall never needs more (and a huge eave height must
+        # not turn into millions of bands)
+        k = min(MAX_FLOORS, max(1, round((eave - g) / f)))
         step = (eave - g) / k
         bands.append((0.0, g, "ground"))
         bands += [(g + i * step, g + (i + 1) * step, f"floor{i % FLOOR_ROWS}") for i in range(k)]
@@ -270,7 +275,8 @@ class _Builder:
                 (x2, y2, base_z + top),
                 (x1, y1, base_z + top),
             ]
-            self.wall(quad, base_z, 1e9 if top <= 0.01 else top, cell)
+            # Below the ground only (top ~ 0): the plinth band; any normal eave works.
+            self.wall(quad, base_z, top if top > 0.01 else cell.ground_m, cell)
 
     # -- roofs ---------------------------------------------------------------------
 
