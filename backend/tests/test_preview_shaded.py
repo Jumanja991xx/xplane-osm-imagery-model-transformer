@@ -32,3 +32,24 @@ def test_the_preview_shows_the_shaded_texture_of_the_package(tmp_path):
     os.utime(preview / "xpsb_obj_001.json", (later, later))
     assert pick(None, job, "xpsb_obj_001.png", preview / "xpsb_obj_001.png") is None
     assert pick(None, SimpleNamespace(build=None), "xpsb_obj_001.png", preview) is None
+
+
+def test_a_preview_made_from_another_mesh_is_not_given_the_built_texture(tmp_path):
+    from PIL import Image
+
+    from xpsb.jobs.pipeline import _same_layout
+
+    preview, package = tmp_path / "preview", tmp_path / "pkg"
+    (package / "objects").mkdir(parents=True)
+    preview.mkdir()
+    Image.new("RGB", (512, 512)).save(preview / "xpsb_obj_001.png")
+    Image.new("RGB", (512, 512)).save(package / "objects" / "xpsb_obj_001.png")
+    plan = SimpleNamespace(objects=[SimpleNamespace(stem="xpsb_obj_001", triangles=1000)])
+    built = SimpleNamespace(stem="xpsb_obj_001", triangles=1000)
+    assert _same_layout(plan, built, preview, package)
+    # the script changed after the plan: other mesh, other atlas
+    assert not _same_layout(
+        plan, SimpleNamespace(stem="xpsb_obj_001", triangles=2000), preview, package
+    )
+    Image.new("RGB", (1024, 512)).save(package / "objects" / "xpsb_obj_001.png")
+    assert not _same_layout(plan, built, preview, package)

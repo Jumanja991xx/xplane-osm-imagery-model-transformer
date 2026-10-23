@@ -999,6 +999,47 @@ def photo_texture_photos(objects: list[PlanObject], job: Job) -> list[Photo]:
     return [seen[k] for k in sorted(seen)]
 
 
+def _same_layout(plan, built, preview_dir: Path, package: Path) -> bool:
+    """Whether the preview of an object was made from the mesh the build made: same
+    triangles and the same texture size (else the textures do not fit its UVs)."""
+    planned = next((o for o in plan.objects if o.stem == built.stem), None)
+    if planned is None or planned.triangles != built.triangles:
+        return False
+    try:
+        with (
+            Image.open(preview_dir / f"{built.stem}.png") as a,
+            Image.open(package / "objects" / f"{built.stem}.png") as b,
+        ):
+            return a.size == b.size
+    except OSError:
+        return False
+
+
+def _refresh_preview(job: Job, built, preview_dir: Path, library) -> bool:
+    """Builds an object's preview again (as the package has it); updates the plan."""
+    assert job.plan is not None and job.analysis is not None
+    item = next((it for it in job.analysis.items if it.id == built.item_id), None)
+    if item is None:
+        return False
+    try:
+        res = assemble.generate_one(
+            item,
+            job.analysis.items,
+            job.plan.detail,
+            preview_dir,
+            built.stem,
+            preview=True,
+            library=library,
+            photo_dir=preview_dir.parent / "photos",
+        )
+    except (LookupError, ValueError, OSError):  # script errors come back as a status
+        return False
+    job.plan.objects = [
+        PlanObject(**res.__dict__) if o.stem == built.stem else o for o in job.plan.objects
+    ]
+    return res.status == "ok"
+
+
 def build_package(
     job: Job,
     job_dir: Path,
@@ -1081,11 +1122,18 @@ def build_package(
     # the preview, now with Blender's shading).
     preview_dir = job_dir / "preview"
     for o in meshes:
-        if o.shaded and (preview_dir / f"{o.stem}.png").is_file():
-            for suffix in (".png", "_nml.png"):
-                src = package / "objects" / f"{o.stem}{suffix}"
-                if src.is_file():
-                    shutil.copyfile(src, preview_dir / f"{o.stem}{suffix}")
+        if not o.shaded or not (preview_dir / f"{o.stem}.png").is_file():
+            continue
+        # The object changed after the plan (e.g. its script): the preview's mesh would
+        # not fit the new texture - build its preview again first.
+        if not _same_layout(plan, o, preview_dir, package) and not _refresh_preview(
+            job, o, preview_dir, library
+        ):
+            continue
+        for suffix in (".png", "_nml.png"):
+            src = package / "objects" / f"{o.stem}{suffix}"
+            if src.is_file():
+                shutil.copyfile(src, preview_dir / f"{o.stem}{suffix}")
     readme = _readme(plan, job)
     if shaded:
         readme += (
