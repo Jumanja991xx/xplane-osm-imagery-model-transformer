@@ -353,3 +353,11 @@ def test_normal_map_gives_joints_relief_and_glass_gloss():
     obj = to_obj8(mesh, baked, "x.png", 2000, "x_nml.png").to_text()
     assert "TEXTURE x.png\nTEXTURE_NORMAL x_nml.png\n" in obj
     assert "NORMAL_METALNESS" not in obj
+
+
+def test_big_objects_may_take_longer():
+    from xpsb.build import sandbox
+
+    assert sandbox.time_limit(30_000) == sandbox.DEFAULT_TIMEOUT_S
+    assert sandbox.time_limit(240_000) == pytest.approx(3 * sandbox.DEFAULT_TIMEOUT_S)
+    assert sandbox.time_limit(10_000_000) == sandbox.MAX_TIMEOUT_FACTOR * sandbox.DEFAULT_TIMEOUT_S

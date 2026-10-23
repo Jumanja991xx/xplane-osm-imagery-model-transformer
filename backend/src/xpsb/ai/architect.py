@@ -162,6 +162,7 @@ they stay open), `path` the polyline of line objects, `params` a dict with: {
                     "tags",
                     "min_height",
                     "parts",
+                    "features",
                     "bridge",
                 ]
             )
@@ -173,6 +174,10 @@ stadium or castle; site:derived: the outline was estimated from the grounds - tr
 aerial image more than the outline then). `parts` are OSM building parts (each with
 footprint, height, min_height, roof_shape, colours): a mapper's description of towers,
 wings and raised roofs - use them as the shape if present.
+`features` are pools, fountains and ponds inside the outline (in its courtyards),
+each {{kind: "pool"|"fountain"|"water", footprint, name}}: build them (water as a face
+with mat="glass" in a water colour a little above the ground, a stone rim around it
+with offset_polygon) - a bath without its pools is not recognisable.
 
 RULES:
 - Stay within the footprint (overhangs of roofs up to ~2 m are fine). Respect a given

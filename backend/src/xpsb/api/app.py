@@ -37,6 +37,7 @@ from xpsb.jobs.manager import (
     JobConflict,
     JobManager,
     JobNotFound,
+    ScriptTest,
     SimilarEstimate,
 )
 from xpsb.jobs.models import Brief, GateId, JobState, JobView
@@ -127,6 +128,15 @@ class RenameBody(BaseModel):
     name: str = Field(max_length=200)
 
 
+class ScriptBody(BaseModel):
+    script: str = Field(min_length=1, max_length=100_000)
+
+
+class ScriptView(BaseModel):
+    script: str
+    own: bool
+
+
 class DesignBody(BaseModel):
     request: str = Field(min_length=3, max_length=1500)
     # The maximum the user confirmed; the architect never spends more than this.
@@ -135,6 +145,13 @@ class DesignBody(BaseModel):
     model: AiModel | None = None
     # Only these building parts are to change (ids from the 3D preview).
     parts: list[str] | None = Field(default=None, max_length=50)
+
+
+class PhotoBody(BaseModel):
+    item_id: str | None = None  # the camera on this object; None: the whole scene
+    azimuth: float = Field(default=225.0, ge=0, lt=360)  # where the camera stands
+    elevation: float = Field(default=22.0, ge=2, le=85)
+    samples: int = Field(default=64, ge=8, le=1024)
 
 
 class DesignOutcome(BaseModel):
@@ -590,6 +607,19 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
     async def job_preview(job_id: str) -> dict:
         return ctx.jobs.preview(job_id)
 
+    @app.post("/api/jobs/{job_id}/photo", dependencies=auth, response_class=FileResponse)
+    async def job_photo(job_id: str, body: PhotoBody) -> FileResponse:
+        """A photo-realistic picture of the scenery, rendered by Blender (minutes)."""
+        path = await asyncio.to_thread(
+            ctx.jobs.photo,
+            job_id,
+            item_id=body.item_id,
+            azimuth=body.azimuth,
+            elevation=body.elevation,
+            samples=body.samples,
+        )
+        return FileResponse(path, media_type="image/png")
+
     @app.get("/api/jobs/{job_id}/preview/{name}", dependencies=auth, response_class=FileResponse)
     async def job_preview_file(job_id: str, name: str):
         path = ctx.jobs.preview_file(job_id, name)
@@ -669,6 +699,24 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
     @app.delete("/api/jobs/{job_id}/design/{item_id:path}", dependencies=auth)
     async def reset_design(job_id: str, item_id: str) -> JobView:
         await asyncio.to_thread(ctx.jobs.reset_design, job_id, item_id)
+        return ctx.jobs.view(job_id)
+
+    @app.get("/api/jobs/{job_id}/script/{item_id:path}", dependencies=auth)
+    async def get_script(job_id: str, item_id: str) -> ScriptView:
+        return ScriptView(**ctx.jobs.script(job_id, item_id))
+
+    @app.post("/api/jobs/{job_id}/script-test/{item_id:path}", dependencies=auth)
+    async def test_script(job_id: str, item_id: str, body: ScriptBody) -> ScriptTest:
+        return await asyncio.to_thread(ctx.jobs.test_script, job_id, item_id, body.script)
+
+    @app.put("/api/jobs/{job_id}/script/{item_id:path}", dependencies=auth)
+    async def set_script(job_id: str, item_id: str, body: ScriptBody) -> JobView:
+        await asyncio.to_thread(ctx.jobs.set_script, job_id, item_id, body.script)
+        return ctx.jobs.view(job_id)
+
+    @app.delete("/api/jobs/{job_id}/script/{item_id:path}", dependencies=auth)
+    async def reset_script(job_id: str, item_id: str) -> JobView:
+        await asyncio.to_thread(ctx.jobs.set_script, job_id, item_id, None)
         return ctx.jobs.view(job_id)
 
     @app.post("/api/jobs/{job_id}/photos", dependencies=auth)

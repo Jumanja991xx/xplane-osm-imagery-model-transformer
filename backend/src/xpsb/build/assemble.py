@@ -28,6 +28,7 @@ from xpsb.build.sandbox import ScriptError, ScriptInputs, run_script
 from xpsb.build.scripts import DEFAULT_SCRIPTS
 from xpsb.geo import METERS_PER_DEG_LAT, meters_per_deg_lon
 from xpsb.imagery import retouch
+from xpsb.osm.classify import parse_length_m
 from xpsb.scene import SceneItem
 from xpsb.xplane.dsf_text import DsfText, Tile
 from xpsb.xplane.library import Catalog
@@ -252,7 +253,9 @@ def _params(item: SceneItem, items: list[SceneItem], local, detail: str) -> dict
         "wall_material": a.wall_material or WALL_MATERIALS.get(tags.get("building:material", "")),
         "building": _building_type(item),
         "min_height": a.min_height_m,
+        "roof_height": parse_length_m(tags.get("roof:height")),
         "parts": _parts(item, local),
+        "features": _features(item, local),
         "parts_cover": _parts_cover(item),
         "tags": dict(tags),
         "detail": detail,
@@ -421,11 +424,26 @@ def _parts(item: SceneItem, local) -> list[dict]:
                 "footprint": [local(x, y) for x, y in ring],
                 "height": part.height_m,
                 "min_height": part.min_height_m,
+                "roof_height": part.roof_height_m,
                 "roof_shape": part.roof_shape,
                 "wall_color": part.wall_color,
                 "roof_color": part.roof_color,
                 "part": part.part,
             }
+        )
+    return out
+
+
+def _features(item: SceneItem, local) -> list[dict]:
+    """Pools, fountains and ponds in the building's courtyards, in local metres."""
+    out = []
+    for f in item.features:
+        geom = shape(f["geometry"])
+        if geom.geom_type != "Polygon" or geom.is_empty:
+            continue
+        ring = list(orient(geom, 1.0).exterior.coords)[:-1]
+        out.append(
+            {"kind": f["kind"], "footprint": [local(x, y) for x, y in ring], "name": f.get("name")}
         )
     return out
 
@@ -805,12 +823,16 @@ def _shade_with_blender(
     progress: Callable[[BlenderStatus], None] | None,
     should_stop: Callable[[], bool] = lambda: False,
     cpu: bool = False,
+    fine: bool = False,
 ) -> None:
     """One Blender run bakes the soft shading of all prepared objects, which is then
-    multiplied into their colour textures."""
+    multiplied into their colour textures. `fine`: the finer, slower bake."""
     from xpsb import blender
 
     todo = [r for r in results if r.blender_input]
+    if fine:
+        for r in todo:
+            blender.refine(Path(r.blender_input))  # type: ignore[arg-type]
     work = objects_dir / BLENDER_DIR
     log: list[str] = []
     problems: list[str] = []
@@ -882,6 +904,7 @@ def write_package(
     blender_stop: Callable[[], bool] = lambda: False,
     blender_cpu: bool = False,
     extra_objects: list[tuple[str, float, float]] = (),  # type: ignore[assignment]
+    blender_fine: bool = False,
 ) -> PackageResult:
     """`extra_objects`: further OBJs already in the package (path, lon, lat), e.g. the
     blocks of the city mode; those outside this DSF's tile come back in
@@ -893,7 +916,13 @@ def write_package(
     )
     if blender_exe:
         _shade_with_blender(
-            results, objects_dir, blender_exe, blender_progress, blender_stop, blender_cpu
+            results,
+            objects_dir,
+            blender_exe,
+            blender_progress,
+            blender_stop,
+            blender_cpu,
+            blender_fine,
         )
 
     dsf = DsfText(tile=tile)

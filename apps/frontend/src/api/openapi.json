@@ -1481,6 +1481,49 @@
         }
       }
     },
+    "/api/jobs/{job_id}/photo": {
+      "post": {
+        "summary": "Job Photo",
+        "description": "A photo-realistic picture of the scenery, rendered by Blender (minutes).",
+        "operationId": "job_photo_api_jobs__job_id__photo_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PhotoBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobs/{job_id}/preview/{name}": {
       "get": {
         "summary": "Job Preview File",
@@ -2143,6 +2186,214 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/script/{item_id}": {
+      "get": {
+        "summary": "Get Script",
+        "operationId": "get_script_api_jobs__job_id__script__item_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScriptView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Set Script",
+        "operationId": "set_script_api_jobs__job_id__script__item_id__put",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScriptBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Reset Script",
+        "operationId": "reset_script_api_jobs__job_id__script__item_id__delete",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/script-test/{item_id}": {
+      "post": {
+        "summary": "Test Script",
+        "operationId": "test_script_api_jobs__job_id__script_test__item_id__post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScriptBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScriptTest"
                 }
               }
             }
@@ -3552,6 +3803,17 @@
             ],
             "title": "Min Height M"
           },
+          "roof_height_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roof Height M"
+          },
           "roof_shape": {
             "anyOf": [
               {
@@ -4420,7 +4682,8 @@
                   "bust",
                   "obelisk",
                   "column",
-                  "stone"
+                  "stone",
+                  "sculpture"
                 ]
               },
               {
@@ -5239,6 +5502,44 @@
         ],
         "title": "Photo",
         "description": "A photo attached to a scene item (file: photos/<id>.jpg in the job folder)."
+      },
+      "PhotoBody": {
+        "properties": {
+          "item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Id"
+          },
+          "azimuth": {
+            "type": "number",
+            "exclusiveMaximum": 360.0,
+            "minimum": 0.0,
+            "title": "Azimuth",
+            "default": 225.0
+          },
+          "elevation": {
+            "type": "number",
+            "maximum": 85.0,
+            "minimum": 2.0,
+            "title": "Elevation",
+            "default": 22.0
+          },
+          "samples": {
+            "type": "integer",
+            "maximum": 1024.0,
+            "minimum": 8.0,
+            "title": "Samples",
+            "default": 64
+          }
+        },
+        "type": "object",
+        "title": "PhotoBody"
       },
       "PhotoCandidate": {
         "properties": {
@@ -6202,6 +6503,14 @@
             },
             "type": "array",
             "title": "Row Members"
+          },
+          "features": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Features"
           }
         },
         "type": "object",
@@ -6213,6 +6522,95 @@
           "source"
         ],
         "title": "SceneItem"
+      },
+      "ScriptBody": {
+        "properties": {
+          "script": {
+            "type": "string",
+            "maxLength": 100000,
+            "minLength": 1,
+            "title": "Script"
+          }
+        },
+        "type": "object",
+        "required": [
+          "script"
+        ],
+        "title": "ScriptBody"
+      },
+      "ScriptTest": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "triangles": {
+            "type": "integer",
+            "title": "Triangles",
+            "default": 0
+          },
+          "budget": {
+            "type": "integer",
+            "title": "Budget",
+            "default": 0
+          },
+          "seconds": {
+            "type": "number",
+            "title": "Seconds",
+            "default": 0.0
+          },
+          "parts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Parts",
+            "default": []
+          },
+          "views": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Views",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "title": "ScriptTest",
+        "description": "What a test run of a build script gave."
+      },
+      "ScriptView": {
+        "properties": {
+          "script": {
+            "type": "string",
+            "title": "Script"
+          },
+          "own": {
+            "type": "boolean",
+            "title": "Own"
+          }
+        },
+        "type": "object",
+        "required": [
+          "script",
+          "own"
+        ],
+        "title": "ScriptView"
       },
       "SearchResult": {
         "properties": {
@@ -6306,6 +6704,15 @@
             ],
             "title": "Blender Device",
             "default": "auto"
+          },
+          "blender_quality": {
+            "type": "string",
+            "enum": [
+              "standard",
+              "fine"
+            ],
+            "title": "Blender Quality",
+            "default": "standard"
           },
           "overpass_url": {
             "anyOf": [

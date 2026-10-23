@@ -23,7 +23,7 @@ OUTLINE = (220, 30, 30)
 VIEWS = (
     ("view from south-west", 225.0, 28.0),
     ("view from north-east", 45.0, 28.0),
-    ("top view, north up", 0.0, 90.0),
+    ("top view, north up, grid in local metres", 0.0, 90.0),
 )
 
 
@@ -150,11 +150,40 @@ def render(
             _raster(img, depth, q[list(t)], LIBRARY_COLOR)
 
     out = Image.fromarray(np.clip(img, 0, 255).astype(np.uint8), "RGB")
+    if elevation >= 89.9:
+        out = _grid(out, cx, cy, scale, span, size)
     if footprint:
         draw = ImageDraw.Draw(out)
         ring = project(np.array([[x, y, 0.05] for x, y in footprint + footprint[:1]]))
         draw.line([(float(x), float(y)) for x, y, _ in ring], fill=OUTLINE, width=2)
     return out
+
+
+GRID_STEPS = (2, 5, 10, 20, 50, 100, 200, 500)
+
+
+def _grid(img: Image.Image, cx: float, cy: float, scale: float, span: float, size: int):
+    """Top view: a faint grid in the object's local metres with labelled lines (x
+    along the top, y down the left), so positions can be read off for a script."""
+    step = next((s for s in GRID_STEPS if span / s <= 12), GRID_STEPS[-1])
+    overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+    half = span / 2
+    for axis in (0, 1):
+        centre = cx if axis == 0 else cy
+        v = math.ceil((centre - half) / step) * step
+        while v <= centre + half:
+            if axis == 0:
+                px = (v - cx) * scale + size / 2
+                draw.line([(px, 0), (px, size)], fill=(40, 60, 90, 70 if v else 150), width=1)
+                draw.text((px + 2, 2), f"{v:g}", fill=(30, 40, 60, 230))
+            else:
+                py = size / 2 - (v - cy) * scale
+                draw.line([(0, py), (size, py)], fill=(40, 60, 90, 70 if v else 150), width=1)
+                draw.text((2, py + 1), f"{v:g}", fill=(30, 40, 60, 230))
+            v += step
+    draw.text((size - 70, size - 14), f"grid {step:g} m", fill=(30, 40, 60, 230))
+    return Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
 
 
 def _raster(img, depth, tri: np.ndarray, color: np.ndarray, bias: float = 0.0) -> None:

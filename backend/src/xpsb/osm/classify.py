@@ -172,15 +172,106 @@ _MEMORIAL_KINDS = {
     "sculpture": "statue",
 }
 _RIDER_WORDS = ("reiter", "equestrian", "lovas", "equestre", "jezdec", "ruiter", "ryttar")
+# Animals and creatures (a zoo's dinosaurs, a lion, the Turul): not a person on a
+# base. Whole words (a statue of Wolfgang is no wolf); dinosaur names by their endings.
+_CREATURE_WORDS = frozenset(
+    [
+        "dino",
+        "dinosaur",
+        "dinosaurier",
+        "dinoszaurusz",
+        "triceratops",
+        "mammoth",
+        "mammut",
+        "dodo",
+        "dodó",
+        "elephant",
+        "elefant",
+        "elefánt",
+        "lion",
+        "löwe",
+        "loewe",
+        "oroszlán",
+        "tiger",
+        "tigris",
+        "bear",
+        "bär",
+        "medve",
+        "wolf",
+        "farkas",
+        "deer",
+        "hirsch",
+        "szarvas",
+        "eagle",
+        "adler",
+        "sas",
+        "turul",
+        "bird",
+        "vogel",
+        "madár",
+        "fish",
+        "fisch",
+        "hal",
+        "dolphin",
+        "delfin",
+        "horse",
+        "pferd",
+        "ló",
+        "giraffe",
+        "zsiráf",
+        "gorilla",
+        "camel",
+        "kamel",
+        "teve",
+        "owl",
+        "eule",
+        "bagoly",
+        "dragon",
+        "drache",
+        "sárkány",
+        "bull",
+        "stier",
+        "bika",
+        "dog",
+        "hund",
+        "kutya",
+        "cat",
+        "katze",
+        "macska",
+        "animal",
+        "tier",
+        "állat",
+        "abstract",
+        "abstrakt",
+        "absztrakt",
+    ]
+)
+_CREATURE_ENDINGS = ("saurus", "raptor", "szaurusz", "saurier")
+
+
+def _creature(tags: dict[str, str]) -> bool:
+    text = " ".join(
+        tags.get(k, "")
+        for k in ("name", "name:en", "name:de", "description", "subject", "artwork_subject")
+    ).lower()
+    for word in re.findall(r"\w+", text):
+        if word.endswith(_CREATURE_ENDINGS):
+            return True
+        if word in _CREATURE_WORDS or (word[-1:] == "s" and word[:-1] in _CREATURE_WORDS):
+            return True
+    return tags.get("site:type") == "zoo" and not tags.get("historic")
 
 
 def monument_kind(tags: dict[str, str]) -> str | None:
-    """statue | rider | bust | obelisk | column | stone, or None (plaques, graves,
+    """statue | rider | bust | obelisk | column | stone | sculpture (animals,
+    abstract works), or None (plaques, graves,
     memorial areas and everything that is not a free-standing monument)."""
     name = " ".join(tags.get(k, "") for k in ("name", "name:en", "name:de", "description"))
     rider = any(w in name.lower() for w in _RIDER_WORDS)
     if tags.get("man_made") == "obelisk":
         return "obelisk"
+    if tags.get("tourism") == "artwork" and not rider and _creature(tags):
+        return "sculpture"
     if tags.get("tourism") == "artwork" and tags.get("artwork_type") in ("statue", "sculpture"):
         return "rider" if rider else "statue"
     if tags.get("tourism") == "artwork" and tags.get("artwork_type") == "bust":
@@ -483,6 +574,44 @@ def apply_sites(
 # ---- building parts (Simple 3D Buildings) -----------------------------------------
 
 
+def feature_kind(tags: dict[str, str]) -> str | None:
+    """Water a building's script can show: "pool", "fountain", "water" or None."""
+    if tags.get("leisure") == "swimming_pool" and tags.get("location") != "indoor":
+        return "pool"
+    if tags.get("amenity") == "fountain":
+        return "fountain"
+    if tags.get("natural") == "water" and tags.get("water") not in BIG_WATER:
+        return "water"
+    return None
+
+
+BIG_WATER = ("river", "canal", "lake", "reservoir", "stream", "lock")
+MAX_FEATURES = 40  # per building
+
+
+def attach_features(items: list[SceneItem], features: list) -> None:
+    """Pools, fountains and ponds inside a building's outline (its courtyards) go
+    to that building: its script builds them (water with a rim)."""
+    if not features:
+        return
+    outlines = [
+        it
+        for it in items
+        if it.kind == "object"
+        and it.tags.get("building")
+        and it.geometry.get("type") in ("Polygon", "MultiPolygon")
+    ]
+    for it in outlines:
+        geom = shape(it.geometry)
+        shells = [Polygon(g.exterior) for g in getattr(geom, "geoms", [geom])]
+        for kind, fgeom, name in features:
+            point = fgeom.representative_point()
+            if len(it.features) < MAX_FEATURES and any(sh.contains(point) for sh in shells):
+                it.features.append(
+                    {"kind": kind, "geometry": _rounded(mapping(fgeom)), "name": name}
+                )
+
+
 def fold_parts(items: list[SceneItem]) -> list[SceneItem]:
     """building:part areas inside a building outline become parts of that object
     (one object per building, its parts give the shape). Parts without an outline
@@ -524,6 +653,7 @@ def fold_parts(items: list[SceneItem]) -> list[SceneItem]:
                 osm_ref=it.osm_ref,
                 height_m=it.attrs.height_m,
                 min_height_m=it.attrs.min_height_m,
+                roof_height_m=parse_length_m(it.tags.get("roof:height")),
                 roof_shape=it.attrs.roof_shape,
                 wall_color=it.attrs.wall_color,
                 roof_color=it.attrs.roof_color,
@@ -552,6 +682,7 @@ KEEP_TAGS = (
     "building:part",
     "building:levels",
     "height",
+    "roof:height",
     "roof:shape",
     "roof:colour",
     "building:colour",
@@ -597,6 +728,7 @@ def classify(
     sites: list[_Site] = []
     site_refs: set[str] = set()
     fields: list = []  # pitches and tracks (for stadium outlines)
+    features: list = []  # pools, fountains, ponds (shown by the building around them)
     # type=building relations: their name/Wikidata belong to the outline way.
     outline_tags: dict[str, dict[str, str]] = {}
     for el in elements:
@@ -624,6 +756,9 @@ def classify(
                 sites.append(_Site(ref, tags, geom))
             if tags.get("leisure") in ("pitch", "track"):
                 fields.append(geom)
+            fk = feature_kind(tags)
+            if fk and geom.geom_type == "Polygon" and geom.area > 0:
+                features.append((fk, geom, tags.get("name")))
         result = classify_tags(tags, geom)
         if result is None:
             continue
@@ -672,6 +807,7 @@ def classify(
     if ObjectCategory.BRIDGES in wanted_objects:
         items += bridges.find(elements, aoi)
     items = fold_parts(items)
+    attach_features(items, features)
     items = apply_sites(items, sites, aoi, wanted_objects)
     # Surfaces first (drawn underneath), larger first; then objects.
     items.sort(key=lambda it: (it.kind != "surface", -shape(it.geometry).area))

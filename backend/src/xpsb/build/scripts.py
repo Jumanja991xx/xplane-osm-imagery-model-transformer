@@ -43,6 +43,22 @@ def frame(r):
     # helpers to place points in the oriented rectangle: a along the long side
     return lambda a, b, z: [r["x"] + r["ux"] * a + r["vx"] * b,
                             r["y"] + r["uy"] * a + r["vy"] * b, z]
+
+WATER = {"pool": "#3AB2C6", "fountain": "#4AA6B4", "water": "#3F6E78"}
+
+def site_features():
+    # Pools, fountains and ponds inside the outline (in courtyards): water with a rim
+    for f in params.get("features") or []:
+        fp = f["footprint"]
+        kind = f["kind"]
+        part({"pool": "pools", "fountain": "fountains"}.get(kind, "water"))
+        if kind != "water":
+            face([[p[0], p[1], 0.08] for p in offset_polygon(fp, 1.2)], mat="stone",
+                 color="#ECE7DC")
+        face([[p[0], p[1], 0.14] for p in fp], mat="glass", color=WATER[kind])
+        if kind == "fountain":
+            c = polygon_centroid(fp)
+            cylinder(c[0], c[1], 0.1, 0.6, 1.4, mat="stone", segments=8, radius_top=0.3)
 """
 
 GRANDSTAND = (
@@ -349,7 +365,7 @@ def walls(fp, z0, H, look, fstyle, top, top_color, holes, levels):
                 bottom=raised, holes=holes)
 
 def block(fp, z0, H, shape, look, flip, fstyle=None, holes=None, levels=None, chimney=False,
-          tag=""):
+          tag="", roof_h=None):
     # One building block: walls from z0 to H and a roof (gabled/hipped/pyramidal/flat).
     # Its parts are named "walls", "roof", "chimneys" (+ tag: " 2" for OSM part 2).
     wall, wall_mat, gable_mat, roof_color, pitched, flat, rise_k, rise_max = look
@@ -369,7 +385,7 @@ def block(fp, z0, H, shape, look, flip, fstyle=None, holes=None, levels=None, ch
         P = frame(r)
         L2 = r["length"] / 2
         W2 = r["width"] / 2
-        rise = min(r["width"] * rise_k, rise_max)
+        rise = roof_h or min(r["width"] * rise_k, rise_max)
         A = P(-L2, -W2, H)
         B = P(L2, -W2, H)
         C = P(L2, W2, H)
@@ -390,12 +406,38 @@ def block(fp, z0, H, shape, look, flip, fstyle=None, holes=None, levels=None, ch
             part("chimneys" + tag)
             chimneys(fp, H, H + rise + 1.0, count=max(1, min(6, int(r["length"] / 12) + 1)),
                      size=0.7 if r["width"] < 14 else 1.0)
+    elif shape in ("dome", "onion") and not holes:
+        # a real dome over any outline: rings drawn in towards the centre
+        walls(fp, z0, H, look, fstyle, None, None, holes, levels)
+        part("dome" + tag)
+        c = polygon_centroid(fp)
+        step = max(1, len(fp) // 64)
+        ring = [fp[i] for i in range(0, len(fp), step)]
+        rise = roof_h or min(min(r["width"], r["length"]) * 0.5, 30)
+        if shape == "onion":
+            prof = [[1.0, 0.0], [1.12, 0.18], [1.08, 0.38], [0.8, 0.58], [0.45, 0.76], [0.18, 0.9],
+                    [0.04, 1.0]]
+        else:
+            prof = [[1.0, 0.0], [0.97, 0.25], [0.87, 0.5], [0.71, 0.71], [0.5, 0.87], [0.26, 0.97],
+                    [0.0, 1.0]]
+        rings = [[[c[0] + (p[0] - c[0]) * k, c[1] + (p[1] - c[1]) * k, H + rise * z] for p in ring]
+                 for k, z in prof]
+        n = len(ring)
+        for j in range(len(rings) - 1):
+            lo = rings[j]
+            hi = rings[j + 1]
+            for i in range(n):
+                i2 = (i + 1) % n
+                if j == len(rings) - 2:
+                    face([lo[i], lo[i2], hi[i]], mat=pitched, color=roof_color)
+                else:
+                    quad(lo[i], lo[i2], hi[i2], hi[i], mat=pitched, color=roof_color)
     elif shape in ("pyramidal", "dome", "onion", "cone") and len(fp) <= 40 and not holes:
         # towers and domes: a pointed roof over the centre
         walls(fp, z0, H, look, fstyle, None, None, holes, levels)
         part("roof" + tag)
         c = polygon_centroid(fp)
-        rise = min(min(r["width"], r["length"]) * (0.9 if shape == "cone" else 0.6), 25)
+        rise = roof_h or min(min(r["width"], r["length"]) * (0.9 if shape == "cone" else 0.6), 25)
         apex = [c[0], c[1], H + rise]
         n = len(fp)
         for i in range(n):
@@ -406,7 +448,7 @@ def block(fp, z0, H, shape, look, flip, fstyle=None, holes=None, levels=None, ch
         # big or irregular blocks (wings around courtyards): slopes all round
         walls(fp, z0, H, look, fstyle, None, None, holes, levels)
         part("roof" + tag)
-        rise = min(r["width"] * rise_k * 0.5, rise_max, 4.5)
+        rise = roof_h or min(r["width"] * rise_k * 0.5, rise_max, 4.5)
         mansard(fp, H, rise=rise, depth=min(5.0, r["width"] * 0.25), mat=pitched,
                 color=roof_color, holes=holes, top=flat, top_color=roof_color)
         if chimney:
@@ -416,6 +458,7 @@ def block(fp, z0, H, shape, look, flip, fstyle=None, holes=None, levels=None, ch
         walls(fp, z0, H, look, fstyle, flat, roof_color, holes, levels)
 
 def main():
+    site_features()
     st = style()
     if st == "stadium":
         stadium()
@@ -450,15 +493,19 @@ def main():
         for i, bp in enumerate(parts):
             ph = bp.get("height") or H
             pz = bp.get("min_height") or 0
+            # OSM: the height includes the roof (roof:height of it)
+            rh = bp.get("roof_height")
+            if rh and bp.get("roof_shape") not in (None, "flat") and ph - rh > pz + 1:
+                ph = ph - rh
             plook = (bp.get("wall_color") or wall, wall_mat, gable_mat,
                      bp.get("roof_color") or roof_color, look[4], look[5], rise_k, rise_max)
             block(bp["footprint"], pz, ph, bp.get("roof_shape") or "flat", plook, False,
-                  fstyle, tag=" %d" % (i + 1))
+                  fstyle, tag=" %d" % (i + 1), roof_h=rh)
         if g("parts_cover", 1.0) >= 0.8:
             return  # the parts are the whole building
     shape = g("roof_shape", shape_def)
     block(footprint, g("min_height", 0), H, shape, look, g("flip", False), fstyle, courtyards,
-          levels, chimney)
+          levels, chimney, roof_h=params.get("roof_height"))
     tags = params.get("tags") or {}
     landmark = (tags.get("historic") or tags.get("heritage") or tags.get("tourism")
                 or tags.get("wikidata") or tags.get("site:main") == "yes")
@@ -586,7 +633,7 @@ main()
 MONUMENT = (
     COMMON
     + """
-# params["monument"]: kind (statue|rider|bust|obelisk|column|stone), material,
+# params["monument"]: kind (statue|rider|bust|obelisk|column|stone|sculpture), material,
 # robe, pose, holding. height = the whole monument, pedestal included.
 def main():
     m = params.get("monument") or {}
@@ -603,7 +650,7 @@ def main():
     if g("flip", False):
         heading += 180
     defaults = {"statue": 6.0, "rider": 8.0, "bust": 3.0, "obelisk": 10.0, "column": 15.0,
-                "stone": 2.2}
+                "stone": 2.2, "sculpture": 3.0}
     H = g("height", defaults.get(kind, 6.0))
     stone = "stone" if mat == "bronze" else mat
     if has_scan:  # the real statue, scanned (usually with the base it stands on)
@@ -623,6 +670,15 @@ def main():
             top="stone")
         figure(x, y, top + H * 0.65, H * 0.25, pose="standing", heading=heading,
                mat=mat, robe=m.get("robe") == True, holding=m.get("holding") or "none")
+        return
+    if kind == "sculpture":
+        # an animal or abstract work: a smooth form on a low base, never a person
+        w = size * 0.8 if size > 0 else max(1.0, H * 0.6)
+        top = pedestal(x, y, min(0.6, H * 0.15), w, heading=heading, mat=stone)
+        h = H - top
+        revolve(x, y, [[w * 0.32, top], [w * 0.42, top + h * 0.25], [w * 0.3, top + h * 0.55],
+                       [w * 0.36, top + h * 0.75], [w * 0.18, top + h * 0.95], [0, top + h]],
+                mat=mat, segments=segs(12))
         return
     if kind == "stone":
         box(x, y, 0, max(0.3, H * 0.25), max(0.8, H * 0.45), H, heading=heading, mat=stone,

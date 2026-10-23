@@ -567,6 +567,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/jobs/{job_id}/photo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Job Photo
+         * @description A photo-realistic picture of the scenery, rendered by Blender (minutes).
+         */
+        post: operations["job_photo_api_jobs__job_id__photo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs/{job_id}/preview/{name}": {
         parameters: {
             query?: never;
@@ -722,6 +742,42 @@ export interface paths {
         post: operations["redesign_api_jobs__job_id__design__item_id__post"];
         /** Reset Design */
         delete: operations["reset_design_api_jobs__job_id__design__item_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/script/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Script */
+        get: operations["get_script_api_jobs__job_id__script__item_id__get"];
+        /** Set Script */
+        put: operations["set_script_api_jobs__job_id__script__item_id__put"];
+        post?: never;
+        /** Reset Script */
+        delete: operations["reset_script_api_jobs__job_id__script__item_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/script-test/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Script */
+        post: operations["test_script_api_jobs__job_id__script_test__item_id__post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1295,6 +1351,8 @@ export interface components {
             height_m?: number | null;
             /** Min Height M */
             min_height_m?: number | null;
+            /** Roof Height M */
+            roof_height_m?: number | null;
             /** Roof Shape */
             roof_shape?: string | null;
             /** Wall Color */
@@ -1607,7 +1665,7 @@ export interface components {
             /** Wall Material */
             wall_material?: ("windows" | "windows_classic" | "windows_arched" | "windows_house" | "plaster" | "stone" | "brick" | "glass" | "metal_sheet" | "concrete" | "wood") | null;
             /** Monument Kind */
-            monument_kind?: ("statue" | "rider" | "bust" | "obelisk" | "column" | "stone") | null;
+            monument_kind?: ("statue" | "rider" | "bust" | "obelisk" | "column" | "stone" | "sculpture") | null;
             /** Pose */
             pose?: ("standing" | "arm_raised" | "arms_raised" | "pointing" | "seated") | null;
             /** Holding */
@@ -1883,6 +1941,26 @@ export interface components {
              * @description May it go into a scenery package as a texture (see redistributable)?
              */
             readonly shareable: boolean;
+        };
+        /** PhotoBody */
+        PhotoBody: {
+            /** Item Id */
+            item_id?: string | null;
+            /**
+             * Azimuth
+             * @default 225
+             */
+            azimuth: number;
+            /**
+             * Elevation
+             * @default 22
+             */
+            elevation: number;
+            /**
+             * Samples
+             * @default 64
+             */
+            samples: number;
         };
         /**
          * PhotoCandidate
@@ -2268,6 +2346,57 @@ export interface components {
             row_members?: {
                 [key: string]: unknown;
             }[];
+            /** Features */
+            features?: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** ScriptBody */
+        ScriptBody: {
+            /** Script */
+            script: string;
+        };
+        /**
+         * ScriptTest
+         * @description What a test run of a build script gave.
+         */
+        ScriptTest: {
+            /** Ok */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+            /**
+             * Triangles
+             * @default 0
+             */
+            triangles: number;
+            /**
+             * Budget
+             * @default 0
+             */
+            budget: number;
+            /**
+             * Seconds
+             * @default 0
+             */
+            seconds: number;
+            /**
+             * Parts
+             * @default []
+             */
+            parts: string[];
+            /**
+             * Views
+             * @default []
+             */
+            views: string[];
+        };
+        /** ScriptView */
+        ScriptView: {
+            /** Script */
+            script: string;
+            /** Own */
+            own: boolean;
         };
         /** SearchResult */
         SearchResult: {
@@ -2310,6 +2439,12 @@ export interface components {
              * @enum {string}
              */
             blender_device: "auto" | "cpu";
+            /**
+             * Blender Quality
+             * @default standard
+             * @enum {string}
+             */
+            blender_quality: "standard" | "fine";
             /** Overpass Url */
             overpass_url?: string | null;
         };
@@ -3595,6 +3730,39 @@ export interface operations {
             };
         };
     };
+    job_photo_api_jobs__job_id__photo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhotoBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     job_preview_file_api_jobs__job_id__preview__name__get: {
         parameters: {
             query?: never;
@@ -4025,6 +4193,142 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_script_api_jobs__job_id__script__item_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScriptView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_script_api_jobs__job_id__script__item_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScriptBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_script_api_jobs__job_id__script__item_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_script_api_jobs__job_id__script_test__item_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScriptBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScriptTest"];
                 };
             };
             /** @description Validation Error */

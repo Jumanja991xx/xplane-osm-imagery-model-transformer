@@ -24,7 +24,16 @@ def parse_color(value) -> RGB:
             return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
     if isinstance(value, list) and len(value) == 3 and all(isinstance(c, int) for c in value):
         return tuple(max(0, min(255, c)) for c in value)  # type: ignore[return-value]
-    raise ValueError(f"colour must be '#rrggbb' or [r, g, b], got {value!r}")
+    if isinstance(value, str) and value.strip():
+        # OSM maps colours by name too (roof:colour=lightblue, building:colour=beige)
+        from PIL import ImageColor
+
+        try:
+            r, g, b = ImageColor.getrgb(value.strip().lower().replace(" ", ""))[:3]
+            return (r, g, b)
+        except ValueError:
+            pass
+    raise ValueError(f"colour must be '#rrggbb', [r, g, b] or a colour name, got {value!r}")
 
 
 def _noise(u: np.ndarray, v: np.ndarray, scale: float, seed: int = 1) -> np.ndarray:

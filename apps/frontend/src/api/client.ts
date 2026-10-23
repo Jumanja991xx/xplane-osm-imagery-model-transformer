@@ -2,6 +2,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { components } from "./schema";
 
 type S = components["schemas"];
+export type ScriptTest = S["ScriptTest"];
 export type JobView = S["JobView"];
 export type Brief = S["Brief"];
 export type PendingGate = S["PendingGate"];
@@ -216,6 +217,12 @@ export const api = {
       model: model ?? null,
     }),
   resetDesign: (id: string, itemId: string) => request<JobView>("DELETE", `/api/jobs/${id}/design/${itemId}`),
+  getScript: (id: string, itemId: string) => request<S["ScriptView"]>("GET", `/api/jobs/${id}/script/${itemId}`),
+  testScript: (id: string, itemId: string, script: string) =>
+    request<S["ScriptTest"]>("POST", `/api/jobs/${id}/script-test/${itemId}`, { script }),
+  setScript: (id: string, itemId: string, script: string) =>
+    request<JobView>("PUT", `/api/jobs/${id}/script/${itemId}`, { script }),
+  resetScript: (id: string, itemId: string) => request<JobView>("DELETE", `/api/jobs/${id}/script/${itemId}`),
   addPhoto: (id: string, itemId: string, data: string) =>
     request<JobView>("POST", `/api/jobs/${id}/photos?item=${encodeURIComponent(itemId)}`, {
       data,
@@ -273,6 +280,30 @@ export async function texturePreviewUrl(jobId: string, itemId: string, tex: Phot
   if (!res.ok) {
     const detail = (await res.json().catch(() => ({})))?.detail;
     throw new ApiError(res.status, detail?.key ?? "error.texture_corners", detail?.params ?? {});
+  }
+  return URL.createObjectURL(await res.blob());
+}
+
+/** A photo-realistic picture of the built scenery, rendered by the user's Blender
+ * (Cycles; takes minutes), as a blob URL. itemId: aim at one object (else all). */
+export async function renderPhotoUrl(
+  jobId: string,
+  view: { item_id?: string | null; azimuth?: number; elevation?: number; samples?: number },
+): Promise<string> {
+  const { baseUrl, token } = await backend();
+  let res: Response;
+  try {
+    res = await fetch(`${baseUrl}/api/jobs/${jobId}/photo`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(view),
+    });
+  } catch {
+    throw new ApiError(0, "error.backend_unreachable");
+  }
+  if (!res.ok) {
+    const detail = (await res.json().catch(() => ({})))?.detail;
+    throw new ApiError(res.status, detail?.key ?? "error.photo_failed", detail?.params ?? { detail: "" });
   }
   return URL.createObjectURL(await res.blob());
 }

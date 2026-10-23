@@ -31,7 +31,7 @@ class Research(BaseModel):
     sources: list[str] = Field(default_factory=list)
 
 
-MonumentKind = Literal["statue", "rider", "bust", "obelisk", "column", "stone"]
+MonumentKind = Literal["statue", "rider", "bust", "obelisk", "column", "stone", "sculpture"]
 StatuePose = Literal["standing", "arm_raised", "arms_raised", "pointing", "seated"]
 BridgeStructure = Literal["beam", "arch", "truss", "suspension", "cable_stayed"]
 StatueHeld = Literal["none", "palm", "wreath", "sword", "torch", "book", "flag"]
@@ -106,6 +106,8 @@ class BuildingPart(BaseModel):
     osm_ref: str | None = None
     height_m: float | None = None
     min_height_m: float | None = None
+    # roof:height - how much of height_m is roof (walls end below it)
+    roof_height_m: float | None = None
     roof_shape: str | None = None
     wall_color: str | None = None
     roof_color: str | None = None
@@ -202,6 +204,9 @@ class SceneItem(BaseModel):
     # A row of houses joined under one roof (osm/rows.py): the houses as OSM maps
     # them (SceneItem dicts), to split the row again.
     row_members: list[dict[str, Any]] = Field(default_factory=list)
+    # Pools, fountains and ponds inside the outline (in its courtyards), from OSM:
+    # {"kind": "pool" | "fountain" | "water", "geometry": GeoJSON Polygon, "name"}.
+    features: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ItemPatch(BaseModel):

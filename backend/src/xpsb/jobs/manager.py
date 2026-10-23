@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import io
 import logging
 import os
 import shutil
+import subprocess
 import uuid
 from collections.abc import Callable
 from pathlib import Path
@@ -68,6 +70,21 @@ def _take_textures(item: SceneItem, made: list[PhotoTexture]) -> None:
     names = {t.name for t in made}
     item.textures = [t for t in item.textures if t.source == "user" and t.name not in names]
     item.textures += made
+
+
+MAX_OWN_SCRIPT_CHARS = 100_000
+
+
+class ScriptTest(BaseModel):
+    """What a test run of a build script gave."""
+
+    ok: bool
+    error: str | None = None
+    triangles: int = 0
+    budget: int = 0
+    seconds: float = 0.0
+    parts: list[str] = []
+    views: list[str] = []  # PNG, base64: from south-west, from north-east, from above
 
 
 class JobConflict(Exception):
@@ -1491,6 +1508,88 @@ class JobManager:
         self._save(job)
         return job
 
+    # ---- own build scripts (written by hand, no AI) -------------------------------
+
+    def _script_job(self, job_id: str, item_id: str) -> tuple[Job, SceneItem, str]:
+        """Job, object and detail level for a hand-written script: before the plan
+        (the plan builds it) or in the plan (rebuilt at once)."""
+        job = self.get(job_id)
+        if job.state not in (JobState.ANALYZED, JobState.PLANNED) or job.analysis is None:
+            raise JobConflict("error.wrong_state", state=job.state.value)
+        item = self._item(job, item_id)
+        if item.kind != "object":
+            raise JobConflict("error.similar_objects_only")
+        detail = job.plan.detail if job.plan else (job.brief.detail if job.brief else "medium")
+        return job, item, detail
+
+    def script(self, job_id: str, item_id: str) -> dict:
+        """The object's build script (its own or the default one) and what it gets."""
+        job = self.get(job_id)
+        if job.analysis is None:
+            raise JobConflict("error.wrong_state", state=job.state.value)
+        item = self._item(job, item_id)
+        return {"script": self._current_script(item), "own": item.script is not None}
+
+    def test_script(self, job_id: str, item_id: str, script: str) -> ScriptTest:
+        """Runs a script for the object in the sandbox (nothing is saved): triangles,
+        seconds, parts and the standard views - or the script's error."""
+        import time
+
+        from xpsb.build import assemble
+        from xpsb.build.render import views_png
+        from xpsb.build.sandbox import ScriptError, run_script
+
+        job, item, detail = self._script_job(job_id, item_id)
+        if len(script) > MAX_OWN_SCRIPT_CHARS:
+            raise JobConflict("error.script_too_long", max=MAX_OWN_SCRIPT_CHARS)
+        assert job.analysis is not None
+        try:
+            inputs = assemble._script_inputs(item, job.analysis.items, detail)
+        except (ValueError, LookupError) as exc:
+            raise JobConflict("error.script_failed", detail=str(exc)[:500]) from exc
+        budget = assemble.triangle_budget(inputs, detail)
+        start = time.monotonic()
+        try:
+            mesh = run_script(
+                script,
+                inputs,
+                budget,
+                name=f"{item.id}.star",
+                library=frozenset(self.library().objects),
+            )
+        except ScriptError as exc:
+            return ScriptTest(ok=False, error=str(exc)[:3000], budget=budget)
+        seconds = time.monotonic() - start
+        views = [
+            base64.b64encode(png).decode("ascii")
+            for _, png in views_png(mesh, inputs.footprint, size=480)
+        ]
+        return ScriptTest(
+            ok=True,
+            triangles=mesh.triangle_count,
+            budget=budget,
+            seconds=round(seconds, 2),
+            parts=[p.label or p.id for p in mesh.parts][:200],
+            views=views,
+        )
+
+    def set_script(self, job_id: str, item_id: str, script: str | None) -> Job:
+        """Puts a hand-written script on the object (None: back to the default one).
+        Only a script that runs is taken; in the plan the object is rebuilt."""
+        job, item, _ = self._script_job(job_id, item_id)
+        if script is not None:
+            result = self.test_script(job_id, item_id, script)
+            if not result.ok:
+                raise JobConflict("error.script_failed", detail=(result.error or "")[:1500])
+        item.script = script
+        item.script_request = "own script" if script is not None else None
+        item.part_ops.clear()  # they named the parts of the old script
+        item.edited = True
+        if job.state is JobState.PLANNED:
+            self.regenerate_object(job, item)
+        self._save(job)
+        return job
+
     # ---- photos of real objects (input for the AI architect) ---------------------
 
     def _photo_job(self, job_id: str) -> Job:
@@ -1639,7 +1738,26 @@ class JobManager:
         if name.startswith("city_") and name.endswith("_walls.png"):
             name = "city_atlas.png"  # every city block's walls share the facade atlas
         path = self.job_dir(job_id) / "preview" / name
+        shaded = self._shaded_texture(job, name, path)
+        if shaded is not None:
+            return shaded
         return path if path.is_file() and path.suffix in (".json", ".png") else None
+
+    def _shaded_texture(self, job: Job, name: str, preview: Path) -> Path | None:
+        """After a build with Blender the preview shows what X-Plane will show: the
+        package's shaded texture (soft shadows, weathering, relief) - as long as the
+        object was not rebuilt in the preview since (then the layout may differ)."""
+        build = job.build
+        if build is None or not build.package_dir or not name.endswith(".png"):
+            return None
+        stem = name.removesuffix(".png").removesuffix("_nml")
+        if stem not in build.shaded_stems:
+            return None
+        packaged = Path(build.package_dir) / "objects" / name
+        mesh = preview.with_name(f"{stem}.json")
+        if not packaged.is_file() or not mesh.is_file():
+            return None
+        return packaged if packaged.stat().st_mtime >= mesh.stat().st_mtime else None
 
     def cancel(self, job_id: str) -> Job:
         job = self.get(job_id)
@@ -1752,6 +1870,78 @@ class JobManager:
             self._blender = (key, blender_mod.find(s.blender_path))
         return self._blender[1]
 
+    def photo_manifest(
+        self,
+        job_id: str,
+        item_id: str | None = None,
+        azimuth: float = 225.0,
+        elevation: float = 22.0,
+        size: tuple[int, int] = (1600, 1000),
+        samples: int = 64,
+    ) -> dict:
+        """What Blender needs for a photo of the scenery: every built object with the
+        textures the preview shows (after a build with Blender: the shaded ones), a
+        camera on one object (item_id) or on the whole scene, a low sun."""
+        data = self.preview(job_id)
+        objects, boxes = [], []
+        for o in data["objects"]:
+            if o["status"] != "ok" or not o.get("has_mesh", True):
+                continue
+            mesh = self.preview_file(job_id, f"{o['stem']}.json")
+            if mesh is None:
+                continue
+            tex = self.preview_file(job_id, f"{o['stem']}.png")
+            nml = self.preview_file(job_id, f"{o['stem']}_nml.png")
+            x, y = o["offset"]
+            objects.append(
+                {
+                    "mesh": str(mesh),
+                    "texture": str(tex) if tex else None,
+                    "normal": str(nml) if nml else None,
+                    "x": x,
+                    "y": y,
+                    "heading": o.get("heading") or 0.0,
+                }
+            )
+            w, s, e, n = o.get("extent") or (-10.0, -10.0, 10.0, 10.0)
+            top = o.get("top_m") or 10.0
+            box = (x + w, y + s, x + e, y + n, top)
+            if item_id is None or o["item_id"] == item_id:
+                boxes.append(box)
+        if not objects:
+            raise JobConflict("error.no_preview")
+        if not boxes:
+            raise JobConflict("error.item_not_found", item=item_id or "")
+        x0, y0 = min(b[0] for b in boxes), min(b[1] for b in boxes)
+        x1, y1 = max(b[2] for b in boxes), max(b[3] for b in boxes)
+        top = max(b[4] for b in boxes)
+        span = max(x1 - x0, y1 - y0, top)
+        return {
+            "objects": objects,
+            "ground": {"x": (x0 + x1) / 2, "y": (y0 + y1) / 2, "size": 40000.0},
+            "camera": {
+                "target": [(x0 + x1) / 2, (y0 + y1) / 2, top * 0.3],
+                "azimuth": azimuth,
+                "elevation": elevation,
+                "distance": span * 1.25 + 40.0,
+                "lens": 35.0,
+            },
+            "sun": {"azimuth": (azimuth + 140.0) % 360.0, "elevation": 34.0},
+            "size": list(size),
+            "samples": samples,
+        }
+
+    def photo(self, job_id: str, **view) -> Path:
+        """Renders the photo with the user's Blender (worker thread; minutes)."""
+        info = self.blender()
+        if info is None:
+            raise JobConflict("error.blender_missing")
+        manifest = self.photo_manifest(job_id, **view)
+        try:
+            return blender_mod.render_photo(info.path, manifest, self.job_dir(job_id) / "photo")
+        except (RuntimeError, OSError, subprocess.TimeoutExpired) as exc:
+            raise JobConflict("error.photo_failed", detail=str(exc)[-600:]) from exc
+
     async def _do_build(self, job: Job, exe: Path) -> None:
         info = await asyncio.to_thread(self.blender)
         job.build = await asyncio.to_thread(
@@ -1765,6 +1955,7 @@ class JobManager:
             info.version if info else None,
             lambda: job.id in self._skip_blender,
             self._settings.load().blender_device == "cpu",
+            self._settings.load().blender_quality == "fine",
         )
         self._skip_blender.discard(job.id)
         self._set_state(job, JobState.BUILT)
