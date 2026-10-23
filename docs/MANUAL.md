@@ -261,6 +261,19 @@ on those parts only ("Only for: Tower") – e.g. *"make the spire twice as high 
 green"*. The AI architect names the parts of its designs, so your part changes stay in
 place when it changes something else.
 
+**Build script by hand** – every object is built from a short script (Starlark, the same
+sealed environment the AI architect writes in). Open the *Build script* box of the chosen
+object to see it, change it, and click **Test**: a broken script shows the error with its
+line; a working one shows triangles, time, parts and three views – the top view with a
+grid in metres, so positions can be read off. **Use** puts it on the object (the object is
+rebuilt), **Default script** goes back. Free, no AI involved. Pools, fountains and ponds
+mapped inside a building's courtyards reach its script as `params["features"]` and are
+built with water and a stone rim.
+
+**Photo with Blender** – *Render photo with Blender* makes a photo-realistic picture
+(Cycles: sunlight, sky light, cast shadows) of the whole scenery, or of the chosen object,
+from the preview's current point of view. Takes a few minutes; click the picture to save it.
+
 The preview also explains what is only a stand-in: trees, lamps, cars and flags come from
 X-Plane's own library and look right in X-Plane, not in the preview.
 
@@ -436,7 +449,9 @@ limited time and triangles. Blender only ever runs the fixed script shipped with
 - **DSFTool** – comes with the app; a custom path is optional. Needed to build packages and
   for terrain heights.
 - **Blender** – use it or not, custom path, *Automatic* (graphics card if found) or *CPU only*, and **Test Blender**:
-  bakes a test building and shows how long each part takes.
+  bakes a test building and shows how long each part takes. **Quality**: *Standard* or
+  *Fine* (four times the samples, finer shading and relief – about ten times longer; the
+  estimate before the build says how long).
 - **OpenStreetMap data** – an own Overpass server (optional, asked first). Without it the
   app uses four public servers; if they are busy it asks the next one after 25 s, then uses
   older data from its cache or OpenStreetMap's own API.
@@ -497,6 +512,11 @@ The objects are built on all processor cores at once (one core stays free for th
 a faster CPU with more cores helps most. The 3D view itself runs on the graphics card; if
 the preview warns that it runs *without a graphics card*, update the graphics driver and do
 not start the app over remote desktop.
+
+**Research found no facts or photos.**
+If the note says *no source was reachable*, the computer could not reach Wikidata,
+Wikipedia or Commons (offline, a firewall or a blocked service) – it is not that nothing
+exists. Check the connection and analyse again.
 
 **Blender does nothing / is slow.**
 *Settings → Tools → Test Blender* shows what takes the time. *CPU only* skips the graphics
