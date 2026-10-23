@@ -1639,7 +1639,26 @@ class JobManager:
         if name.startswith("city_") and name.endswith("_walls.png"):
             name = "city_atlas.png"  # every city block's walls share the facade atlas
         path = self.job_dir(job_id) / "preview" / name
+        shaded = self._shaded_texture(job, name, path)
+        if shaded is not None:
+            return shaded
         return path if path.is_file() and path.suffix in (".json", ".png") else None
+
+    def _shaded_texture(self, job: Job, name: str, preview: Path) -> Path | None:
+        """After a build with Blender the preview shows what X-Plane will show: the
+        package's shaded texture (soft shadows, weathering, relief) - as long as the
+        object was not rebuilt in the preview since (then the layout may differ)."""
+        build = job.build
+        if build is None or not build.package_dir or not name.endswith(".png"):
+            return None
+        stem = name.removesuffix(".png").removesuffix("_nml")
+        if stem not in build.shaded_stems:
+            return None
+        packaged = Path(build.package_dir) / "objects" / name
+        mesh = preview.with_name(f"{stem}.json")
+        if not packaged.is_file() or not mesh.is_file():
+            return None
+        return packaged if packaged.stat().st_mtime >= mesh.stat().st_mtime else None
 
     def cancel(self, job_id: str) -> Job:
         job = self.get(job_id)
