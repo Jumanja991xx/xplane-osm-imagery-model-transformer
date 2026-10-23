@@ -69,12 +69,35 @@ def _material(name: str, tex: str | None, nml: str | None, alpha: bool):
     return mat
 
 
+def _single_sided(faces: list, verts: list, nrm: list | None) -> list:
+    """Two-sided faces come twice (front and back, X-Plane draws each from one side).
+    Cycles shades a surface from both sides, and the copy facing away from the light
+    renders black where the two lie on top of each other (a courtyard's paving and
+    water): keep one of each pair - the one facing up, or the first."""
+    seen: dict = {}
+    out = []
+    for f in faces:
+        key = frozenset(tuple(round(c, 3) for c in verts[i]) for i in f)
+        up = sum(nrm[3 * i + 2] for i in f) if nrm else 0.0
+        if key in seen:
+            j, other_up = seen[key]
+            if up > other_up:
+                out[j] = f
+                seen[key] = (j, up)
+            continue
+        seen[key] = (len(out), up)
+        out.append(f)
+    return out
+
+
 def _object(o: dict, n: int) -> None:
     with open(o["mesh"], encoding="utf-8") as f:
         m = json.load(f)
     pos, uvs, idx = m["positions"], m["uvs"], m["index"]
     verts = [(pos[i], pos[i + 1], pos[i + 2]) for i in range(0, len(pos), 3)]
     faces = [(idx[i], idx[i + 1], idx[i + 2]) for i in range(0, len(idx), 3)]
+    nrm = m.get("normals")
+    faces = _single_sided(faces, verts, nrm)
     if not faces:
         return
     mesh = bpy.data.meshes.new(f"obj{n}")
@@ -83,7 +106,6 @@ def _object(o: dict, n: int) -> None:
     for loop in mesh.loops:
         v = loop.vertex_index
         uv.data[loop.index].uv = (uvs[2 * v], uvs[2 * v + 1])
-    nrm = m.get("normals")
     if nrm:
         normals = [(nrm[i], nrm[i + 1], nrm[i + 2]) for i in range(0, len(nrm), 3)]
         if hasattr(mesh, "use_auto_smooth"):  # Blender < 4.1
