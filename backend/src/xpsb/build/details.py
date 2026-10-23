@@ -666,7 +666,8 @@ def mansard(
     top_color,
 ) -> None:
     """Sloped roof band along the outline and the courtyards, flat on top: the look of
-    the pitched roofs of a big block from every side."""
+    the pitched roofs of a big block from every side. Outlines too narrow for any
+    band get a flat roof."""
     from xpsb.build.tools import _frames
 
     for _attempt in range(4):
@@ -679,7 +680,10 @@ def mansard(
             break
         depth *= 0.5
     else:
-        raise GeometryError("mansard: the building is too narrow for this roof depth")
+        # too narrow or too jagged for sloped bands (small kiosks, odd outlines): a
+        # flat roof at the eaves instead of no building at all
+        flat_top(mesh, rings, z, top or mat, top_color if top else color)
+        return
     slope = Patch(mat, color)
     for ring, ins in zip(rings, inner, strict=True):
         count = len(ring)

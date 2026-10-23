@@ -386,6 +386,27 @@ with sync_playwright() as p:
     page.get_by_test_id("part-Halle").click(modifiers=["Control"])
     expect(page.get_by_test_id("parts-controls")).to_contain_text("2 Teil")
     page.get_by_test_id("parts-toggle").click()
+    # Own build script by hand: test (error with its line, then views), use, back.
+    page.get_by_test_id("script-toggle").click()
+    expect(page.get_by_test_id("script-text")).not_to_have_value("", timeout=10000)
+    page.get_by_test_id("script-text").fill("extrude(footprint, 0)\n")
+    page.get_by_test_id("script-test").click()
+    expect(page.get_by_test_id("script-error")).to_contain_text("extrude", timeout=15000)
+    expect(page.get_by_test_id("script-use")).to_be_disabled()
+    page.get_by_test_id("script-text").fill(
+        'part("Turm")\nextrude(footprint, 0, 14, mat="brick")\n'
+        "c = polygon_centroid(footprint)\n"
+        'cylinder(c[0], c[1], 14, 2, 18, mat="roof_metal", radius_top=0.1)\n'
+    )
+    page.get_by_test_id("script-test").click()
+    expect(page.get_by_test_id("script-result")).to_contain_text("Dreiecken", timeout=15000)
+    expect(page.get_by_test_id("script-result").locator("img")).to_have_count(3)
+    page.screenshot(path=OUT / "09f3-own-script.png")
+    page.get_by_test_id("script-use").click()
+    expect(page.get_by_test_id("script-toggle")).to_contain_text("eigenes", timeout=20000)
+    page.get_by_test_id("script-reset").click()
+    expect(page.get_by_test_id("script-toggle")).not_to_contain_text("eigenes", timeout=20000)
+    page.get_by_test_id("script-toggle").click()
     page.get_by_test_id("preview-close").click()
     # One step back to the list and forward again: nothing is lost, no new analysis.
     page.get_by_test_id("back-to-list").click()

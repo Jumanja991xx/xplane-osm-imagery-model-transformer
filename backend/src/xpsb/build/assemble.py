@@ -28,6 +28,7 @@ from xpsb.build.sandbox import ScriptError, ScriptInputs, run_script
 from xpsb.build.scripts import DEFAULT_SCRIPTS
 from xpsb.geo import METERS_PER_DEG_LAT, meters_per_deg_lon
 from xpsb.imagery import retouch
+from xpsb.osm.classify import parse_length_m
 from xpsb.scene import SceneItem
 from xpsb.xplane.dsf_text import DsfText, Tile
 from xpsb.xplane.library import Catalog
@@ -252,6 +253,7 @@ def _params(item: SceneItem, items: list[SceneItem], local, detail: str) -> dict
         "wall_material": a.wall_material or WALL_MATERIALS.get(tags.get("building:material", "")),
         "building": _building_type(item),
         "min_height": a.min_height_m,
+        "roof_height": parse_length_m(tags.get("roof:height")),
         "parts": _parts(item, local),
         "features": _features(item, local),
         "parts_cover": _parts_cover(item),

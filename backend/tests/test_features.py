@@ -99,3 +99,35 @@ def test_research_says_when_no_source_was_reachable(monkeypatch):
     monkeypatch.setattr(research, "wikipedia_summary", lambda *a: None)
     monkeypatch.setattr(research.photos, "search", lambda *a, **k: None)
     assert not research.research_item(item, "de", None).unreachable
+
+
+def test_osm_colour_names_and_narrow_mansards_do_not_break_a_building():
+    from xpsb.build.materials import parse_color
+    from xpsb.build.sandbox import ScriptInputs
+
+    assert parse_color("lightblue") == (173, 216, 230)
+    assert parse_color("Light Blue") == (173, 216, 230)
+    # a sliver too narrow for a mansard band still gets a roof
+    sliver = [[0, 0], [30, 0], [30, 0.6], [0, 0.6]]
+    mesh = run_script(
+        'mansard(footprint, 4, rise=2, depth=3, color="lightblue")',
+        ScriptInputs(sliver, None, {}),
+        5_000,
+    )
+    assert mesh.triangle_count > 0
+
+
+def test_domes_are_round_over_any_outline():
+    import math
+
+    from xpsb.build.sandbox import ScriptInputs
+
+    # a round hall drawn with many points (OSM: 109 for Budapest's Biodome)
+    circle = [
+        [40 * math.cos(i * math.pi / 54), 40 * math.sin(i * math.pi / 54)] for i in range(108)
+    ]
+    params = {"roof_shape": "dome", "height": 12, "building": "yes"}
+    mesh = run_script(DEFAULT_SCRIPTS["buildings"], ScriptInputs(circle, None, params), 60_000)
+    assert "dome" in {p.id for p in mesh.parts}
+    (_, _, _), (_, _, z1) = mesh.bounds()
+    assert z1 > 12 + 15  # the dome rises well above the walls

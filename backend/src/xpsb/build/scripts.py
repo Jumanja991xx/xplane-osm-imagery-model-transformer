@@ -406,6 +406,32 @@ def block(fp, z0, H, shape, look, flip, fstyle=None, holes=None, levels=None, ch
             part("chimneys" + tag)
             chimneys(fp, H, H + rise + 1.0, count=max(1, min(6, int(r["length"] / 12) + 1)),
                      size=0.7 if r["width"] < 14 else 1.0)
+    elif shape in ("dome", "onion") and not holes:
+        # a real dome over any outline: rings drawn in towards the centre
+        walls(fp, z0, H, look, fstyle, None, None, holes, levels)
+        part("dome" + tag)
+        c = polygon_centroid(fp)
+        step = max(1, len(fp) // 64)
+        ring = [fp[i] for i in range(0, len(fp), step)]
+        rise = roof_h or min(min(r["width"], r["length"]) * 0.5, 30)
+        if shape == "onion":
+            prof = [[1.0, 0.0], [1.12, 0.18], [1.08, 0.38], [0.8, 0.58], [0.45, 0.76], [0.18, 0.9],
+                    [0.04, 1.0]]
+        else:
+            prof = [[1.0, 0.0], [0.97, 0.25], [0.87, 0.5], [0.71, 0.71], [0.5, 0.87], [0.26, 0.97],
+                    [0.0, 1.0]]
+        rings = [[[c[0] + (p[0] - c[0]) * k, c[1] + (p[1] - c[1]) * k, H + rise * z] for p in ring]
+                 for k, z in prof]
+        n = len(ring)
+        for j in range(len(rings) - 1):
+            lo = rings[j]
+            hi = rings[j + 1]
+            for i in range(n):
+                i2 = (i + 1) % n
+                if j == len(rings) - 2:
+                    face([lo[i], lo[i2], hi[i]], mat=pitched, color=roof_color)
+                else:
+                    quad(lo[i], lo[i2], hi[i2], hi[i], mat=pitched, color=roof_color)
     elif shape in ("pyramidal", "dome", "onion", "cone") and len(fp) <= 40 and not holes:
         # towers and domes: a pointed roof over the centre
         walls(fp, z0, H, look, fstyle, None, None, holes, levels)
@@ -479,7 +505,7 @@ def main():
             return  # the parts are the whole building
     shape = g("roof_shape", shape_def)
     block(footprint, g("min_height", 0), H, shape, look, g("flip", False), fstyle, courtyards,
-          levels, chimney)
+          levels, chimney, roof_h=params.get("roof_height"))
     tags = params.get("tags") or {}
     landmark = (tags.get("historic") or tags.get("heritage") or tags.get("tourism")
                 or tags.get("wikidata") or tags.get("site:main") == "yes")
