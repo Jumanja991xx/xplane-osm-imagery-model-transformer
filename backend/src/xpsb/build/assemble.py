@@ -806,12 +806,16 @@ def _shade_with_blender(
     progress: Callable[[BlenderStatus], None] | None,
     should_stop: Callable[[], bool] = lambda: False,
     cpu: bool = False,
+    fine: bool = False,
 ) -> None:
     """One Blender run bakes the soft shading of all prepared objects, which is then
-    multiplied into their colour textures."""
+    multiplied into their colour textures. `fine`: the finer, slower bake."""
     from xpsb import blender
 
     todo = [r for r in results if r.blender_input]
+    if fine:
+        for r in todo:
+            blender.refine(Path(r.blender_input))  # type: ignore[arg-type]
     work = objects_dir / BLENDER_DIR
     log: list[str] = []
     problems: list[str] = []
@@ -883,6 +887,7 @@ def write_package(
     blender_stop: Callable[[], bool] = lambda: False,
     blender_cpu: bool = False,
     extra_objects: list[tuple[str, float, float]] = (),  # type: ignore[assignment]
+    blender_fine: bool = False,
 ) -> PackageResult:
     """`extra_objects`: further OBJs already in the package (path, lon, lat), e.g. the
     blocks of the city mode; those outside this DSF's tile come back in
@@ -894,7 +899,13 @@ def write_package(
     )
     if blender_exe:
         _shade_with_blender(
-            results, objects_dir, blender_exe, blender_progress, blender_stop, blender_cpu
+            results,
+            objects_dir,
+            blender_exe,
+            blender_progress,
+            blender_stop,
+            blender_cpu,
+            blender_fine,
         )
 
     dsf = DsfText(tile=tile)

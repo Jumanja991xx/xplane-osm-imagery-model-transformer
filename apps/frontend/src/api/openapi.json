@@ -3552,6 +3552,17 @@
             ],
             "title": "Min Height M"
           },
+          "roof_height_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roof Height M"
+          },
           "roof_shape": {
             "anyOf": [
               {
@@ -6306,6 +6317,15 @@
             ],
             "title": "Blender Device",
             "default": "auto"
+          },
+          "blender_quality": {
+            "type": "string",
+            "enum": [
+              "standard",
+              "fine"
+            ],
+            "title": "Blender Quality",
+            "default": "standard"
           },
           "overpass_url": {
             "anyOf": [

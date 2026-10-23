@@ -74,6 +74,9 @@ class Settings(BaseModel):
     blender_path: str | None = None
     # "auto": the graphics card if Cycles finds one; "cpu": skip the search (it can hang).
     blender_device: Literal["auto", "cpu"] = "auto"
+    # "fine": more samples, finer shading and the relief at full texture size
+    # (several times slower) - for landmarks that should look as real as possible.
+    blender_quality: Literal["standard", "fine"] = "standard"
     # An Overpass server of the user's own (or their company's), asked first.
     overpass_url: str | None = None
 

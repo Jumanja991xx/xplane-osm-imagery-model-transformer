@@ -6,6 +6,7 @@ import {
   ApiError,
   imageryObjectUrl,
   preview,
+  renderPhotoUrl,
   type ItemAttrs,
   type JobView,
   type PartChange,
@@ -127,6 +128,9 @@ function PreviewDialogInner({
   const partPickRef = useRef<(id: string | null, add: boolean) => void>(() => {});
   const partHighlightRef = useRef<(stem: string | null, ids: string[]) => void>(() => {});
   const [gpu, setGpu] = useState<{ name: string; software: boolean } | null>(null);
+  // Where the preview camera looks from (degrees from north, above the horizon):
+  // the Blender photo is taken from there.
+  const viewRef = useRef<() => { azimuth: number; elevation: number }>(() => ({ azimuth: 225, elevation: 22 }));
 
   useEffect(() => {
     const el = mount.current;
@@ -165,6 +169,14 @@ function PreviewDialogInner({
       controls.update();
     };
     focusRef.current = (o) => frame(toThree(o.offset[0], o.offset[1], 5), 60);
+    viewRef.current = () => {
+      const d = camera.position.clone().sub(controls.target);
+      const east = d.x;
+      const north = -d.z;
+      const azimuth = ((THREE.MathUtils.radToDeg(Math.atan2(east, north)) % 360) + 360) % 360;
+      const elevation = THREE.MathUtils.radToDeg(Math.atan2(d.y, Math.hypot(east, north)));
+      return { azimuth, elevation: Math.min(85, Math.max(2, elevation)) };
+    };
 
     const objects = new THREE.Group();
     scene.add(objects);
@@ -777,6 +789,9 @@ function PreviewDialogInner({
             )}
             {error && <Alert kind="error">{error}</Alert>}
             {gpu?.software && <Alert kind="warning">{t("preview.gpu_software", { name: gpu.name })}</Alert>}
+            {data && (
+              <BlenderPhoto jobId={jobId} itemId={current?.item_id ?? null} view={() => viewRef.current()} />
+            )}
             {data?.imagery && data.surface_mode === "imagery" && (
               <p className="text-xs text-zinc-500">{t("preview.ortho_legend")}</p>
             )}
@@ -2260,6 +2275,51 @@ function DesignPanel({
       {done && <Alert kind="success">{done}</Alert>}
       {error && <Alert kind="error">{error}</Alert>}
       {failed && !busy && <TryStronger current={model} onPick={pickModel} />}
+    </div>
+  );
+}
+
+/** A photo-realistic picture of the built scenery, rendered by the user's Blender
+ * (Cycles: real sunlight, soft sky light, cast shadows) from the preview's view. */
+function BlenderPhoto({
+  jobId,
+  itemId,
+  view,
+}: {
+  jobId: string;
+  itemId: string | null;
+  view: () => { azimuth: number; elevation: number };
+}) {
+  const { t } = useT();
+  const [busy, setBusy] = useState(false);
+  const [url, setUrl] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => () => {
+    if (url) URL.revokeObjectURL(url);
+  }, [url]);
+  const render = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      setUrl(await renderPhotoUrl(jobId, { item_id: itemId, ...view(), samples: 64 }));
+    } catch (e) {
+      setErr(e instanceof ApiError ? t(e.key, e.params) : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="space-y-2 rounded border border-zinc-200 p-2 dark:border-zinc-700" data-testid="blender-photo">
+      <p className="text-xs text-zinc-500">{t(itemId ? "photo.hint_item" : "photo.hint_scene")}</p>
+      <Button variant="secondary" onClick={render} disabled={busy} data-testid="blender-photo-render">
+        {busy ? <Spinner /> : "📷"} {t(busy ? "photo.rendering" : "photo.render")}
+      </Button>
+      {err && <Alert kind="error">{err}</Alert>}
+      {url && (
+        <a href={url} download="xpsb-photo.png" title={t("photo.save")}>
+          <img src={url} alt={t("photo.alt")} className="w-full rounded" data-testid="blender-photo-image" />
+        </a>
+      )}
     </div>
   );
 }

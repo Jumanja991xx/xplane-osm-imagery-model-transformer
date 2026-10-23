@@ -7,6 +7,7 @@ import io
 import logging
 import os
 import shutil
+import subprocess
 import uuid
 from collections.abc import Callable
 from pathlib import Path
@@ -1771,6 +1772,78 @@ class JobManager:
             self._blender = (key, blender_mod.find(s.blender_path))
         return self._blender[1]
 
+    def photo_manifest(
+        self,
+        job_id: str,
+        item_id: str | None = None,
+        azimuth: float = 225.0,
+        elevation: float = 22.0,
+        size: tuple[int, int] = (1600, 1000),
+        samples: int = 64,
+    ) -> dict:
+        """What Blender needs for a photo of the scenery: every built object with the
+        textures the preview shows (after a build with Blender: the shaded ones), a
+        camera on one object (item_id) or on the whole scene, a low sun."""
+        data = self.preview(job_id)
+        objects, boxes = [], []
+        for o in data["objects"]:
+            if o["status"] != "ok" or not o.get("has_mesh", True):
+                continue
+            mesh = self.preview_file(job_id, f"{o['stem']}.json")
+            if mesh is None:
+                continue
+            tex = self.preview_file(job_id, f"{o['stem']}.png")
+            nml = self.preview_file(job_id, f"{o['stem']}_nml.png")
+            x, y = o["offset"]
+            objects.append(
+                {
+                    "mesh": str(mesh),
+                    "texture": str(tex) if tex else None,
+                    "normal": str(nml) if nml else None,
+                    "x": x,
+                    "y": y,
+                    "heading": o.get("heading") or 0.0,
+                }
+            )
+            w, s, e, n = o.get("extent") or (-10.0, -10.0, 10.0, 10.0)
+            top = o.get("top_m") or 10.0
+            box = (x + w, y + s, x + e, y + n, top)
+            if item_id is None or o["item_id"] == item_id:
+                boxes.append(box)
+        if not objects:
+            raise JobConflict("error.no_preview")
+        if not boxes:
+            raise JobConflict("error.item_not_found", item=item_id or "")
+        x0, y0 = min(b[0] for b in boxes), min(b[1] for b in boxes)
+        x1, y1 = max(b[2] for b in boxes), max(b[3] for b in boxes)
+        top = max(b[4] for b in boxes)
+        span = max(x1 - x0, y1 - y0, top)
+        return {
+            "objects": objects,
+            "ground": {"x": (x0 + x1) / 2, "y": (y0 + y1) / 2, "size": 40000.0},
+            "camera": {
+                "target": [(x0 + x1) / 2, (y0 + y1) / 2, top * 0.3],
+                "azimuth": azimuth,
+                "elevation": elevation,
+                "distance": span * 1.25 + 40.0,
+                "lens": 35.0,
+            },
+            "sun": {"azimuth": (azimuth + 140.0) % 360.0, "elevation": 34.0},
+            "size": list(size),
+            "samples": samples,
+        }
+
+    def photo(self, job_id: str, **view) -> Path:
+        """Renders the photo with the user's Blender (worker thread; minutes)."""
+        info = self.blender()
+        if info is None:
+            raise JobConflict("error.blender_missing")
+        manifest = self.photo_manifest(job_id, **view)
+        try:
+            return blender_mod.render_photo(info.path, manifest, self.job_dir(job_id) / "photo")
+        except (RuntimeError, OSError, subprocess.TimeoutExpired) as exc:
+            raise JobConflict("error.photo_failed", detail=str(exc)[-600:]) from exc
+
     async def _do_build(self, job: Job, exe: Path) -> None:
         info = await asyncio.to_thread(self.blender)
         job.build = await asyncio.to_thread(
@@ -1784,6 +1857,7 @@ class JobManager:
             info.version if info else None,
             lambda: job.id in self._skip_blender,
             self._settings.load().blender_device == "cpu",
+            self._settings.load().blender_quality == "fine",
         )
         self._skip_blender.discard(job.id)
         self._set_state(job, JobState.BUILT)

@@ -277,6 +277,30 @@ export async function texturePreviewUrl(jobId: string, itemId: string, tex: Phot
   return URL.createObjectURL(await res.blob());
 }
 
+/** A photo-realistic picture of the built scenery, rendered by the user's Blender
+ * (Cycles; takes minutes), as a blob URL. itemId: aim at one object (else all). */
+export async function renderPhotoUrl(
+  jobId: string,
+  view: { item_id?: string | null; azimuth?: number; elevation?: number; samples?: number },
+): Promise<string> {
+  const { baseUrl, token } = await backend();
+  let res: Response;
+  try {
+    res = await fetch(`${baseUrl}/api/jobs/${jobId}/photo`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(view),
+    });
+  } catch {
+    throw new ApiError(0, "error.backend_unreachable");
+  }
+  if (!res.ok) {
+    const detail = (await res.json().catch(() => ({})))?.detail;
+    throw new ApiError(res.status, detail?.key ?? "error.photo_failed", detail?.params ?? { detail: "" });
+  }
+  return URL.createObjectURL(await res.blob());
+}
+
 export interface PreviewObject {
   item_id: string;
   stem: string;

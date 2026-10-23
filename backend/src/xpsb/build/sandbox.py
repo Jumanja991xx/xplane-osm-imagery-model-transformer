@@ -41,6 +41,15 @@ GEOMETRY_TOOLS = (
 )
 HELPER_TOOLS = ("oriented_rect", "offset_polygon", "polygon_area", "polygon_centroid", "resample")
 DEFAULT_TIMEOUT_S = 5.0
+# Big landmarks (a parliament with real windows on 130 parts) need more time: the
+# limit grows with the triangle budget, up to this many times the default.
+TIMEOUT_BUDGET = 80_000
+MAX_TIMEOUT_FACTOR = 4.0
+
+
+def time_limit(max_triangles: int) -> float:
+    """Seconds a script may run for an object with this triangle budget."""
+    return DEFAULT_TIMEOUT_S * min(MAX_TIMEOUT_FACTOR, max(1.0, max_triangles / TIMEOUT_BUDGET))
 
 
 class ScriptError(RuntimeError):
@@ -78,7 +87,7 @@ def run_script(
     source: str,
     inputs: ScriptInputs,
     max_triangles: int,
-    timeout_s: float = DEFAULT_TIMEOUT_S,
+    timeout_s: float | None = None,
     name: str = "build.star",
     library: frozenset[str] | None = None,
 ) -> Mesh:
@@ -108,6 +117,8 @@ def run_script(
     except sl.StarlarkError as exc:
         raise ScriptError(str(exc)) from None
 
+    if timeout_s is None:
+        timeout_s = time_limit(max_triangles)
     deadline = time.monotonic() + timeout_s
     options = sl.EvalOptions(
         check_cancelled=lambda: time.monotonic() > deadline, max_callstack_size=50

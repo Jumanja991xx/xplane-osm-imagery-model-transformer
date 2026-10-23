@@ -1295,6 +1295,8 @@ export interface components {
             height_m?: number | null;
             /** Min Height M */
             min_height_m?: number | null;
+            /** Roof Height M */
+            roof_height_m?: number | null;
             /** Roof Shape */
             roof_shape?: string | null;
             /** Wall Color */
@@ -2310,6 +2312,12 @@ export interface components {
              * @enum {string}
              */
             blender_device: "auto" | "cpu";
+            /**
+             * Blender Quality
+             * @default standard
+             * @enum {string}
+             */
+            blender_quality: "standard" | "fine";
             /** Overpass Url */
             overpass_url?: string | null;
         };

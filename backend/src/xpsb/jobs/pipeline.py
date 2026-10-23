@@ -998,6 +998,7 @@ def build_package(
     blender_version: str | None = None,
     blender_stop: Callable[[], bool] = lambda: False,
     blender_cpu: bool = False,
+    blender_fine: bool = False,
 ) -> BuildResult:
     """Runs in a worker thread."""
     plan = job.plan
@@ -1034,6 +1035,7 @@ def build_package(
         blender_exe=blender_exe,
         blender_stop=blender_stop,
         blender_cpu=blender_cpu,
+        blender_fine=blender_fine,
         blender_progress=lambda s: log.publish_threadsafe(
             type="progress",
             stage="blender",

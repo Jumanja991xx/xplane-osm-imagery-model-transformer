@@ -652,6 +652,18 @@ export function SettingsDialog() {
                 <option value="cpu">{t("settings.blender_device_cpu")}</option>
               </select>
             </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-zinc-600 dark:text-zinc-300">{t("settings.blender_quality")}</span>
+              <select
+                className={inputClass}
+                value={draft.blender_quality ?? "standard"}
+                onChange={(e) => setDraft({ ...draft, blender_quality: e.target.value as "standard" | "fine" })}
+                data-testid="blender-quality"
+              >
+                <option value="standard">{t("settings.blender_quality_standard")}</option>
+                <option value="fine">{t("settings.blender_quality_fine")}</option>
+              </select>
+            </label>
             <div className="space-y-1">
               <Button onClick={testBlender} disabled={busy} data-testid="blender-test">
                 {t("settings.blender_test")}

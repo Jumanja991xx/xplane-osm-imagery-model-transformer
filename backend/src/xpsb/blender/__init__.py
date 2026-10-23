@@ -29,6 +29,8 @@ from xpsb.build.bake import BakedMesh
 from xpsb.build.mesh import Mesh
 
 SCRIPT = Path(__file__).with_name("ao_bake.py")
+PHOTO_SCRIPT = Path(__file__).with_name("photo.py")
+PHOTO_TIMEOUT_S = 3600  # a big scene at many samples on a slow CPU
 # Extra start-up script folder for Blender (BLENDER_SYSTEM_SCRIPTS): see boot/startup.
 BOOT_SCRIPTS = Path(__file__).with_name("boot")
 # Blender is stopped when no object finishes for this long - or for 4x the time
@@ -51,6 +53,10 @@ WEATHER_TINT = 0.10
 GRIME = np.array([72, 64, 54], dtype=np.float32)
 EDGE_LIGHTEN = 0.12
 BEVEL_STRENGTH = 0.9
+# Quality "fine": what changes against the standard bake above.
+FINE_SAMPLES = 64
+FINE_BAKE_PX = 1024
+FINE_DETAIL_PX = 4096
 
 
 @dataclass
@@ -159,6 +165,45 @@ def prepare(mesh: Mesh, baked: BakedMesh, path: Path) -> bool:
         distance=np.array(DISTANCE_M),
     )
     return True
+
+
+def render_photo(blender_exe: str, manifest: dict, work: Path) -> Path:
+    """A photo-realistic picture of the scenery (photo.py in Blender, Cycles).
+    `manifest`: objects, ground, camera, sun, size, samples. Returns the PNG; raises
+    RuntimeError with the end of Blender's output if it made none."""
+    import json
+
+    work.mkdir(parents=True, exist_ok=True)
+    out = work / "photo.png"
+    out.unlink(missing_ok=True)
+    path = work / "photo.json"
+    path.write_text(json.dumps({**manifest, "out": str(out)}), encoding="utf-8")
+    flags = 0x0800_0000 if os.name == "nt" else 0  # no console window
+    proc = subprocess.run(
+        [blender_exe, "-b", "--factory-startup", "--python", str(PHOTO_SCRIPT), "--", str(path)],
+        capture_output=True,
+        text=True,
+        timeout=PHOTO_TIMEOUT_S,
+        creationflags=flags,
+    )
+    (work / "photo.log").write_text(proc.stdout + proc.stderr, encoding="utf-8")
+    if not out.is_file():
+        raise RuntimeError((proc.stdout + proc.stderr)[-2000:])
+    return out
+
+
+def refine(npz: Path) -> None:
+    """Quality "fine" for an object prepared by prepare(): more samples, a finer
+    shading bake and the relief at the texture's full size."""
+    with np.load(npz) as d:
+        data = {k: d[k] for k in d.files}
+    w, h = (int(v) for v in data["atlas"])
+    bake = min(1.0, FINE_BAKE_PX / max(w, h))
+    detail = min(1.0, FINE_DETAIL_PX / max(w, h))
+    data["size"] = np.array([max(64, int(w * bake)), max(64, int(h * bake))])
+    data["detail_size"] = np.array([max(64, int(w * detail)), max(64, int(h * detail))])
+    data["samples"] = np.array(FINE_SAMPLES)
+    np.savez(npz, **data)
 
 
 def _work(npz: Path) -> float:

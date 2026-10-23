@@ -137,6 +137,13 @@ class DesignBody(BaseModel):
     parts: list[str] | None = Field(default=None, max_length=50)
 
 
+class PhotoBody(BaseModel):
+    item_id: str | None = None  # the camera on this object; None: the whole scene
+    azimuth: float = Field(default=225.0, ge=0, lt=360)  # where the camera stands
+    elevation: float = Field(default=22.0, ge=2, le=85)
+    samples: int = Field(default=64, ge=8, le=1024)
+
+
 class DesignOutcome(BaseModel):
     job: JobView
     summary: str
@@ -589,6 +596,19 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
     @app.get("/api/jobs/{job_id}/preview", dependencies=auth)
     async def job_preview(job_id: str) -> dict:
         return ctx.jobs.preview(job_id)
+
+    @app.post("/api/jobs/{job_id}/photo", dependencies=auth, response_class=FileResponse)
+    async def job_photo(job_id: str, body: PhotoBody) -> FileResponse:
+        """A photo-realistic picture of the scenery, rendered by Blender (minutes)."""
+        path = await asyncio.to_thread(
+            ctx.jobs.photo,
+            job_id,
+            item_id=body.item_id,
+            azimuth=body.azimuth,
+            elevation=body.elevation,
+            samples=body.samples,
+        )
+        return FileResponse(path, media_type="image/png")
 
     @app.get("/api/jobs/{job_id}/preview/{name}", dependencies=auth, response_class=FileResponse)
     async def job_preview_file(job_id: str, name: str):

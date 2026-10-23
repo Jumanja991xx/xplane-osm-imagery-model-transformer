@@ -222,10 +222,11 @@ def _bake_weather(scene, rec, mat, node, w, h, dst) -> None:
     tree.links.new(emit.outputs["Emission"], out.inputs["Surface"])
 
     image = bpy.data.images.new("weather", w, h, alpha=False, float_buffer=False)
+    samples = max(8, int(scene.cycles.samples) // 2)  # quality "fine": more
     image.colorspace_settings.name = "Non-Color"
     node.image = image
     tree.nodes.active = node
-    scene.cycles.samples = 8
+    scene.cycles.samples = samples
     bpy.ops.object.select_all(action="DESELECT")
     rec.select_set(True)
     bpy.context.view_layer.objects.active = rec
@@ -247,11 +248,12 @@ def _bake_bevel(scene, rec, mat, node, w, h, dst) -> None:
     out = _output(tree)
     tree.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
     image = bpy.data.images.new("bevel", w, h, alpha=False)
+    samples = max(8, int(scene.cycles.samples))
     image.colorspace_settings.name = "Non-Color"
     image.generated_color = (0.5, 0.5, 1.0, 1.0)
     node.image = image
     tree.nodes.active = node
-    scene.cycles.samples = 8
+    scene.cycles.samples = samples
     scene.render.bake.normal_space = "TANGENT"
     bpy.ops.object.select_all(action="DESELECT")
     rec.select_set(True)
