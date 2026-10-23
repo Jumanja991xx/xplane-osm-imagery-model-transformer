@@ -421,6 +421,7 @@ def _parts(item: SceneItem, local) -> list[dict]:
                 "footprint": [local(x, y) for x, y in ring],
                 "height": part.height_m,
                 "min_height": part.min_height_m,
+                "roof_height": part.roof_height_m,
                 "roof_shape": part.roof_shape,
                 "wall_color": part.wall_color,
                 "roof_color": part.roof_color,

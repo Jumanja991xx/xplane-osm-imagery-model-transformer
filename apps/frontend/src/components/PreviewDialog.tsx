@@ -475,6 +475,17 @@ function PreviewDialogInner({
           ground.position.set((sw[0] + ne[0]) / 2, -0.05, -(sw[1] + ne[1]) / 2);
           ground.receiveShadow = true;
           scene.add(ground);
+        } else {
+          // No aerial image (no source for the area): a neutral ground, so the
+          // objects stand on something instead of floating in the sky.
+          const ground = new THREE.Mesh(
+            new THREE.PlaneGeometry(4000, 4000),
+            new THREE.MeshStandardMaterial({ color: 0x8f9a7f, roughness: 1 }),
+          );
+          ground.rotation.x = -Math.PI / 2;
+          ground.position.y = -0.05;
+          ground.receiveShadow = true;
+          scene.add(ground);
         }
         for (const s of d.surfaces) {
           const shape = new THREE.Shape(s.rings[0].map(([x, y]) => new THREE.Vector2(x, y)));

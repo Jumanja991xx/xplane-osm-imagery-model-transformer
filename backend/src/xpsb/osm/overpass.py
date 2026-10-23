@@ -112,12 +112,12 @@ def build_query(ring: list[tuple[float, float]], timeout_s: int = 90) -> str:
     approaches = (
         f'way["bridge"]["bridge"!="no"]["highway"](poly:"{poly}")->.br;\n'
         "node(w.br)->.bn;\n"
-        'way(bn)["highway"][!"bridge"];\nout geom tags;\n'
+        'way(bn)["highway"][!"bridge"];\nout geom;\n'
     )
     return (
-        f"[out:json][timeout:{timeout_s}];\n(\n{parts}\n);\nout geom tags;\n"
+        f"[out:json][timeout:{timeout_s}];\n(\n{parts}\n);\nout geom;\n"
         + approaches
-        + f"is_in({inside.y:.7f},{inside.x:.7f})->.encl;\n(\n{enclosing}\n);\nout geom tags;\n"
+        + f"is_in({inside.y:.7f},{inside.x:.7f})->.encl;\n(\n{enclosing}\n);\nout geom;\n"
     )
 
 

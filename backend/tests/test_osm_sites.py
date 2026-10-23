@@ -4,6 +4,7 @@ edge of the drawn area."""
 
 from __future__ import annotations
 
+import pytest
 from shapely.geometry import Polygon, shape
 
 from xpsb.build import assemble
@@ -246,3 +247,32 @@ def test_a_castle_on_its_hill_keeps_its_name_and_its_wings_stay_apart():
     assert wing.name == "Siklósi vár" and wing.tags["wikidata"] == "Q1250960"
     assert all(it.tags.get("site:name") == "Siklósi vár" for it in items if it.kind == "object")
     assert rows.merge(items) == 0  # the wings are no terrace
+
+
+def test_roof_height_of_parts_is_kept_and_the_walls_end_below_it():
+    """Hungarian Parliament: a tower part of height 56.2 with roof:height 12 has its
+    walls up to 44.2 and the spire on top - not walls to 56.2 and a roof above."""
+    from xpsb.build.sandbox import run_script
+    from xpsb.build.scripts import DEFAULT_SCRIPTS
+
+    elements = [
+        way(1, rect(0, 0, 40, 20), building="yes", name="Test", height="30"),
+        way(2, rect(0, 0, 30, 20), **{"building:part": "yes", "height": "30"}),
+        way(
+            3,
+            rect(30, 0, 40, 10),
+            **{
+                "building:part": "yes",
+                "height": "56.2",
+                "roof:height": "12",
+                "roof:shape": "pyramidal",
+            },
+        ),
+    ]
+    items = run(elements)
+    outline = next(i for i in items if i.osm_ref == "way/1")
+    tower = next(p for p in outline.parts if p.osm_ref == "way/3")
+    assert tower.roof_height_m == 12.0
+    inputs = assemble._script_inputs(outline, items, "low")
+    mesh = run_script(DEFAULT_SCRIPTS["buildings"], inputs, 100_000)
+    assert mesh.bounds()[1][2] == pytest.approx(56.2, abs=0.3)

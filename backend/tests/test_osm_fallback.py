@@ -135,3 +135,11 @@ def test_when_all_servers_hang_the_osm_api_steps_in_after_the_deadline(monkeypat
     data = overpass.fetch("q", tmp_path, ring=RING)
     release.set()
     assert data["source"] == "osm_api" and time.monotonic() - start < 2
+
+
+def test_the_query_asks_for_relation_members():
+    """`out geom tags` gave relations without their members, so every building mapped
+    as a multipolygon (Kloster Andechs, the outline of the Hungarian Parliament) was
+    lost. The query must ask for the full body with geometry."""
+    query = overpass.build_query([(11.0, 48.0), (11.01, 48.0), (11.01, 48.01), (11.0, 48.0)])
+    assert "out geom tags" not in query and query.count("out geom;") == 3

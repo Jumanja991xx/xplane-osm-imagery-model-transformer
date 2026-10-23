@@ -349,7 +349,7 @@ def walls(fp, z0, H, look, fstyle, top, top_color, holes, levels):
                 bottom=raised, holes=holes)
 
 def block(fp, z0, H, shape, look, flip, fstyle=None, holes=None, levels=None, chimney=False,
-          tag=""):
+          tag="", roof_h=None):
     # One building block: walls from z0 to H and a roof (gabled/hipped/pyramidal/flat).
     # Its parts are named "walls", "roof", "chimneys" (+ tag: " 2" for OSM part 2).
     wall, wall_mat, gable_mat, roof_color, pitched, flat, rise_k, rise_max = look
@@ -369,7 +369,7 @@ def block(fp, z0, H, shape, look, flip, fstyle=None, holes=None, levels=None, ch
         P = frame(r)
         L2 = r["length"] / 2
         W2 = r["width"] / 2
-        rise = min(r["width"] * rise_k, rise_max)
+        rise = roof_h or min(r["width"] * rise_k, rise_max)
         A = P(-L2, -W2, H)
         B = P(L2, -W2, H)
         C = P(L2, W2, H)
@@ -395,7 +395,7 @@ def block(fp, z0, H, shape, look, flip, fstyle=None, holes=None, levels=None, ch
         walls(fp, z0, H, look, fstyle, None, None, holes, levels)
         part("roof" + tag)
         c = polygon_centroid(fp)
-        rise = min(min(r["width"], r["length"]) * (0.9 if shape == "cone" else 0.6), 25)
+        rise = roof_h or min(min(r["width"], r["length"]) * (0.9 if shape == "cone" else 0.6), 25)
         apex = [c[0], c[1], H + rise]
         n = len(fp)
         for i in range(n):
@@ -406,7 +406,7 @@ def block(fp, z0, H, shape, look, flip, fstyle=None, holes=None, levels=None, ch
         # big or irregular blocks (wings around courtyards): slopes all round
         walls(fp, z0, H, look, fstyle, None, None, holes, levels)
         part("roof" + tag)
-        rise = min(r["width"] * rise_k * 0.5, rise_max, 4.5)
+        rise = roof_h or min(r["width"] * rise_k * 0.5, rise_max, 4.5)
         mansard(fp, H, rise=rise, depth=min(5.0, r["width"] * 0.25), mat=pitched,
                 color=roof_color, holes=holes, top=flat, top_color=roof_color)
         if chimney:
@@ -450,10 +450,14 @@ def main():
         for i, bp in enumerate(parts):
             ph = bp.get("height") or H
             pz = bp.get("min_height") or 0
+            # OSM: the height includes the roof (roof:height of it)
+            rh = bp.get("roof_height")
+            if rh and bp.get("roof_shape") not in (None, "flat") and ph - rh > pz + 1:
+                ph = ph - rh
             plook = (bp.get("wall_color") or wall, wall_mat, gable_mat,
                      bp.get("roof_color") or roof_color, look[4], look[5], rise_k, rise_max)
             block(bp["footprint"], pz, ph, bp.get("roof_shape") or "flat", plook, False,
-                  fstyle, tag=" %d" % (i + 1))
+                  fstyle, tag=" %d" % (i + 1), roof_h=rh)
         if g("parts_cover", 1.0) >= 0.8:
             return  # the parts are the whole building
     shape = g("roof_shape", shape_def)

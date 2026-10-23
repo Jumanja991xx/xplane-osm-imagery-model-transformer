@@ -106,6 +106,8 @@ class BuildingPart(BaseModel):
     osm_ref: str | None = None
     height_m: float | None = None
     min_height_m: float | None = None
+    # roof:height - how much of height_m is roof (walls end below it)
+    roof_height_m: float | None = None
     roof_shape: str | None = None
     wall_color: str | None = None
     roof_color: str | None = None
