@@ -2,6 +2,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { components } from "./schema";
 
 type S = components["schemas"];
+export type ScriptTest = S["ScriptTest"];
 export type JobView = S["JobView"];
 export type Brief = S["Brief"];
 export type PendingGate = S["PendingGate"];
@@ -216,6 +217,12 @@ export const api = {
       model: model ?? null,
     }),
   resetDesign: (id: string, itemId: string) => request<JobView>("DELETE", `/api/jobs/${id}/design/${itemId}`),
+  getScript: (id: string, itemId: string) => request<S["ScriptView"]>("GET", `/api/jobs/${id}/script/${itemId}`),
+  testScript: (id: string, itemId: string, script: string) =>
+    request<S["ScriptTest"]>("POST", `/api/jobs/${id}/script-test/${itemId}`, { script }),
+  setScript: (id: string, itemId: string, script: string) =>
+    request<JobView>("PUT", `/api/jobs/${id}/script/${itemId}`, { script }),
+  resetScript: (id: string, itemId: string) => request<JobView>("DELETE", `/api/jobs/${id}/script/${itemId}`),
   addPhoto: (id: string, itemId: string, data: string) =>
     request<JobView>("POST", `/api/jobs/${id}/photos?item=${encodeURIComponent(itemId)}`, {
       data,

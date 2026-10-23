@@ -74,6 +74,10 @@ SELECTORS = [
     'wr["man_made"="bridge"]',
     'way["bridge"]["bridge"!="no"]["highway"]',
     'way["bridge"]["bridge"!="no"]["railway"]',
+    # Water in courtyards (thermal baths, palaces): the building scripts show it.
+    'wr["leisure"="swimming_pool"]',
+    'wr["amenity"="fountain"]',
+    'wr["natural"="water"]["water"!~"^(river|canal|lake|reservoir|stream|lock)$"]',
 ]
 
 # Named grounds around buildings: what a building belongs to (name, Wikidata).

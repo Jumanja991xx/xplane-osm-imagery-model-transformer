@@ -7,6 +7,7 @@ import {
   imageryObjectUrl,
   preview,
   renderPhotoUrl,
+  type ScriptTest,
   type ItemAttrs,
   type JobView,
   type PartChange,
@@ -853,6 +854,9 @@ function PreviewDialogInner({
               />
             )}
             {current && editable && !many && (
+              <ScriptEditor key={`script-${current.stem}`} jobId={jobId} object={current} onAdjusted={onAdjusted} />
+            )}
+            {current && editable && !many && (
               <ObjectControls
                 key={current.stem}
                 jobId={jobId}
@@ -1281,7 +1285,7 @@ const BRIDGE_STRUCTURES = ["beam", "arch", "truss", "suspension", "cable_stayed"
 const BRIDGE_MATERIALS = ["concrete", "stone", "brick", "steel", "wood"] as const;
 const DEFAULT_CONTROLS: Control[] = ["height"];
 const ROOF_SHAPES = ["flat", "gabled", "hipped"] as const;
-const MONUMENT_KINDS = ["statue", "rider", "bust", "obelisk", "column", "stone"] as const;
+const MONUMENT_KINDS = ["statue", "rider", "bust", "obelisk", "column", "stone", "sculpture"] as const;
 const POSES = ["standing", "arm_raised", "arms_raised", "pointing", "seated"] as const;
 const HELD = ["none", "palm", "wreath", "sword", "torch", "book", "flag"] as const;
 const WALL_MATERIALS = [
@@ -2319,6 +2323,127 @@ function BlenderPhoto({
         <a href={url} download="xpsb-photo.png" title={t("photo.save")}>
           <img src={url} alt={t("photo.alt")} className="w-full rounded" data-testid="blender-photo-image" />
         </a>
+      )}
+    </div>
+  );
+}
+
+/** The object's build script by hand (Starlark, the same sandbox as the AI's):
+ * try it - views, triangles, the error with its line - then use it or go back. */
+function ScriptEditor({
+  jobId,
+  object,
+  onAdjusted,
+}: {
+  jobId: string;
+  object: PreviewObject;
+  onAdjusted: (o: PreviewObject) => Promise<void>;
+}) {
+  const { t } = useT();
+  const setJob = useApp((s) => s.setJob);
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState<string | null>(null);
+  const [own, setOwn] = useState(false);
+  const [test, setTest] = useState<ScriptTest | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = async (fn: () => Promise<void>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await fn();
+    } catch (e) {
+      setError(e instanceof ApiError ? t(e.key, e.params) : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const show = async (view: JobView) => {
+    setJob(view);
+    const next = view.plan?.objects?.find((o) => o.item_id === object.item_id);
+    if (next) await onAdjusted({ ...object, ...next });
+  };
+  const toggle = () => {
+    setOpen(!open);
+    if (!open && text === null)
+      void run(async () => {
+        const s = await api.getScript(jobId, object.item_id);
+        setText(s.script);
+        setOwn(s.own);
+      });
+  };
+  const tryIt = () => run(async () => setTest(await api.testScript(jobId, object.item_id, text ?? "")));
+  const use = () =>
+    run(async () => {
+      await show(await api.setScript(jobId, object.item_id, text ?? ""));
+      setOwn(true);
+    });
+  const reset = () =>
+    run(async () => {
+      await show(await api.resetScript(jobId, object.item_id));
+      const s = await api.getScript(jobId, object.item_id);
+      setText(s.script);
+      setOwn(false);
+      setTest(null);
+    });
+
+  return (
+    <div className="space-y-1.5 border-t border-zinc-200 pt-2 dark:border-zinc-700" data-testid="script-editor">
+      <button type="button" className="text-xs font-semibold text-zinc-500 uppercase" onClick={toggle} data-testid="script-toggle">
+        {open ? "▾" : "▸"} {t("script.title")}
+        {own && <span className="ml-1 normal-case">({t("script.own")})</span>}
+      </button>
+      {open && (
+        <>
+          <p className="text-xs text-zinc-500">{t("script.hint")}</p>
+          <textarea
+            className="h-64 w-full rounded border border-zinc-300 bg-white p-1.5 font-mono text-[11px] leading-snug dark:border-zinc-600 dark:bg-zinc-800"
+            spellCheck={false}
+            value={text ?? ""}
+            onChange={(e) => {
+              setText(e.target.value);
+              setTest(null);
+            }}
+            data-testid="script-text"
+          />
+          <div className="flex flex-wrap gap-1.5">
+            <Button variant="secondary" onClick={tryIt} disabled={busy || !text} data-testid="script-test">
+              {busy ? <Spinner /> : "▶"} {t("script.test")}
+            </Button>
+            <Button onClick={use} disabled={busy || !test?.ok} data-testid="script-use">
+              {t("script.use")}
+            </Button>
+            {own && (
+              <Button variant="ghost" onClick={reset} disabled={busy} data-testid="script-reset">
+                {t("script.reset")}
+              </Button>
+            )}
+          </div>
+          {error && <Alert kind="error">{error}</Alert>}
+          {test && !test.ok && (
+            <pre className="max-h-40 overflow-auto rounded bg-red-50 p-1.5 text-[11px] whitespace-pre-wrap text-red-800 dark:bg-red-950 dark:text-red-200" data-testid="script-error">
+              {test.error}
+            </pre>
+          )}
+          {test?.ok && (
+            <div className="space-y-1" data-testid="script-result">
+              <p className="text-xs text-zinc-500">
+                {t("script.result", {
+                  triangles: (test.triangles ?? 0).toLocaleString(),
+                  budget: (test.budget ?? 0).toLocaleString(),
+                  seconds: test.seconds ?? 0,
+                  parts: (test.parts ?? []).length,
+                })}
+              </p>
+              <div className="grid grid-cols-3 gap-1">
+                {(test.views ?? []).map((v, i) => (
+                  <img key={i} src={`data:image/png;base64,${v}`} alt={t("script.view")} className="w-full rounded" />
+                ))}
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

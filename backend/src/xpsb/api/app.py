@@ -37,6 +37,7 @@ from xpsb.jobs.manager import (
     JobConflict,
     JobManager,
     JobNotFound,
+    ScriptTest,
     SimilarEstimate,
 )
 from xpsb.jobs.models import Brief, GateId, JobState, JobView
@@ -125,6 +126,15 @@ class ReopenBody(BaseModel):
 
 class RenameBody(BaseModel):
     name: str = Field(max_length=200)
+
+
+class ScriptBody(BaseModel):
+    script: str = Field(min_length=1, max_length=100_000)
+
+
+class ScriptView(BaseModel):
+    script: str
+    own: bool
 
 
 class DesignBody(BaseModel):
@@ -689,6 +699,24 @@ def create_app(ctx: AppContext, dev_cors: bool = False) -> FastAPI:
     @app.delete("/api/jobs/{job_id}/design/{item_id:path}", dependencies=auth)
     async def reset_design(job_id: str, item_id: str) -> JobView:
         await asyncio.to_thread(ctx.jobs.reset_design, job_id, item_id)
+        return ctx.jobs.view(job_id)
+
+    @app.get("/api/jobs/{job_id}/script/{item_id:path}", dependencies=auth)
+    async def get_script(job_id: str, item_id: str) -> ScriptView:
+        return ScriptView(**ctx.jobs.script(job_id, item_id))
+
+    @app.post("/api/jobs/{job_id}/script-test/{item_id:path}", dependencies=auth)
+    async def test_script(job_id: str, item_id: str, body: ScriptBody) -> ScriptTest:
+        return await asyncio.to_thread(ctx.jobs.test_script, job_id, item_id, body.script)
+
+    @app.put("/api/jobs/{job_id}/script/{item_id:path}", dependencies=auth)
+    async def set_script(job_id: str, item_id: str, body: ScriptBody) -> JobView:
+        await asyncio.to_thread(ctx.jobs.set_script, job_id, item_id, body.script)
+        return ctx.jobs.view(job_id)
+
+    @app.delete("/api/jobs/{job_id}/script/{item_id:path}", dependencies=auth)
+    async def reset_script(job_id: str, item_id: str) -> JobView:
+        await asyncio.to_thread(ctx.jobs.set_script, job_id, item_id, None)
         return ctx.jobs.view(job_id)
 
     @app.post("/api/jobs/{job_id}/photos", dependencies=auth)

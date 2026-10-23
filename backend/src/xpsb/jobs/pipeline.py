@@ -508,6 +508,7 @@ def _research_stage(
         return
     _progress(log, "research", 0.0, "stage.research", count=len(todo))
     done = failed = photos_added = 0
+    unreachable: list[str] = []  # objects whose sources all failed
 
     def one(item):
         return item, research.research_item(item, deps.settings.language, deps.mapillary_token)
@@ -523,6 +524,8 @@ def _research_stage(
                 failed += 1
             else:
                 item.research = found.research
+                if found.unreachable:
+                    unreachable.append(found.errors[0])
                 if found.entity is not None and str(item.category) == "monuments":
                     scan = research.attach_scan(found.entity, deps.job_dir / "scans")
                     if scan is not None:
@@ -542,6 +545,14 @@ def _research_stage(
     )
     if failed:
         notes.append(Note(key="analysis.research_failed", params={"count": failed}))
+    if unreachable:
+        # offline, a firewall or a blocked service: say so instead of "nothing found"
+        notes.append(
+            Note(
+                key="analysis.research_unreachable",
+                params={"count": len(unreachable), "detail": unreachable[0]},
+            )
+        )
 
 
 async def run_analysis(job: Job, deps: AnalysisDeps, log: EventLog) -> AnalysisResult:

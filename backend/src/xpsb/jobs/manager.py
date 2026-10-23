@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import io
 import logging
 import os
@@ -69,6 +70,21 @@ def _take_textures(item: SceneItem, made: list[PhotoTexture]) -> None:
     names = {t.name for t in made}
     item.textures = [t for t in item.textures if t.source == "user" and t.name not in names]
     item.textures += made
+
+
+MAX_OWN_SCRIPT_CHARS = 100_000
+
+
+class ScriptTest(BaseModel):
+    """What a test run of a build script gave."""
+
+    ok: bool
+    error: str | None = None
+    triangles: int = 0
+    budget: int = 0
+    seconds: float = 0.0
+    parts: list[str] = []
+    views: list[str] = []  # PNG, base64: from south-west, from north-east, from above
 
 
 class JobConflict(Exception):
@@ -1489,6 +1505,88 @@ class JobManager:
         item.script, item.script_request = None, None
         item.part_ops.clear()  # they named the parts of the AI's script
         self.regenerate_object(job, item)
+        self._save(job)
+        return job
+
+    # ---- own build scripts (written by hand, no AI) -------------------------------
+
+    def _script_job(self, job_id: str, item_id: str) -> tuple[Job, SceneItem, str]:
+        """Job, object and detail level for a hand-written script: before the plan
+        (the plan builds it) or in the plan (rebuilt at once)."""
+        job = self.get(job_id)
+        if job.state not in (JobState.ANALYZED, JobState.PLANNED) or job.analysis is None:
+            raise JobConflict("error.wrong_state", state=job.state.value)
+        item = self._item(job, item_id)
+        if item.kind != "object":
+            raise JobConflict("error.similar_objects_only")
+        detail = job.plan.detail if job.plan else (job.brief.detail if job.brief else "medium")
+        return job, item, detail
+
+    def script(self, job_id: str, item_id: str) -> dict:
+        """The object's build script (its own or the default one) and what it gets."""
+        job = self.get(job_id)
+        if job.analysis is None:
+            raise JobConflict("error.wrong_state", state=job.state.value)
+        item = self._item(job, item_id)
+        return {"script": self._current_script(item), "own": item.script is not None}
+
+    def test_script(self, job_id: str, item_id: str, script: str) -> ScriptTest:
+        """Runs a script for the object in the sandbox (nothing is saved): triangles,
+        seconds, parts and the standard views - or the script's error."""
+        import time
+
+        from xpsb.build import assemble
+        from xpsb.build.render import views_png
+        from xpsb.build.sandbox import ScriptError, run_script
+
+        job, item, detail = self._script_job(job_id, item_id)
+        if len(script) > MAX_OWN_SCRIPT_CHARS:
+            raise JobConflict("error.script_too_long", max=MAX_OWN_SCRIPT_CHARS)
+        assert job.analysis is not None
+        try:
+            inputs = assemble._script_inputs(item, job.analysis.items, detail)
+        except (ValueError, LookupError) as exc:
+            raise JobConflict("error.script_failed", detail=str(exc)[:500]) from exc
+        budget = assemble.triangle_budget(inputs, detail)
+        start = time.monotonic()
+        try:
+            mesh = run_script(
+                script,
+                inputs,
+                budget,
+                name=f"{item.id}.star",
+                library=frozenset(self.library().objects),
+            )
+        except ScriptError as exc:
+            return ScriptTest(ok=False, error=str(exc)[:3000], budget=budget)
+        seconds = time.monotonic() - start
+        views = [
+            base64.b64encode(png).decode("ascii")
+            for _, png in views_png(mesh, inputs.footprint, size=480)
+        ]
+        return ScriptTest(
+            ok=True,
+            triangles=mesh.triangle_count,
+            budget=budget,
+            seconds=round(seconds, 2),
+            parts=[p.label or p.id for p in mesh.parts][:200],
+            views=views,
+        )
+
+    def set_script(self, job_id: str, item_id: str, script: str | None) -> Job:
+        """Puts a hand-written script on the object (None: back to the default one).
+        Only a script that runs is taken; in the plan the object is rebuilt."""
+        job, item, _ = self._script_job(job_id, item_id)
+        if script is not None:
+            result = self.test_script(job_id, item_id, script)
+            if not result.ok:
+                raise JobConflict("error.script_failed", detail=(result.error or "")[:1500])
+        item.script = script
+        item.script_request = "own script" if script is not None else None
+        item.part_ops.clear()  # they named the parts of the old script
+        item.edited = True
+        if job.state is JobState.PLANNED:
+            self.regenerate_object(job, item)
         self._save(job)
         return job
 

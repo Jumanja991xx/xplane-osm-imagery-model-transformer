@@ -253,6 +253,7 @@ def _params(item: SceneItem, items: list[SceneItem], local, detail: str) -> dict
         "building": _building_type(item),
         "min_height": a.min_height_m,
         "parts": _parts(item, local),
+        "features": _features(item, local),
         "parts_cover": _parts_cover(item),
         "tags": dict(tags),
         "detail": detail,
@@ -427,6 +428,20 @@ def _parts(item: SceneItem, local) -> list[dict]:
                 "roof_color": part.roof_color,
                 "part": part.part,
             }
+        )
+    return out
+
+
+def _features(item: SceneItem, local) -> list[dict]:
+    """Pools, fountains and ponds in the building's courtyards, in local metres."""
+    out = []
+    for f in item.features:
+        geom = shape(f["geometry"])
+        if geom.geom_type != "Polygon" or geom.is_empty:
+            continue
+        ring = list(orient(geom, 1.0).exterior.coords)[:-1]
+        out.append(
+            {"kind": f["kind"], "footprint": [local(x, y) for x, y in ring], "name": f.get("name")}
         )
     return out
 

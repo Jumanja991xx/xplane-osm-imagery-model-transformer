@@ -208,11 +208,14 @@ def wikipedia_summary(lang: str, title: str) -> tuple[str, str] | None:
 SOURCE_ERRORS = (PhotoError, ValueError, KeyError, TypeError, AttributeError)
 
 
-def _safe(fn, default):
-    """One source failing (offline, changed API) must not spoil the others."""
+def _safe(fn, default, errors: list[str] | None = None):
+    """One source failing (offline, changed API) must not spoil the others; what
+    failed is noted in `errors` (the user hears when no source was reachable)."""
     try:
         return fn()
-    except SOURCE_ERRORS:
+    except SOURCE_ERRORS as exc:
+        if errors is not None:
+            errors.append(str(exc)[:200])
         return default
 
 
@@ -222,6 +225,13 @@ class Found:
     candidates: list[PhotoCandidate] = field(default_factory=list)
     height_m: float | None = None
     entity: dict | None = None  # the Wikidata item (for its 3D scan)
+    errors: list[str] = field(default_factory=list)  # sources that failed
+
+    @property
+    def unreachable(self) -> bool:
+        """Nothing found because the sources failed (offline, blocked), not because
+        there is nothing to find."""
+        return bool(self.errors) and not self.research.sources and not self.candidates
 
 
 def research_item(item: SceneItem, language: str, mapillary_token: str | None) -> Found:
@@ -234,13 +244,17 @@ def research_item(item: SceneItem, language: str, mapillary_token: str | None) -
     sources: list[str] = []
     candidates: list[PhotoCandidate] = []
     height = None
+    errors: list[str] = []
+
+    def safe(fn, default):
+        return _safe(fn, default, errors)
 
     entity: dict | None = None
     qid = tags.get("wikidata")
     if qid:
-        entity = _safe(lambda: fetch_entity(qid), None)
+        entity = safe(lambda: fetch_entity(qid), None)
     elif item.name:
-        hit = _safe(lambda: find_by_name(item.name, lon, lat, language), None)
+        hit = safe(lambda: find_by_name(item.name, lon, lat, language), None)
         if hit:
             qid, entity = hit
 
@@ -254,7 +268,7 @@ def research_item(item: SceneItem, language: str, mapillary_token: str | None) -
         people = [v.get("id") for v in _claims(entity, "P84")]
         styles = [v.get("id") for v in _claims(entity, "P149")]
         materials = [v.get("id") for v in _claims(entity, "P186")]
-        names = _safe(lambda: item_labels(types + people + styles + materials, langs), {})
+        names = safe(lambda: item_labels(types + people + styles + materials, langs), {})
         lines.append(f"Name: {_label(entity, langs) or item.name} (Wikidata {qid})")
         if types:
             lines.append("Type: " + ", ".join(names.get(t, t) for t in types[:3]))
@@ -280,7 +294,7 @@ def research_item(item: SceneItem, language: str, mapillary_token: str | None) -
                 lines.append(f"{label}: " + ", ".join(names.get(i, i) for i in ids[:3]))
         # Photos: main image, then the object's Commons category.
         for file in [v for v in _claims(entity, "P18") if isinstance(v, str)][:1]:
-            candidates += _safe(
+            candidates += safe(
                 lambda f=file: photos.commons_query({"titles": f"File:{f}"}, lon, lat), []
             )
         for cat in [v for v in _claims(entity, "P373") if isinstance(v, str)][:1]:
@@ -290,7 +304,7 @@ def research_item(item: SceneItem, language: str, mapillary_token: str | None) -
                 "gcmtype": "file",
                 "gcmlimit": "25",
             }
-            candidates += _safe(lambda p=params: photos.commons_query(p, lon, lat), [])
+            candidates += safe(lambda p=params: photos.commons_query(p, lon, lat), [])
         if not wiki_title:
             links = entity.get("sitelinks") or {}
             for lang in langs:
@@ -302,7 +316,7 @@ def research_item(item: SceneItem, language: str, mapillary_token: str | None) -
         lines.append(f"Name: {item.name}")
 
     if wiki_title:
-        summary = _safe(lambda: wikipedia_summary(wiki_lang or "en", wiki_title), None)
+        summary = safe(lambda: wikipedia_summary(wiki_lang or "en", wiki_title), None)
         if summary:
             lines.append(f"Wikipedia: {summary[0]}")
             sources.append(summary[1])
@@ -317,7 +331,7 @@ def research_item(item: SceneItem, language: str, mapillary_token: str | None) -
         radius = max(
             60.0, 0.6 * math.hypot((e - w) * meters_per_deg_lon(lat), (n - s) * METERS_PER_DEG_LAT)
         )
-        nearby = _safe(
+        nearby = safe(
             lambda: photos.search(lon, lat, mapillary_token, radius=min(radius, 400)), None
         )
         if nearby is not None:  # street-level photos only if they look at the object
@@ -346,6 +360,7 @@ def research_item(item: SceneItem, language: str, mapillary_token: str | None) -
         candidates=chosen,
         height_m=height,
         entity=entity,
+        errors=errors,
     )
 
 

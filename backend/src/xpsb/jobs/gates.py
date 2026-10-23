@@ -81,6 +81,16 @@ def packs_above(target: Path, dsf_relative: str) -> list[str]:
     ]
 
 
+# Blender's seconds per object (measured: a parliament of 40 objects, 4 cores):
+# "fine" bakes 4x the pixels with 4x the samples.
+BLENDER_S_PER_OBJECT = {"standard": 6, "fine": 75}
+
+
+def blender_minutes(meshes: int, settings) -> int:
+    per = BLENDER_S_PER_OBJECT.get(getattr(settings, "blender_quality", "standard"), 6)
+    return max(1, round((30 + meshes * per) / 60))
+
+
 def compute_gate(job: Job, ctx: GateContext) -> PendingGate | None:
     gate = GATE_FOR_STATE.get(job.state)
     if gate is None:
@@ -396,7 +406,7 @@ def _gate_c(job: Job, ctx: GateContext):
             GateItem(
                 kind="action",
                 key="gate.c.blender",
-                params={"version": ctx.blender, "minutes": max(1, round((30 + meshes * 6) / 60))},
+                params={"version": ctx.blender, "minutes": blender_minutes(meshes, ctx.settings)},
             )
         )
     elif ctx.settings.use_blender and meshes:
