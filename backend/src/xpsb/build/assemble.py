@@ -816,6 +816,17 @@ def _ortho_uv(windings, bounds):
 BLENDER_DIR = ".blender"  # temporary inputs/outputs of the Blender run
 
 
+FINE_MIN_TRIANGLES = 8000
+FINE_CATEGORIES = ("buildings", "bridges", "grandstands")
+
+
+def fine_bake(category: str, designed: bool, triangles: int) -> bool:
+    """Blender quality "fine" goes to the landmarks: objects with their own design
+    and big detailed buildings. A whole old town of houses, walls and figures at the
+    fine level would take half a day for little to see."""
+    return designed or (category in FINE_CATEGORIES and triangles >= FINE_MIN_TRIANGLES)
+
+
 def _shade_with_blender(
     results: list[ItemResult],
     objects_dir: Path,
@@ -826,13 +837,15 @@ def _shade_with_blender(
     fine: bool = False,
 ) -> None:
     """One Blender run bakes the soft shading of all prepared objects, which is then
-    multiplied into their colour textures. `fine`: the finer, slower bake."""
+    multiplied into their colour textures. `fine`: the finer, slower bake for the
+    objects people look at (fine_bake); the rest keeps the standard one."""
     from xpsb import blender
 
     todo = [r for r in results if r.blender_input]
     if fine:
         for r in todo:
-            blender.refine(Path(r.blender_input))  # type: ignore[arg-type]
+            if fine_bake(r.category, r.designed, r.triangles):
+                blender.refine(Path(r.blender_input))  # type: ignore[arg-type]
     work = objects_dir / BLENDER_DIR
     log: list[str] = []
     problems: list[str] = []

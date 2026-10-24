@@ -88,3 +88,19 @@ def test_fine_quality_bakes_finer_with_more_samples(tmp_path):
         assert list(d["size"]) == [1024, 512]
         assert list(d["detail_size"]) == [4096, 2048]
         assert int(d["samples"]) == blender.FINE_SAMPLES
+
+
+def test_fine_quality_goes_to_the_landmarks():
+    from xpsb.build.assemble import fine_bake
+    from xpsb.jobs.gates import blender_minutes
+
+    assert fine_bake("buildings", True, 500)  # own design
+    assert fine_bake("buildings", False, 30_000)  # a big detailed building
+    assert not fine_bake("buildings", False, 2_000)  # an ordinary house
+    assert not fine_bake("barriers", False, 30_000)
+    assert not fine_bake("city", False, 12_000)  # blocks of houses
+    town = [SimpleNamespace(category="buildings", designed=False, triangles=2_000)] * 500
+    town += [SimpleNamespace(category="buildings", designed=True, triangles=30_000)] * 3
+    fine = blender_minutes(town, SimpleNamespace(blender_quality="fine"))
+    standard = blender_minutes(town, SimpleNamespace(blender_quality="standard"))
+    assert standard < fine < standard * 2  # a few landmarks, not half a day

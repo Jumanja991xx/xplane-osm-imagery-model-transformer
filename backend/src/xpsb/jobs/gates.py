@@ -86,9 +86,16 @@ def packs_above(target: Path, dsf_relative: str) -> list[str]:
 BLENDER_S_PER_OBJECT = {"standard": 6, "fine": 75}
 
 
-def blender_minutes(meshes: int, settings) -> int:
-    per = BLENDER_S_PER_OBJECT.get(getattr(settings, "blender_quality", "standard"), 6)
-    return max(1, round((30 + meshes * per) / 60))
+def blender_minutes(objects: list, settings) -> int:
+    """Rough Blender time for these plan objects; "fine" only for the landmarks."""
+    from xpsb.build.assemble import fine_bake
+
+    fine = getattr(settings, "blender_quality", "standard") == "fine"
+    seconds = 30.0
+    for o in objects:
+        is_fine = fine and fine_bake(str(o.category), bool(o.designed), int(o.triangles))
+        seconds += BLENDER_S_PER_OBJECT["fine" if is_fine else "standard"]
+    return max(1, round(seconds / 60))
 
 
 def compute_gate(job: Job, ctx: GateContext) -> PendingGate | None:
@@ -400,13 +407,17 @@ def _gate_c(job: Job, ctx: GateContext):
             params={"path": str(ctx.job_dir / "build" / p.package_name)},
         )
     )
-    meshes = sum(1 for o in p.objects if o.status == "ok" and o.has_mesh)
+    with_mesh = [o for o in p.objects if o.status == "ok" and o.has_mesh]
+    meshes = len(with_mesh)
     if ctx.blender and meshes:
         items.append(
             GateItem(
                 kind="action",
                 key="gate.c.blender",
-                params={"version": ctx.blender, "minutes": blender_minutes(meshes, ctx.settings)},
+                params={
+                    "version": ctx.blender,
+                    "minutes": blender_minutes(with_mesh, ctx.settings),
+                },
             )
         )
     elif ctx.settings.use_blender and meshes:
