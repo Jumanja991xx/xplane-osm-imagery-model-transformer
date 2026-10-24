@@ -65,6 +65,21 @@ _FREE = re.compile(
 )
 
 
+class StreetCamera(BaseModel):
+    """Where a street-level photo was taken and where it looks (streetfacade.py paints
+    walls from it): position, compass direction of the image centre, and either the
+    horizontal field of view (ordinary photo) or the angles a (cut-out of a) 360°
+    panorama spans."""
+
+    lon: float
+    lat: float
+    heading: float
+    pano: bool = False
+    fov: float | None = None  # ordinary photos; None: unknown (a usual 70°)
+    yaw_span: float = 360.0  # panoramas: degrees across the image width
+    pitch_span: float = 180.0  # ... and its height (horizon in the middle row)
+
+
 class Photo(BaseModel):
     """A photo attached to a scene item (file: photos/<id>.jpg in the job folder)."""
 
@@ -74,6 +89,7 @@ class Photo(BaseModel):
     author: str | None = None
     license: str | None = None
     page_url: str | None = None
+    camera: StreetCamera | None = None
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -108,6 +124,9 @@ class PhotoCandidate(BaseModel):
     pano: bool = False
     bearing: float | None = None
     facing: bool | None = None  # None: unknown (no camera direction)
+    cam_lon: float | None = None
+    cam_lat: float | None = None
+    fov: float | None = None  # horizontal field of view of ordinary photos
 
 
 # ---- storing ---------------------------------------------------------------------
@@ -209,12 +228,16 @@ def _aim(c: PhotoCandidate, geom: list, lon: float, lat: float) -> PhotoCandidat
     """Fills bearing/facing from the camera position and direction."""
     if len(geom) < 2 or c.heading is None:
         return c
+    c.cam_lon, c.cam_lat = float(geom[0]), float(geom[1])
     c.bearing = round(_bearing(geom[0], geom[1], lon, lat), 1)
     c.facing = c.pano or abs(_turn(c.heading, c.bearing)) <= FACING_DEG
     return c
 
 
-def view_towards(raw: bytes, heading: float, bearing: float, fov: float = 90.0) -> bytes:
+VIEW_FOV_DEG = 90.0  # the cut-out of a panorama: 90° wide, 90° high
+
+
+def view_towards(raw: bytes, heading: float, bearing: float, fov: float = VIEW_FOV_DEG) -> bytes:
     """The part of an equirectangular 360° panorama that looks at the object (the
     image centre is the camera direction): like turning around in Street View."""
     try:
@@ -243,6 +266,32 @@ def download(c: PhotoCandidate) -> bytes:
     if c.pano and c.heading is not None and c.bearing is not None:
         return view_towards(raw, c.heading, c.bearing)
     return raw
+
+
+def camera_of(c: PhotoCandidate, image: bytes) -> StreetCamera | None:
+    """The camera of a downloaded street-level photo (`image` as download() returned
+    it), None without position or direction."""
+    if c.cam_lon is None or c.cam_lat is None or c.heading is None:
+        return None
+    if not c.pano:
+        return StreetCamera(lon=c.cam_lon, lat=c.cam_lat, heading=c.heading, fov=c.fov)
+    try:
+        with Image.open(io.BytesIO(image)) as img:
+            w, h = img.size
+    except (UnidentifiedImageError, OSError):
+        return None
+    if abs(w / h - 1.0) < 0.1 and c.bearing is not None:  # the cut-out towards the object
+        return StreetCamera(
+            lon=c.cam_lon,
+            lat=c.cam_lat,
+            heading=c.bearing,
+            pano=True,
+            yaw_span=VIEW_FOV_DEG,
+            pitch_span=VIEW_FOV_DEG,
+        )
+    if w >= 2 * h * 0.9:
+        return StreetCamera(lon=c.cam_lon, lat=c.cam_lat, heading=c.heading, pano=True)
+    return None  # a "panorama" in some other projection
 
 
 def _bbox(lon: float, lat: float, radius: float) -> tuple[float, float, float, float]:
@@ -345,6 +394,7 @@ def search_panoramax(lon: float, lat: float, radius: float) -> list[PhotoCandida
             image_url=image,
             heading=float(azimuth) if isinstance(azimuth, (int, float)) else None,
             pano=isinstance(fov, (int, float)) and fov >= 359,
+            fov=float(fov) if isinstance(fov, (int, float)) and 10 <= fov < 180 else None,
         )
         out.append(_aim(c, geom, lon, lat))
     return out

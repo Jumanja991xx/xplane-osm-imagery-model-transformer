@@ -15,6 +15,8 @@ Inputs available to every script:
              footprint, height, min_height, roof_shape, wall_color, roof_color, part)
   textures   photo textures of the object: name -> {width, height, repeat, walls};
              used as mat="photo:<name>"
+             (params["street_photos"]: street-level photos will be painted over the
+             walls they show - build those walls flat, without modelled windows)
 """
 
 from __future__ import annotations
@@ -482,6 +484,8 @@ def main():
         wall_mat = photo_walls()
         fstyle = None
         gable_mat = "plaster"
+    elif params.get("street_photos"):  # street photos are painted over flat walls
+        fstyle = None
     roof_color = g("roof_color", None)
     roof_mat = params.get("roof_material")
     look = (wall, wall_mat, gable_mat, roof_color, roof_mat or pitched_def, roof_mat or flat_def,

@@ -364,6 +364,13 @@ Photos help the AI architect get shape, material and details right.
   facade, enter its real width and height, and apply. The app straightens the photo and
   puts it on the model as a texture. For repeating facades (stadiums, offices) mark a clean
   piece and tick *Pattern*.
+- **Facades from street photos (automatic):** street-level photos from Panoramax or
+  Mapillary know where the camera stood and where it looked. For ordinary buildings
+  (default script) the app paints every wall such a photo shows straight from the photo,
+  seen from the right angle, as in a game. Walls nobody photographed keep their drawn
+  windows. Used when the photos show at least about one side of the building; parked cars or
+  trees in the photo end up on the wall too. Hand-designed landmarks keep their modelled
+  facades.
 - **Licences:** a photo only goes **into your package** if its licence allows sharing
   (own photos, CC0, public domain, CC BY, CC BY-SA). Photographers and licences are listed
   in the package's `README.txt`. Other photos are only shown to the AI as a reference.

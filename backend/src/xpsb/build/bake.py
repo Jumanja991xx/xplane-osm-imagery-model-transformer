@@ -8,11 +8,12 @@ take projected photos instead of procedural paint.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 from PIL import Image
 
+from xpsb import streetfacade
 from xpsb.build import phototex
 from xpsb.build.materials import ALPHA, DEFAULT_GLOSS, base_material, emission, normal_map, painter
 from xpsb.build.mesh import Mesh, Patch
@@ -32,6 +33,8 @@ class BakedMesh:
     normal: Image.Image | None = None
     # Night texture (TEXTURE_LIT); None when nothing glows.
     lit: Image.Image | None = None
+    # Street-level photos painted onto walls (their ids, for the README).
+    street_photos: list[str] = field(default_factory=list)
 
 
 def _shelf_pack(
@@ -63,8 +66,10 @@ def bake(
     atlas_px: int = 2048,
     max_px_per_m: float = 24.0,
     photos: dict[str, PhotoMaterial] | None = None,
+    street: streetfacade.Street | None = None,
 ) -> BakedMesh:
-    """`photos`: the object's rectified photo textures (materials "photo:<name>")."""
+    """`photos`: the object's rectified photo textures (materials "photo:<name>").
+    `street`: street-level photos; the walls they show are painted from them."""
     photos = photos or {}
     # Fine detail for Blender's high-to-low bake has no texture of its own.
     textured = [p for p in mesh.patches if p.lod != "bake"]
@@ -112,6 +117,9 @@ def bake(
             painted = painter("plaster")(uu, vv, patch.color)
         else:
             painted = painter(patch.material)(uu, vv, patch.color)
+        seen = None
+        if street is not None and street.shots and base_material(patch.material) != "glass":
+            seen = streetfacade.paint_patch(patch, uu, vv, painted, street)
         canvas[y : y + h, x : x + w] = painted
         normals[y : y + h, x : x + w] = normal_map(
             np.clip(painted, 0, 255), patch.material, density, uu, vv
@@ -123,6 +131,9 @@ def bake(
             lit[y : y + h, x : x + w] = emission(
                 patch.material, patch.glow, uu, vv, patch.color, upright
             )
+        if seen is not None:  # the photo's windows light up, not the painted ones
+            region = lit[y : y + h, x : x + w]
+            region[seen] = phototex.night(np.clip(painted, 0, 255), uu, vv)[seen]
         opacity = ALPHA.get(base_material(patch.material))
         if opacity is not None:
             alpha[y : y + h, x : x + w] = 255.0 * opacity
@@ -136,7 +147,10 @@ def bake(
     glow = None
     if lit.max() > 8:
         glow = Image.fromarray(np.clip(lit, 0, 255).astype(np.uint8), "RGB")
-    return BakedMesh(image=image, px_per_m=density, uvs=uvs, normal=normal, lit=glow)
+    used = sorted(street.used) if street is not None else []
+    return BakedMesh(
+        image=image, px_per_m=density, uvs=uvs, normal=normal, lit=glow, street_photos=used
+    )
 
 
 def _compact_pack(sizes: list[tuple[int, int]], atlas: int) -> list[tuple[int, int]] | None:

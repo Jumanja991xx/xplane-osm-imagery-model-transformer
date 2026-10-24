@@ -12,10 +12,11 @@ wall (outside it, behind the camera) the mask is off and the drawn facade stays.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 from shapely.geometry import LineString, Polygon
+from shapely.strtree import STRtree
 
 EYE_M = 2.5  # camera height above the street (car roof or a person)
 MIN_WALL_M = 4.0  # shorter walls are not worth a photo of their own
@@ -57,6 +58,8 @@ class Camera:
     pano: bool = False
     fov: float = DEFAULT_FOV_DEG  # horizontal, ordinary photos
     z: float = EYE_M
+    yaw_span: float = 360.0  # panoramas: degrees across the image (a cut-out: less)
+    pitch_span: float = 180.0
 
 
 def walls_of(footprint: list[list[float]], z0: float, z1: float) -> list[Wall]:
@@ -85,10 +88,11 @@ def view_score(wall: Wall, cam: Camera) -> float | None:
     angle = math.degrees(math.acos(max(-1.0, min(1.0, front / dist))))
     if angle > MAX_ANGLE_DEG:
         return None
-    if not cam.pano:
+    span = cam.yaw_span if cam.pano else cam.fov
+    if span < 360.0:
         bearing = math.degrees(math.atan2(mx - cam.x, my - cam.y))
         off = (bearing - cam.heading + 180.0) % 360.0 - 180.0
-        if abs(off) > cam.fov / 2:
+        if abs(off) > span / 2:
             return None
     # straight on and close is best; far and slanted photos smear the facade
     return math.cos(math.radians(angle)) * (1.0 - dist / (MAX_DIST_M * 1.5))
@@ -136,24 +140,21 @@ def _sample(img: np.ndarray, px: np.ndarray, py: np.ndarray) -> np.ndarray:
     return top * (1 - fy) + bottom * fy
 
 
-def project(
-    image: np.ndarray, wall: Wall, cam: Camera, px_per_m: float = PX_PER_M
-) -> tuple[np.ndarray, np.ndarray]:
-    """The wall as the photo shows it: (RGB texture, mask of texels it covers).
-    `image` is (h, w, 3) uint8; panoramas are equirectangular with the camera's
-    heading in the middle column and the horizon in the middle row."""
-    w_px = max(8, int(wall.length * px_per_m))
-    h_px = max(8, int((wall.z1 - wall.z0) * px_per_m))
-    d = _directions(wall, cam, w_px, h_px)
+def look_up(image: np.ndarray, cam: Camera, d: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """The photo's colours along the rays `d` (..., 3) from the camera: (RGB float,
+    mask of the rays inside the picture). Panoramas are equirectangular with the
+    camera's heading in the middle column and the horizon in the middle row."""
     ih, iw = image.shape[:2]
-    img = image.astype(np.float32)
     if cam.pano:
         yaw = np.degrees(np.arctan2(d[..., 0], d[..., 1]))
         pitch = np.degrees(np.arctan2(d[..., 2], np.hypot(d[..., 0], d[..., 1])))
         rel = (yaw - cam.heading + 180.0) % 360.0 - 180.0
-        px = (rel / 360.0 + 0.5) * iw - 0.5
-        py = (0.5 - pitch / 180.0) * ih - 0.5
-        mask = np.ones(px.shape, dtype=bool)
+        px = (rel / cam.yaw_span + 0.5) * iw - 0.5
+        py = (0.5 - pitch / cam.pitch_span) * ih - 0.5
+        if cam.yaw_span >= 360.0:
+            mask = np.abs(pitch) <= cam.pitch_span / 2
+        else:
+            mask = (np.abs(rel) <= cam.yaw_span / 2) & (np.abs(pitch) <= cam.pitch_span / 2)
     else:
         h = math.radians(cam.heading)
         fwd = np.array([math.sin(h), math.cos(h), 0.0])
@@ -167,10 +168,21 @@ def project(
             px = iw / 2 + f * xc / zc - 0.5
             py = ih / 2 - f * yc / zc - 0.5
         mask = (zc > 0.1) & (px >= 0) & (px <= iw - 1) & (py >= 0) & (py <= ih - 1)
-        px = np.where(mask, px, 0.0)
-        py = np.where(mask, py, 0.0)
-    rgb = _sample(img, px, py)
+    px = np.where(mask, px, 0.0)
+    py = np.where(mask, py, 0.0)
+    rgb = _sample(image.astype(np.float32), px, py)
     rgb[~mask] = 0
+    return rgb, mask
+
+
+def project(
+    image: np.ndarray, wall: Wall, cam: Camera, px_per_m: float = PX_PER_M
+) -> tuple[np.ndarray, np.ndarray]:
+    """The wall as the photo shows it: (RGB texture, mask of texels it covers).
+    `image` is (h, w, 3) uint8."""
+    w_px = max(8, int(wall.length * px_per_m))
+    h_px = max(8, int((wall.z1 - wall.z0) * px_per_m))
+    rgb, mask = look_up(image, cam, _directions(wall, cam, w_px, h_px))
     return np.clip(rgb, 0, 255).astype(np.uint8), mask
 
 
@@ -195,4 +207,138 @@ def choose(walls: list[Wall], cams: list[Camera], others: list[Polygon]) -> list
                 best = Choice(i, j, s)
         if best is not None:
             out.append(best)
+    return out
+
+
+# ---- painting the object's texture ---------------------------------------------------
+
+
+@dataclass
+class Shot:
+    """A street-level photo ready for painting: camera in the object's metres."""
+
+    photo_id: str
+    cam: Camera
+    image: np.ndarray  # (h, w, 3) uint8
+
+
+@dataclass
+class Street:
+    """The street photos of an object and the buildings around it (they hide walls)."""
+
+    shots: list[Shot]
+    others: list[Polygon]
+    used: set[str] = field(default_factory=set)
+
+    def __post_init__(self) -> None:
+        self._tree = STRtree(self.others) if self.others else None
+
+    def blocked(self, wall: Wall, cam: Camera) -> float:
+        """Share of the wall hidden from the camera (by the other buildings)."""
+        if self._tree is None:
+            return 0.0
+        box = LineString([(cam.x, cam.y), wall.a, wall.b]).envelope
+        near = [self.others[i] for i in self._tree.query(box)]
+        return 1.0 - unobstructed(wall, cam, near)
+
+
+MAX_FIT_M = 0.15  # curved patches (domes, columns) are not painted from photos
+
+
+def _surface(patch) -> np.ndarray | None:
+    """Affine map from the patch's texture metres (u, v, 1) to its 3D points; None
+    if the patch is not flat."""
+    uv = np.array(patch.uv_m, dtype=np.float64)
+    xyz = np.array(patch.positions, dtype=np.float64)
+    if len(uv) < 3:
+        return None
+    a = np.column_stack([uv, np.ones(len(uv))])
+    m, *_ = np.linalg.lstsq(a, xyz, rcond=None)
+    if np.abs(a @ m - xyz).max() > MAX_FIT_M:
+        return None
+    return m
+
+
+def _wall_of(points: np.ndarray, normal: tuple[float, float]) -> Wall:
+    """The wall a flat upright patch lies in, ordered so its normal points outwards."""
+    nx, ny = normal
+    tx, ty = -ny, nx
+    along = points[..., 0] * tx + points[..., 1] * ty
+    off = float((points[..., 0] * nx + points[..., 1] * ny).mean())
+    lo, hi = float(along.min()), float(along.max())
+    a = (nx * off + tx * lo, ny * off + ty * lo)
+    b = (nx * off + tx * hi, ny * off + ty * hi)
+    return Wall(a, b, float(points[..., 2].min()), float(points[..., 2].max()))
+
+
+def paint_patch(patch, uu: np.ndarray, vv: np.ndarray, painted: np.ndarray, street: Street):
+    """Paints the part of an upright, flat patch a street photo shows over `painted`
+    (h, w, 3, at texture metres uu/vv); returns the mask of painted texels or None."""
+    if patch.shared_uv or not patch.normals:
+        return None
+    n = patch.normals[0]
+    horiz = math.hypot(n[0], n[1])
+    if horiz < 0.95:  # roofs, ledges, slopes
+        return None
+    m = _surface(patch)
+    if m is None:
+        return None
+    pts = np.stack([uu, vv, np.ones_like(uu)], axis=-1) @ m
+    wall = _wall_of(pts, (n[0] / horiz, n[1] / horiz))
+    if wall.length < 0.3 or wall.z1 - wall.z0 < 0.3:
+        return None
+    best = None
+    for shot in street.shots:
+        s = view_score(wall, shot.cam)
+        if s is None or (best is not None and s <= best[0]):
+            continue
+        if wall.length >= 1.0:  # small pieces (pilasters, reveals): no ray test
+            s *= 1.0 - street.blocked(wall, shot.cam)
+        if s > 0.15 and (best is None or s > best[0]):
+            best = (s, shot)
+    if best is None:
+        return None
+    shot = best[1]
+    cam = shot.cam
+    d = pts - np.array([cam.x, cam.y, cam.z])
+    rgb, mask = look_up(shot.image, cam, d)
+    if not mask.any():
+        return None
+    painted[mask] = rgb[mask]
+    street.used.add(shot.photo_id)
+    return mask
+
+
+def load(photos, photo_dir, local, ground_z: float = 0.0) -> list[Shot]:
+    """The item's street-level photos that may be shared, with their camera in the
+    object's metres (`local`: lon, lat -> [x, y])."""
+    from PIL import Image
+
+    from xpsb.photos import redistributable
+
+    out = []
+    if photo_dir is None:
+        return out
+    for p in photos:
+        c = p.camera
+        path = photo_dir / f"{p.id}.jpg"
+        if c is None or not redistributable(p) or not path.is_file():
+            continue
+        try:
+            with Image.open(path) as img:
+                image = np.asarray(img.convert("RGB"))
+        except OSError:
+            continue
+        x, y = local(c.lon, c.lat)[:2]
+        cam = Camera(
+            x,
+            y,
+            c.heading,
+            pano=c.pano,
+            fov=c.fov or DEFAULT_FOV_DEG,
+            z=ground_z + EYE_M,
+            yaw_span=c.yaw_span,
+            pitch_span=c.pitch_span,
+        )
+        out.append(Shot(p.id, cam, image))
     return out

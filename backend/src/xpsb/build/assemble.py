@@ -22,6 +22,7 @@ from shapely.geometry import LineString, Polygon, shape
 from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
 
+from xpsb import streetfacade
 from xpsb.build import parallel, parts, phototex
 from xpsb.build.bake import bake
 from xpsb.build.objexport import to_obj8, to_preview
@@ -482,6 +483,52 @@ def _facing(item: SceneItem, items: list[SceneItem], local) -> list[float] | Non
 # ---- objects -----------------------------------------------------------------------
 
 
+STREET_COVER = 0.25  # share of the outline street photos must show (about one side)
+
+
+def _street(item: SceneItem, items: list[SceneItem], inputs: ScriptInputs, photo_dir):
+    """Street-level photos for a building with the default script, when they show
+    enough of its walls; None otherwise. The script then builds flat walls (painted
+    windows) and the photos are painted over what they show."""
+    if (
+        item.script
+        or str(item.category) != "buildings"
+        or inputs.footprint is None
+        or not any(p.camera for p in item.photos)
+    ):
+        return None
+    local = _to_local(*_anchor(item))
+    shots = streetfacade.load(item.photos, photo_dir, local)
+    if not shots:
+        return None
+    here = shape(item.geometry)
+    reach = streetfacade.MAX_DIST_M / METERS_PER_DEG_LAT * 1.5
+    others: list[Polygon] = []
+    pool = items if any(o.id == item.id for o in items) else [item, *items]
+    for other in pool:  # the building itself too: it hides its courtyards
+        if other.kind != "object" or not other.included or other.proposal:
+            continue
+        geom = shape(other.geometry)
+        if geom.geom_type not in ("Polygon", "MultiPolygon") or geom.distance(here) > reach:
+            continue
+        for poly in getattr(geom, "geoms", [geom]):
+            ring = [local(x, y) for x, y in poly.exterior.coords]
+            holes = [[local(x, y) for x, y in h.coords] for h in poly.interiors]
+            others.append(Polygon(ring, holes))
+    height = float(inputs.params.get("height") or 10.0)
+    walls = streetfacade.walls_of(inputs.footprint, 0.0, height)
+    street = streetfacade.Street(shots, others)
+    seen = {
+        c.wall
+        for c in streetfacade.choose(walls, [s.cam for s in shots], [])
+        if street.blocked(walls[c.wall], shots[c.photo].cam) < 0.5
+    }
+    total = sum(w.length for w in walls) or 1.0
+    if sum(walls[i].length for i in seen) / total < STREET_COVER:
+        return None
+    return street
+
+
 def buildable(item: SceneItem) -> bool:
     return item.kind == "object" and item.included and not item.proposal
 
@@ -515,6 +562,9 @@ def generate(
     ):
         raise LookupError("needs an area outline")
     name = f"{item.id}.star" if item.script else f"{item.category}.star"
+    street = _street(item, items, inputs, photo_dir)
+    if street is not None:
+        inputs.params["street_photos"] = True
     lib = frozenset(library.objects) if library else None
     mesh = run_script(script, inputs, budget, name=name, library=lib)
     if item.part_ops:
@@ -524,7 +574,9 @@ def generate(
     photos = phototex.load(item.textures, item.photos, photo_dir) if item.textures else {}
     used = {p.material[6:] for p in mesh.patches if p.material.startswith("photo:")}
     photo_ids = sorted({t.photo_id for t in item.textures if t.name in used and t.name in photos})
-    baked = bake(mesh, atlas, max_ppm, photos) if mesh.patches else None
+    baked = bake(mesh, atlas, max_ppm, photos, street) if mesh.patches else None
+    if baked is not None:
+        photo_ids = sorted({*photo_ids, *baked.street_photos})
     return mesh, baked, photo_ids
 
 

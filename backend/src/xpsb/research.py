@@ -234,6 +234,30 @@ class Found:
         return bool(self.errors) and not self.research.sources and not self.candidates
 
 
+STREET_PHOTOS = 3
+
+
+def spread(cands: list[PhotoCandidate], n: int) -> list[PhotoCandidate]:
+    """Up to n street photos looking at the object from directions as different as
+    possible (the nearest first, then whichever differs most from those taken)."""
+    pool = sorted(cands, key=lambda c: c.distance_m if c.distance_m is not None else 1e9)
+    out: list[PhotoCandidate] = []
+
+    def apart(c: PhotoCandidate) -> float:
+        dirs = [o.bearing for o in out if o.bearing is not None]
+        if c.bearing is None or not dirs:
+            return 0.0
+        return min(abs((c.bearing - d + 180.0) % 360.0 - 180.0) for d in dirs)
+
+    while pool and len(out) < n:
+        best = max(pool, key=apart) if out else pool[0]
+        if out and apart(best) < 30.0:  # only the same side again
+            break
+        out.append(best)
+        pool.remove(best)
+    return out
+
+
 def research_item(item: SceneItem, language: str, mapillary_token: str | None) -> Found:
     langs = (language, "en", "de", "hu", "fr", "it", "es")
     geom = shape(item.geometry)
@@ -341,16 +365,19 @@ def research_item(item: SceneItem, language: str, mapillary_token: str | None) -
                 if (c.distance_m or 0) <= radius and c.facing is not False
             ]
 
-    chosen: list[PhotoCandidate] = []
     seen: set[str] = set()
+    unique: list[PhotoCandidate] = []
     for c in candidates:
         key = c.image_url
         if key in seen or (c.title and SKIP_TITLE.search(c.title)):
             continue
         seen.add(key)
-        chosen.append(c)
-        if len(chosen) >= MAX_PHOTOS:
-            break
+        unique.append(c)
+    # Street-level photos from different sides keep places of their own: the walls
+    # they show are painted from them (streetfacade.py).
+    street = spread([c for c in unique if c.cam_lon is not None], STREET_PHOTOS)
+    others = [c for c in unique if c not in street]
+    chosen = others[: MAX_PHOTOS - len(street)] + street
     return Found(
         research=Research(
             facts="\n".join(lines),
@@ -386,6 +413,7 @@ def attach_photos(item: SceneItem, found: Found, folder: Path) -> int:
         try:
             raw = photos.download(c)
             meta = c.model_dump(include={"source", "title", "author", "license", "page_url"})
+            meta["camera"] = photos.camera_of(c, raw)
             item.photos.append(photos.store(folder, raw, meta))
             added += 1
         except PhotoError:

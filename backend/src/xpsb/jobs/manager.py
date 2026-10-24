@@ -1772,6 +1772,7 @@ class JobManager:
         except photos.PhotoError as exc:
             raise JobConflict("error.photo_download", detail=str(exc)) from None
         meta = c.model_dump(include={"source", "title", "author", "license", "page_url"})
+        meta["camera"] = photos.camera_of(c, raw)
         return self._add_photo(job, item, raw, meta)
 
     def preview_file(self, job_id: str, name: str) -> Path | None:

@@ -1936,6 +1936,7 @@ export interface components {
             license?: string | null;
             /** Page Url */
             page_url?: string | null;
+            camera?: components["schemas"]["StreetCamera"] | null;
             /**
              * Shareable
              * @description May it go into a scenery package as a texture (see redistributable)?
@@ -1999,6 +2000,12 @@ export interface components {
             bearing?: number | null;
             /** Facing */
             facing?: boolean | null;
+            /** Cam Lon */
+            cam_lon?: number | null;
+            /** Cam Lat */
+            cam_lat?: number | null;
+            /** Fov */
+            fov?: number | null;
         };
         /**
          * PhotoTexture
@@ -2487,6 +2494,38 @@ export interface components {
              * @default 48.1
              */
             lat: number;
+        };
+        /**
+         * StreetCamera
+         * @description Where a street-level photo was taken and where it looks (streetfacade.py paints
+         *     walls from it): position, compass direction of the image centre, and either the
+         *     horizontal field of view (ordinary photo) or the angles a (cut-out of a) 360°
+         *     panorama spans.
+         */
+        StreetCamera: {
+            /** Lon */
+            lon: number;
+            /** Lat */
+            lat: number;
+            /** Heading */
+            heading: number;
+            /**
+             * Pano
+             * @default false
+             */
+            pano: boolean;
+            /** Fov */
+            fov?: number | null;
+            /**
+             * Yaw Span
+             * @default 360
+             */
+            yaw_span: number;
+            /**
+             * Pitch Span
+             * @default 180
+             */
+            pitch_span: number;
         };
         /**
          * SurfaceMode

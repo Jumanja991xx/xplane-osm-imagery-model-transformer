@@ -5488,6 +5488,16 @@
             ],
             "title": "Page Url"
           },
+          "camera": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StreetCamera"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "shareable": {
             "type": "boolean",
             "title": "Shareable",
@@ -5657,6 +5667,39 @@
               }
             ],
             "title": "Facing"
+          },
+          "cam_lon": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cam Lon"
+          },
+          "cam_lat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cam Lat"
+          },
+          "fov": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fov"
           }
         },
         "type": "object",
@@ -6822,6 +6865,56 @@
           "imagery"
         ],
         "title": "SourceTestBody"
+      },
+      "StreetCamera": {
+        "properties": {
+          "lon": {
+            "type": "number",
+            "title": "Lon"
+          },
+          "lat": {
+            "type": "number",
+            "title": "Lat"
+          },
+          "heading": {
+            "type": "number",
+            "title": "Heading"
+          },
+          "pano": {
+            "type": "boolean",
+            "title": "Pano",
+            "default": false
+          },
+          "fov": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fov"
+          },
+          "yaw_span": {
+            "type": "number",
+            "title": "Yaw Span",
+            "default": 360.0
+          },
+          "pitch_span": {
+            "type": "number",
+            "title": "Pitch Span",
+            "default": 180.0
+          }
+        },
+        "type": "object",
+        "required": [
+          "lon",
+          "lat",
+          "heading"
+        ],
+        "title": "StreetCamera",
+        "description": "Where a street-level photo was taken and where it looks (streetfacade.py paints\nwalls from it): position, compass direction of the image centre, and either the\nhorizontal field of view (ordinary photo) or the angles a (cut-out of a) 360\u00b0\npanorama spans."
       },
       "SurfaceMode": {
         "type": "string",
