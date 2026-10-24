@@ -458,8 +458,25 @@ def extra(ao_png: Path, kind: str) -> Path:
     return ao_png.with_name(f"{ao_png.stem}_{kind}.png")
 
 
+_MASKS: dict[tuple[str, float], np.ndarray] = {}  # one per object while it is finished
+
+
 def _receiver_mask(npz: Path) -> np.ndarray:
-    """Where in the atlas the receivers (parts with their own texture) are."""
+    """Where in the atlas the receivers (parts with their own texture) are (drawn once
+    per object: shading, weathering and edges all need it)."""
+    key = (str(npz), npz.stat().st_mtime)
+    if key not in _MASKS:
+        _MASKS[key] = _draw_receiver_mask(npz)
+    return _MASKS[key]
+
+
+def forget_mask(npz: Path) -> None:
+    """Done with this object: its mask is not needed any more (memory)."""
+    for key in [k for k in _MASKS if k[0] == str(npz)]:
+        _MASKS.pop(key, None)
+
+
+def _draw_receiver_mask(npz: Path) -> np.ndarray:
     with np.load(npz) as d:
         w, h = (int(v) for v in d["atlas"])
         uv = d["uvs"].astype(np.float64)

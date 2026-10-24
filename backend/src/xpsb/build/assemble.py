@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import shutil
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -865,7 +866,9 @@ def _shade_with_blender(
             log_file=log_path,
             cpu=cpu,  # written as Blender works: can be watched while it runs
         )
-        for i in sorted(done):
+
+        def finish(i: int) -> str | None:
+            """Blender's bakes into the textures of one object (None: fine)."""
             res = todo[i]
             try:
                 ao = blender.ao_from(jobs[i][0], jobs[i][1])
@@ -881,8 +884,18 @@ def _shade_with_blender(
                     blender.bevel_normals(jobs[i][0], blender.extra(jobs[i][1], "bevel"), nml)
                     res.detailed = blender.detail_normals(jobs[i][0], jobs[i][2], nml)
             except (OSError, ValueError) as exc:
-                problems.append(f"{res.stem}: {exc}")
-                continue
+                return f"{res.stem}: {exc}"
+            finally:
+                blender.forget_mask(jobs[i][0])
+            return None
+
+        # Image decoding and the array work release Python's lock: threads use all
+        # cores (processes would hang in the packaged app).
+        from concurrent.futures import ThreadPoolExecutor
+
+        workers = max(1, min(8, (os.cpu_count() or 2) - 1))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            problems += [p for p in pool.map(finish, sorted(done)) if p]
         if len(done) < len(todo):
             problems.append(blender.problem(log))
     finally:
