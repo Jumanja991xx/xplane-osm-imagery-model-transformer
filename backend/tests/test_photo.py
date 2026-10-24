@@ -43,9 +43,12 @@ def test_the_photo_shows_every_built_object_and_aims_at_the_chosen_one(tmp_path)
     ]
     jm = _manager(tmp_path, objs)
     m = JobManager.photo_manifest(jm, "job", item_id="way/2", azimuth=250.0, elevation=18.0)
-    assert [o["texture"] is not None for o in m["objects"]] == [True, True]
-    assert m["objects"][1]["x"] == 500.0 and m["objects"][1]["heading"] == 30.0
-    assert m["objects"][0]["normal"] is None
+    # the camera stands west of "b" looking east: "a" (500 m further west) is behind it
+    assert [o["x"] for o in m["objects"]] == [500.0]
+    assert m["objects"][0]["heading"] == 30.0 and m["objects"][0]["normal"] is None
+    assert m["objects"][0]["tex_scale"] == 1.0
+    # the whole scene: everything is in view
+    assert {o["x"] for o in JobManager.photo_manifest(jm, "job")["objects"]} == {0.0, 500.0}
     cam = m["camera"]
     assert cam["target"][:2] == [500.0, 0.0]
     assert cam["azimuth"] == 250.0 and cam["elevation"] == 18.0

@@ -87,6 +87,49 @@ class ScriptTest(BaseModel):
     views: list[str] = []  # PNG, base64: from south-west, from north-east, from above
 
 
+PHOTO_HALF_FOV_DEG = 27.0 + 12.0  # 35 mm lens across 36 mm, plus a margin for shadows
+PHOTO_FAR = 3.0  # objects further than this many camera distances are left out
+
+
+def _in_view(objects: list[dict], camera: dict) -> list[dict]:
+    """Only what the photo shows (a whole old town would not fit into memory): in
+    front of the camera, inside its view (with a margin), not too far. Far objects
+    get smaller textures (tex_scale)."""
+    import math
+
+    tx, ty, tz = camera["target"]
+    az, el, dist = (
+        math.radians(camera["azimuth"]),
+        math.radians(camera["elevation"]),
+        camera["distance"],
+    )
+    cam = (
+        tx + dist * math.cos(el) * math.sin(az),
+        ty + dist * math.cos(el) * math.cos(az),
+        tz + dist * math.sin(el),
+    )
+    look = (tx - cam[0], ty - cam[1], tz - cam[2])
+    norm = math.sqrt(sum(c * c for c in look)) or 1.0
+    look = tuple(c / norm for c in look)
+    out = []
+    for o in objects:
+        w, s, e, n, top = o["box"]
+        centre = ((w + e) / 2, (s + n) / 2, top / 2)
+        radius = 0.5 * math.sqrt((e - w) ** 2 + (n - s) ** 2 + top**2)
+        d = tuple(c - k for c, k in zip(centre, cam, strict=True))
+        far = math.sqrt(sum(c * c for c in d)) or 1.0
+        if far - radius > PHOTO_FAR * dist:
+            continue
+        cos_a = sum(a * b for a, b in zip(d, look, strict=True)) / far
+        angle = math.degrees(math.acos(max(-1.0, min(1.0, cos_a))))
+        if far > radius and angle - math.degrees(math.atan2(radius, far)) > PHOTO_HALF_FOV_DEG:
+            continue
+        entry = {k: v for k, v in o.items() if k != "box"}
+        entry["tex_scale"] = 1.0 if far <= 1.5 * dist else (0.5 if far <= 3 * dist else 0.25)
+        out.append(entry)
+    return out
+
+
 class JobConflict(Exception):
     """The request does not fit the job's current state (HTTP 409)."""
 
@@ -1893,6 +1936,9 @@ class JobManager:
             tex = self.preview_file(job_id, f"{o['stem']}.png")
             nml = self.preview_file(job_id, f"{o['stem']}_nml.png")
             x, y = o["offset"]
+            w, s, e, n = o.get("extent") or (-10.0, -10.0, 10.0, 10.0)
+            top = o.get("top_m") or 10.0
+            box = (x + w, y + s, x + e, y + n, top)
             objects.append(
                 {
                     "mesh": str(mesh),
@@ -1901,11 +1947,9 @@ class JobManager:
                     "x": x,
                     "y": y,
                     "heading": o.get("heading") or 0.0,
+                    "box": box,
                 }
             )
-            w, s, e, n = o.get("extent") or (-10.0, -10.0, 10.0, 10.0)
-            top = o.get("top_m") or 10.0
-            box = (x + w, y + s, x + e, y + n, top)
             if item_id is None or o["item_id"] == item_id:
                 boxes.append(box)
         if not objects:
@@ -1916,16 +1960,17 @@ class JobManager:
         x1, y1 = max(b[2] for b in boxes), max(b[3] for b in boxes)
         top = max(b[4] for b in boxes)
         span = max(x1 - x0, y1 - y0, top)
+        camera = {
+            "target": [(x0 + x1) / 2, (y0 + y1) / 2, top * 0.3],
+            "azimuth": azimuth,
+            "elevation": elevation,
+            "distance": span * 1.25 + 40.0,
+            "lens": 35.0,
+        }
         return {
-            "objects": objects,
+            "objects": _in_view(objects, camera),
             "ground": {"x": (x0 + x1) / 2, "y": (y0 + y1) / 2, "size": 40000.0},
-            "camera": {
-                "target": [(x0 + x1) / 2, (y0 + y1) / 2, top * 0.3],
-                "azimuth": azimuth,
-                "elevation": elevation,
-                "distance": span * 1.25 + 40.0,
-                "lens": 35.0,
-            },
+            "camera": camera,
             "sun": {"azimuth": (azimuth + 140.0) % 360.0, "elevation": 34.0},
             "size": list(size),
             "samples": samples,

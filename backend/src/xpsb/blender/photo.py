@@ -29,21 +29,24 @@ def _clear() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
 
 
-def _image(path: str | None, color: bool):
+def _image(path: str | None, color: bool, scale: float = 1.0):
     if not path:
         return None
     img = bpy.data.images.load(path, check_existing=True)
     img.colorspace_settings.name = "sRGB" if color else "Non-Color"
+    if scale < 1.0:  # far away: a smaller texture is enough and saves memory
+        w, h = img.size
+        img.scale(max(16, int(w * scale)), max(16, int(h * scale)))
     return img
 
 
-def _material(name: str, tex: str | None, nml: str | None, alpha: bool):
+def _material(name: str, tex: str | None, nml: str | None, alpha: bool, scale: float = 1.0):
     mat = bpy.data.materials.new(name)
     mat.use_nodes = True
     nodes, links = mat.node_tree.nodes, mat.node_tree.links
     bsdf = nodes.get("Principled BSDF")
     bsdf.inputs["Roughness"].default_value = 0.8
-    color = _image(tex, True)
+    color = _image(tex, True, scale)
     if color is not None:
         node = nodes.new("ShaderNodeTexImage")
         node.image = color
@@ -52,7 +55,7 @@ def _material(name: str, tex: str | None, nml: str | None, alpha: bool):
         if alpha:
             links.new(node.outputs["Alpha"], bsdf.inputs["Alpha"])
             mat.blend_method = "HASHED"
-    normal = _image(nml, False)
+    normal = _image(nml, False, scale)
     if normal is not None:
         node = nodes.new("ShaderNodeTexImage")
         node.image = normal
@@ -111,7 +114,9 @@ def _object(o: dict, n: int) -> None:
         if hasattr(mesh, "use_auto_smooth"):  # Blender < 4.1
             mesh.use_auto_smooth = True
         mesh.normals_split_custom_set_from_vertices(normals)
-    mat = _material(f"mat{n}", o.get("texture"), o.get("normal"), m.get("alpha", False))
+    mat = _material(
+        f"mat{n}", o.get("texture"), o.get("normal"), m.get("alpha", False), o.get("tex_scale", 1.0)
+    )
     mesh.materials.append(mat)
     ob = bpy.data.objects.new(f"obj{n}", mesh)
     ob.location = (o["x"], o["y"], 0.0)
@@ -191,6 +196,11 @@ def main() -> None:
     scene.cycles.use_denoising = True
     with contextlib.suppress(TypeError):
         scene.cycles.denoiser = "OPENIMAGEDENOISE"
+    # Big sceneries: textures at most 2048 px when rendering (a photo of a whole old
+    # town needs gigabytes less, and from this far away it looks the same).
+    scene.render.use_simplify = True
+    with contextlib.suppress(AttributeError, TypeError):
+        scene.cycles.texture_limit_render = "2048"
     w, h = a.get("size", [1600, 1000])
     scene.render.resolution_x, scene.render.resolution_y = int(w), int(h)
     scene.render.resolution_percentage = 100
