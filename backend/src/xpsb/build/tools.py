@@ -47,6 +47,14 @@ def _num(value: Any, name: str) -> float:
     return float(value)
 
 
+def _squared(value: Any) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise GeometryError("sqrt: value must be a number")
+    if not math.isfinite(value) or abs(value) > 3 * MAX_SIZE_M * MAX_SIZE_M:
+        raise GeometryError(f"sqrt: value out of range: {value}")
+    return float(value)
+
+
 def _pts2(value: Any, name: str, min_len: int = 3) -> list[Vec2]:
     if not isinstance(value, list) or len(value) < min_len:
         raise GeometryError(f"{name} must be a list of at least {min_len} [x, y] points")
@@ -1064,7 +1072,8 @@ MATH = {
     "cos": lambda deg: math.cos(math.radians(_num(deg, "angle"))),
     "tan": lambda deg: math.tan(math.radians(_num(deg, "angle"))),
     "atan2": lambda y, x: math.degrees(math.atan2(_num(y, "y"), _num(x, "x"))),
-    "sqrt": lambda v: math.sqrt(max(0.0, _num(v, "value"))),
+    # squared lengths (dx*dx + dy*dy) of anything up to the size limit
+    "sqrt": lambda v: math.sqrt(max(0.0, _squared(v))),
     "hypot": lambda x, y: math.hypot(_num(x, "x"), _num(y, "y")),
     "floor": lambda v: math.floor(_num(v, "value")),
     "ceil": lambda v: math.ceil(_num(v, "value")),

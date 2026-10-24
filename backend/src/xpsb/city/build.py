@@ -142,6 +142,22 @@ def from_items(items: list[SceneItem]) -> list[CityBuilding]:
     return out
 
 
+def _mapped_colour(value: str | None, colors: list) -> int | None:
+    """The style colour closest to the facade colour OSM gives (name or #hex)."""
+    if not value:
+        return None
+    from xpsb.build.materials import parse_color
+
+    try:
+        rgb = parse_color(value)
+    except ValueError:
+        return None
+    return min(
+        range(len(colors)),
+        key=lambda i: sum((a - b) ** 2 for a, b in zip(colors[i], rgb, strict=True)),
+    )
+
+
 def lod2_buildings(
     ring: list[tuple[float, float]], cache_dir: Path, progress: Callable | None = None
 ) -> list[CityBuilding]:
@@ -300,7 +316,12 @@ def build(
         style, wall, roof = styles.assign(lead, _area_m2(lead), preset)
         roof_material[style.facade.id] = style.roof.material
         for b in group:
-            b.style, b.variant = style.facade.id, wall
+            # old towns: as many colours as houses in the row
+            own = wall
+            if style.facade.colour_per_house and b is not lead:
+                own = (styles._h(b.id) >> 20) % len(style.facade.colors)
+            mapped = _mapped_colour(b.tags.get("building:colour"), style.facade.colors)
+            b.style, b.variant = style.facade.id, own if mapped is None else mapped
             b.roof_color = b.roof_color or style.roof.colors[roof]
     used = {(b.style, b.variant) for b in buildings}
     if not used:

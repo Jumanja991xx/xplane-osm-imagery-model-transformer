@@ -261,3 +261,24 @@ def test_walls_have_a_bounded_number_of_bands():
     cell = Cell(0.0, 1.0, {}, bay_m=3.5, ground_m=3.5, storey_m=3.0)
     assert len(mesh._bands(1e9, cell)) <= mesh.MAX_FLOORS + 32
     assert len(mesh._bands(9.5, cell)) < 40
+
+
+def test_an_old_town_row_has_a_colour_per_house_and_the_mapped_one(tmp_path: Path):
+    """Baroque old town (Buda castle district): the houses of a row share the style
+    but each has its own colour; a colour OSM gives wins."""
+    els = [
+        way(i + 1, rect(i * 9, 0, (i + 1) * 9, 12), building="house", height="10") for i in range(8)
+    ]
+    els.append(
+        way(30, rect(72, 0, 81, 12), building="house", height="10", **{"building:colour": "pink"})
+    )
+    houses = city.from_items(run(els))
+    city.build(houses, "central_europe_city", houses[0].footprint[0][0], tmp_path / "out")
+    row = [b for b in houses if b.style == "baroque"]
+    assert len(row) >= 8 and len({b.style for b in row}) == 1
+    assert len({b.variant for b in row}) >= 4  # not one colour for all
+    from xpsb.city.styles import CENTRAL_EUROPE_CITY
+
+    baroque = next(s for s in CENTRAL_EUROPE_CITY.styles if s.facade.id == "baroque")
+    pink = next(b for b in houses if b.tags.get("building:colour") == "pink")
+    assert baroque.facade.colors[pink.variant] == (238, 214, 196)  # the pale rose

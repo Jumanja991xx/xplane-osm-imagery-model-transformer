@@ -361,3 +361,13 @@ def test_big_objects_may_take_longer():
     assert sandbox.time_limit(30_000) == sandbox.DEFAULT_TIMEOUT_S
     assert sandbox.time_limit(240_000) == pytest.approx(3 * sandbox.DEFAULT_TIMEOUT_S)
     assert sandbox.time_limit(10_000_000) == sandbox.MAX_TIMEOUT_FACTOR * sandbox.DEFAULT_TIMEOUT_S
+
+
+def test_sqrt_takes_squared_lengths_of_big_objects():
+    from xpsb.build.sandbox import ScriptInputs, run_script
+
+    run_script(
+        "d = sqrt(120.0 * 120.0 + 90.0 * 90.0)\nbox(0, 0, 0, d / 10, 1, 1)",
+        ScriptInputs([[0, 0], [10, 0], [10, 10]], None, {}),
+        1000,
+    )

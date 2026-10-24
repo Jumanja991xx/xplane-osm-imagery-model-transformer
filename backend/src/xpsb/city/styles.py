@@ -44,6 +44,8 @@ class FacadeStyle(BaseModel):
     balcony_color: RGB | None = None  # railing (None: trim colour)
     bands: bool = False  # string course under each storey
     lit_share: float = Field(default=0.3, ge=0, le=1)
+    # Each house of a joined row its own colour (old towns); else the row is one look.
+    colour_per_house: bool = False
 
 
 class RoofStyle(BaseModel):
@@ -350,6 +352,20 @@ _ECLECTIC = [
     (206, 202, 192),  # light grey
 ]
 _TIN_SLATE = [(84, 86, 90), (104, 104, 102), (70, 74, 80), (122, 92, 76)]
+# Baroque and Biedermeier houses of old towns (Buda castle district, Prague, Vienna
+# Spittelberg): each house its own colour - yellows, ochre, salmon, mint, pale blue.
+_BAROQUE = [
+    (232, 200, 112),  # Schoenbrunn yellow
+    (222, 182, 120),  # ochre
+    (228, 170, 140),  # salmon
+    (238, 214, 196),  # pale rose
+    (196, 214, 186),  # mint
+    (190, 206, 214),  # pale blue
+    (238, 228, 196),  # cream
+    (214, 196, 160),  # sand
+    (226, 212, 150),  # pale ochre
+    (240, 234, 222),  # white
+]
 
 # Historic city centre of Central Europe (Budapest, Vienna, Prague): perimeter
 # blocks of the late 19th century with courtyards, interwar houses, some modern.
@@ -374,6 +390,25 @@ CENTRAL_EUROPE_CITY = RegionPreset(
             ),
             dict(material="slate", colors=_TIN_SLATE + _RED_TILES[:2]),
             dict(uses=["residential", "commercial"], min_levels=3, max_levels=8, weight=5),
+        ),
+        _entry(  # baroque / Biedermeier house of the old town: low, colourful, tall windows
+            dict(
+                id="baroque",
+                colors=_BAROQUE,
+                window="tall",
+                storey_m=4.0,
+                ground_m=4.2,
+                bay_m=3.6,
+                win_w_m=1.2,
+                win_h_m=2.0,
+                sill_m=1.0,
+                ground="plinth",
+                bands=True,
+                trim=(244, 240, 228),
+                colour_per_house=True,
+            ),
+            dict(material="tiles", colors=_RED_TILES + [(140, 84, 60)]),
+            dict(uses=["residential", "commercial", "public"], max_levels=3, weight=4),
         ),
         _entry(  # richer stone facade, round-arched windows (banks, palaces, hotels)
             dict(
